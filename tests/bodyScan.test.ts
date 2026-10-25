@@ -161,6 +161,25 @@ describe('scanBodies', () => {
     expect(res.scan.scanned).toBe(2)
   })
 
+  it('a security mail detected only by its body cannot be found by its code (E2)', async () => {
+    // Neutraler Betreff, nur der Text verraet die Sicherheitsmail.
+    const rows = rowsOf(1, () => ({ subject: 'Hello' }))
+    const { res } = await scan({ rows, bodies: { 1: 'Your verification code is 482913' } }, { term: '482913' })
+    expect(res.matches).toEqual([])
+    // Nur scanned zaehlt; die Mail ist weder "nicht verfuegbar" noch beendet sie den Scan.
+    expect(res.scan).toEqual({ scanned: 1, unavailable: 0, stoppedBy: null, complete: true })
+    expect(res.resumeAfter).toBeNull()
+  })
+
+  it('a decomposed search term matches precomposed text', async () => {
+    const rows = rowsOf(1)
+    const decomposed = 'ko\u0308ln'
+    expect(decomposed).not.toBe('köln')
+    const { res } = await scan({ rows, bodies: { 1: 'Treffen in Köln am Montag' } }, { term: decomposed })
+    expect(res.matches.map((m) => m.row.gid)).toEqual([1])
+    expect(res.matches[0]!.matchContext).toContain('Köln')
+  })
+
   it('security mails match when APPLE_MAIL_SHOW_SECURITY_MAILS is true', async () => {
     const rows = rowsOf(1, () => ({ subject: 'Your verification code' }))
     const { res } = await scan({ rows, bodies: { 1: 'Your verification code is 482913.' } }, { term: '482913' }, { APPLE_MAIL_SHOW_SECURITY_MAILS: 'true' })

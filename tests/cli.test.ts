@@ -9,6 +9,7 @@ import { runSetup } from '../src/cli/setup.js'
 import { loadConfig } from '../src/config.js'
 import { HelperError } from '../src/errors.js'
 import { FDA_SETTINGS_URL } from '../src/fdaPrompt.js'
+import { readState } from '../src/state.js'
 
 const BUNDLE = '/opt/x/bin/Mail MCP Helper.app'
 
@@ -74,6 +75,27 @@ describe('setup', () => {
     expect(s.text()).toContain('Mail database could not be read (busy or damaged); try again.')
     expect(s.text()).not.toContain('readable')
     expect(existsSync(join(stateDir, 'state.json'))).toBe(false)
+  })
+
+  it('setup with an incompatible schema fails, points to doctor --schema and records nothing', async () => {
+    const s = sink()
+    const stateDir = mkdtempSync(join(tmpdir(), 'state-'))
+    const incompatible = { compatible: false, missing: ['messages.size'], fingerprint: 'sha256:abc123', ddl: ['CREATE TABLE messages (ROWID)'] }
+    const code = await runSetup({ ...base(fakeRunner({ probe: () => probe('granted', { schema: incompatible, counts: undefined }) }), s), stateDir })
+    expect(code).toBe(1)
+    expect(s.text()).toContain('This version of Apple Mail is not supported yet.')
+    expect(s.text()).toContain('apple-mail-mcp doctor --schema')
+    expect(s.text()).not.toContain('Full Disk Access is granted')
+    expect(s.text()).not.toContain('claude mcp add')
+    expect(existsSync(join(stateDir, 'state.json'))).toBe(false)
+  })
+
+  it('setup records the helper version from the handshake', async () => {
+    const s = sink()
+    const stateDir = mkdtempSync(join(tmpdir(), 'state-'))
+    const runner = { ...fakeRunner({ probe: () => probe('granted') }), helperVersion: () => '0.1.0' }
+    expect(await runSetup({ ...base(runner, s), stateDir })).toBe(0)
+    expect(readState(stateDir)).toMatchObject({ helperVersion: '0.1.0', helperSha256: null })
   })
 
   it('setup denied opens settings and finder, polls every 2 s until granted', async () => {
@@ -274,19 +296,33 @@ describe('doctor', () => {
     ).toBe(0)
   })
 
-  it('doctor --schema prints only CREATE statements', async () => {
+  const ddl = ['CREATE TABLE messages (\n  ROWID INTEGER PRIMARY KEY,\n  subject INTEGER\n)', 'secret row', 'CREATE TABLE mailboxes (ROWID, url)']
+
+  it('doctor --schema prints only CREATE statements, one per line', async () => {
     const s = sink()
     const runner = goodRunner({
-      probe: () => probe('granted', { schema: { compatible: false, missing: ['messages.size'], fingerprint: 'sha256:abc123', ddl: 'CREATE TABLE x(a);\nsecret row\nCREATE INDEX i ON x(a);' } }),
+      probe: () => probe('granted', { schema: { compatible: false, missing: ['messages.size'], fingerprint: 'sha256:abc123', ddl } }),
     })
     const code = await runDoctor(doctorDeps(s, runner, { schema: true }))
     expect(code).toBe(0)
     const lines = s.text().split('\n').filter((l) => l !== '')
     for (const l of lines) expect(l.startsWith('CREATE ') || l.startsWith('sha256:') || l === 'messages.size').toBe(true)
+    expect(lines).toContain('CREATE TABLE messages ( ROWID INTEGER PRIMARY KEY, subject INTEGER )')
+    expect(lines).toContain('CREATE TABLE mailboxes (ROWID, url)')
     expect(s.text()).toContain('sha256:abc123')
     expect(s.text()).toContain('messages.size')
     expect(s.text()).not.toContain('secret row')
     expect(s.text()).not.toContain('alice')
+  })
+
+  it('default doctor output never contains the DDL', async () => {
+    for (const json of [false, true]) {
+      const s = sink()
+      const schema = { compatible: true, missing: [], fingerprint: 'sha256:abc123', ddl }
+      await runDoctor(doctorDeps(s, goodRunner({ probe: () => probe('granted', { schema }) }), { json }))
+      expect(s.text()).toContain('sha256:abc123')
+      expect(s.text()).not.toContain('CREATE TABLE')
+    }
   })
 })
 

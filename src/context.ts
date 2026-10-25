@@ -13,7 +13,8 @@ export interface ToolContext {
   /** Gecacht fuer 60 s; `refresh` erzwingt eine neue Abfrage. */
   policy(refresh?: boolean): Promise<Policy>
   bundlePath: string
-  onHelperError(e: unknown): void
+  /** Liefert true, wenn dabei gerade Einstellungen und Finder fuer FDA geoeffnet wurden. */
+  onHelperError(e: unknown): boolean
   onHelperSuccess(): void
 }
 
@@ -31,10 +32,13 @@ export function createContext(deps: {
   const open = deps.open ?? defaultOpen
   const stateDir = deps.stateDir ?? defaultStateDir()
 
-  const onHelperSuccess = (): void => recordAccessOk({ helperSha256: null, helperVersion: null }, stateDir, now)
-  const onHelperError = (e: unknown): void => {
-    if (e instanceof HelperError && e.code === 'FULL_DISK_ACCESS_REQUIRED') openFdaOnce(deps.bundlePath, open)
-  }
+  // helperSha256 bleibt null: Die FDA-Freigabe haengt an Bundle-ID und Designated Requirement, nicht am
+  // Hash (Bundle-Spike), ein Hash hilft der Diagnose also nicht; Signatur und Bundle-ID prueft checkBundle,
+  // doctor zeigt beides. Ihn zu bilden hiesse, bei jedem Start das Bundle zu lesen. Die Version kommt aus hello.
+  const onHelperSuccess = (): void =>
+    recordAccessOk({ helperSha256: null, helperVersion: deps.runner.helperVersion?.() ?? null }, stateDir, now)
+  const onHelperError = (e: unknown): boolean =>
+    e instanceof HelperError && e.code === 'FULL_DISK_ACCESS_REQUIRED' ? openFdaOnce(deps.bundlePath, open) : false
 
   // Jeder erfolgreiche Helper-Aufruf zaehlt als Zugriff.
   const runner: HelperRunner = {

@@ -15,10 +15,20 @@ describe('errors', () => {
   })
 
   it('fda message names the bundle path and the stale-entry fix', () => {
-    const m = fdaMessage('/x/Mail MCP Helper.app')
+    const m = fdaMessage('/x/Mail MCP Helper.app', true)
     expect(m).toContain('/x/Mail MCP Helper.app')
     expect(m).toContain('remove it with −')
     expect(m).toContain('npx -y @redpop/apple-mail-mcp setup')
+  })
+
+  it('fda message only claims a Finder window was opened when it was', () => {
+    const now = fdaMessage('/x/Mail MCP Helper.app', true)
+    const earlier = fdaMessage('/x/Mail MCP Helper.app', false)
+    expect(now).toContain('A Finder window showing it has been opened.')
+    expect(earlier).not.toContain('has been opened')
+    expect(earlier).toContain('/x/Mail MCP Helper.app')
+    expect(earlier).toContain('remove it with −')
+    expect(describeError('FULL_DISK_ACCESS_REQUIRED')).not.toContain('has been opened')
   })
 
   it('HelperError carries its code', () => {
@@ -36,6 +46,6 @@ describe('generic FDA text', () => {
     expect(g).not.toContain('`/')
     expect(g).toContain('click + and add the "Mail MCP Helper" app')
     expect(g).toContain('remove it with −')
-    expect(f('/x/Mail MCP Helper.app')).toContain('paste `/x/Mail MCP Helper.app`')
+    expect(f('/x/Mail MCP Helper.app', false)).toContain('paste `/x/Mail MCP Helper.app`')
   })
 })

@@ -7,8 +7,8 @@ describe('openFdaOnce', () => {
   it('oeffnet Einstellungen und Finder genau einmal pro Prozess', () => {
     const calls: Array<[string, string[]]> = []
     const open = (file: string, args: string[]) => void calls.push([file, args])
-    openFdaOnce('/x/Mail MCP Helper.app', open)
-    openFdaOnce('/x/Mail MCP Helper.app', open)
+    expect(openFdaOnce('/x/Mail MCP Helper.app', open)).toBe(true)
+    expect(openFdaOnce('/x/Mail MCP Helper.app', open)).toBe(false)
     expect(calls).toEqual([
       ['/usr/bin/open', [FDA_SETTINGS_URL]],
       ['/usr/bin/open', ['-R', '/x/Mail MCP Helper.app']],

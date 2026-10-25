@@ -58,7 +58,8 @@ export const probeResult = z.object({
   osVersion: z.string(),
   mailDir: z.string().nullable(),
   access: z.enum(['granted', 'denied', 'no_mail_data', 'untrusted_signature']),
-  schema: z.object({ compatible: z.boolean(), missing: z.array(z.string()), fingerprint: z.string() }).optional(),
+  // ddl: CREATE-TABLE-Anweisungen des Fingerabdrucks, nur fuer `doctor --schema` (Spec 14.5).
+  schema: z.object({ compatible: z.boolean(), missing: z.array(z.string()), fingerprint: z.string(), ddl: z.array(z.string()).optional() }).optional(),
   counts: z.object({ mailboxes: z.number().int(), messages: z.number().int(), uniqueMessages: z.number().int() }).optional(),
   accountNames: z.object({ status: z.enum(['available', 'unavailable']), unmatchedAccounts: z.number().int(), reason: z.string().nullable().optional() }),
 })

@@ -279,6 +279,20 @@ describe('get_message', () => {
   })
 })
 
+describe('ids beyond the safe integer range', () => {
+  it('get_message and get_thread answer MESSAGE_NOT_FOUND without asking the helper', async () => {
+    const { server, calls } = setup(() => { throw new Error('helper must not be called') })
+    for (const id of ['9007199254740992', '99999999999999999999']) {
+      for (const name of ['get_message', 'get_thread']) {
+        const res = await call(server, name, { id })
+        expect(res.isError).toBe(true)
+        expect(res.content[0].text).toContain('No such message')
+      }
+    }
+    expect(calls.filter((c) => c.command !== 'list-mailboxes')).toHaveLength(0)
+  })
+})
+
 describe('get_thread', () => {
   it('get_thread notes truncation with limit and total', async () => {
     const { server, calls } = setup(() => ({ conversationId: 88, messages: [row(1), row(2)], hasMore: true }))
@@ -324,8 +338,12 @@ describe('config and errors', () => {
     const r1 = await call(server, 'search_messages', {})
     const r2 = await call(server, 'search_messages', {})
     expect(r1.isError).toBe(true)
-    expect(r1.content[0].text).toBe(fdaMessage('/pkg/Mail MCP Helper.app'))
+    expect(r1.content[0].text).toBe(fdaMessage('/pkg/Mail MCP Helper.app', true))
+    expect(r1.content[0].text).toContain('A Finder window showing it has been opened.')
     expect(r2.isError).toBe(true)
+    // Beim zweiten Mal wurde nichts geoeffnet; der Text behauptet das auch nicht.
+    expect(r2.content[0].text).toBe(fdaMessage('/pkg/Mail MCP Helper.app', false))
+    expect(r2.content[0].text).not.toContain('has been opened')
     expect(opened).toHaveLength(2)
     expect(opened[1]).toEqual(['/usr/bin/open', ['-R', '/pkg/Mail MCP Helper.app']])
   })
@@ -391,6 +409,14 @@ describe('state and policy cache', () => {
     t += 31_000
     await call(server, 'search_messages', {})
     expect(readState(stateDir)?.lastAccessOk).not.toBe(first?.lastAccessOk)
+  })
+
+  it('state records the helper version from the handshake', async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), 'mailmcp-ver-'))
+    const runner = { run: async () => ({}), helperVersion: () => '0.1.0' }
+    const ctx = createContext({ runner, configResult: loadConfig({}), bundlePath: '/pkg/x.app', stateDir, now: () => 1_900_000_000_000 })
+    await ctx.runner.run('hello', {})
+    expect(readState(stateDir)).toMatchObject({ helperVersion: '0.1.0', helperSha256: null })
   })
 
   it('policy is cached for 60 seconds', async () => {

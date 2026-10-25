@@ -17,10 +17,13 @@ public struct AccountNamesState: Codable, Equatable, Sendable {
     public enum Status: String, Codable, Sendable { case available, unavailable }
     public var status: Status
     public var unmatchedAccounts: Int
+    /// Fester Satz ohne Pfad (Accounts.notFound usw.); fehlt im JSON, wenn die Namen verfuegbar sind.
+    public var reason: String?
 
-    public init(status: Status, unmatchedAccounts: Int) {
+    public init(status: Status, unmatchedAccounts: Int, reason: String? = nil) {
         self.status = status
         self.unmatchedAccounts = unmatchedAccounts
+        self.reason = status == .available ? nil : reason
     }
 }
 
@@ -55,19 +58,19 @@ extension MailStore {
     /// Liefert nie einen Fehler, sondern einen Zustand.
     public func probe() -> ProbeResult {
         func result(_ access: Access, dir: String? = nil, schema: SchemaReport? = nil, counts: Counts? = nil,
-                    names: AccountNamesLookup = .unavailable(Accounts.notFound)) -> ProbeResult {
+                    names: AccountNamesLookup = .unavailable(Accounts.notChecked)) -> ProbeResult {
             ProbeResult(osVersion: Self.osVersionString, mailDir: dir, access: access, schema: schema, counts: counts,
                         accountNames: AccountNamesState(status: names.available ? .available : .unavailable,
-                                                        unmatchedAccounts: names.unmatched))
+                                                        unmatchedAccounts: names.unmatched, reason: names.reason))
         }
         let located: MailRoot.Located
         do { located = try MailRoot.locate(root: config.mailRoot) } catch {
             return result(error.code == .fullDiskAccessRequired ? .denied : .noMailData)
         }
         do {
-            // Nutzt die gecachte Verbindung (Spec 5.2); Fehlschlaege werden nicht gecacht, der FDA-Zustand bleibt aktuell.
-            let db = try envelopeDatabase()
-            let schema = try Schema.check(db)
+            // Nutzt die gecachte Verbindung samt Schemabericht (Spec 5.2, 5.3); Fehlschlaege werden nicht
+            // gecacht, der FDA-Zustand bleibt aktuell.
+            let (db, schema) = try envelopeConnection()
             guard schema.compatible else { return result(.granted, dir: located.name, schema: schema) }
             var counts: Counts?
             try db.query("""

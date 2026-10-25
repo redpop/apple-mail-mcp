@@ -15,9 +15,12 @@ export function resetFdaPromptForTests(): void {
   done = false
 }
 
-/** Oeffnet einmal pro Prozess die FDA-Seite und zeigt das Bundle im Finder (Spec 12.1). Wirft nie. */
-export function openFdaOnce(bundlePath: string, open: OpenFn = defaultOpen): void {
-  if (done) return
+/**
+ * Oeffnet einmal pro Prozess die FDA-Seite und zeigt das Bundle im Finder (Spec 12.1). Wirft nie.
+ * Liefert true, wenn dieser Aufruf geoeffnet hat, damit die Meldung nur dann davon spricht.
+ */
+export function openFdaOnce(bundlePath: string, open: OpenFn = defaultOpen): boolean {
+  if (done) return false
   done = true
   for (const args of [[FDA_SETTINGS_URL], ['-R', bundlePath]]) {
     try {
@@ -26,4 +29,5 @@ export function openFdaOnce(bundlePath: string, open: OpenFn = defaultOpen): voi
       // Hilfsfunktion: die Fehlermeldung an das Modell enthaelt die Schritte ohnehin.
     }
   }
+  return true
 }

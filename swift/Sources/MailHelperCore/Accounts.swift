@@ -30,6 +30,8 @@ enum Accounts {
     static let notFound = "Accounts database not found"
     static let notReadable = "Accounts database not readable"
     static let badSchema = "Accounts database has an unexpected schema"
+    /// probe ohne Zugriff auf Mail-Daten: die Kontodatenbank wurde gar nicht gelesen.
+    static let notChecked = "Account names were not checked"
 
     static let requiredColumns: Set<String> = ["ZIDENTIFIER", "ZACCOUNTDESCRIPTION", "ZUSERNAME"]
 

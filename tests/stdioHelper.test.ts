@@ -10,7 +10,7 @@ const fast = { firstRequestMs: 3_000, requestMs: 1_000 }
 const runners: { stop: () => void }[] = []
 const dirs: string[] = []
 const saved = { v: process.env.FAKE_PROTOCOL_VERSION, l: process.env.FAKE_LOG }
-const flags = ['FAKE_HELLO_HANG', 'FAKE_HANG_AFTER_HELLO']
+const flags = ['FAKE_HELLO_HANG']
 
 afterEach(() => {
   for (const f of flags) delete process.env[f]
@@ -113,15 +113,72 @@ describe('createStdioRunner', () => {
     await expect(r.run('echo-pid', {})).resolves.toHaveProperty('pid')
   }, 10_000)
 
-  it('after hello the short deadline applies and two timeouts restart', async () => {
-    process.env.FAKE_HANG_AFTER_HELLO = '1'
-    const r = createStdioRunner(FAKE, { firstRequestMs: 5_000, requestMs: 300 })
+  it('the first real request after hello gets the long deadline, later ones the short one', async () => {
+    const r = createStdioRunner(FAKE, { firstRequestMs: 800, requestMs: 100 })
     runners.push(r)
-    const t0 = Date.now()
-    await expect(r.run('echo-pid', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
-    expect(Date.now() - t0).toBeLessThan(2_000)
-    await expect(r.run('echo-pid', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
-    delete process.env.FAKE_HANG_AFTER_HELLO
+    let t0 = Date.now()
+    // hello oeffnet die Datenbank nie; erst die erste echte Anfrage ist kalt (Spec 7.2).
+    await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT', message: expect.stringContaining('800ms') })
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(750)
+    // Bis eine echte Anfrage beantwortet ist, bleibt der Helper kalt.
     await expect(r.run('echo-pid', {})).resolves.toHaveProperty('pid')
+    t0 = Date.now()
+    await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT', message: expect.stringContaining('100ms') })
+    expect(Date.now() - t0).toBeLessThan(600)
   }, 10_000)
+
+  it('timeouts on a helper that never answered a real request do not count toward a restart', async () => {
+    const log = logFile()
+    const r = createStdioRunner(FAKE, { firstRequestMs: 200, requestMs: 100 })
+    runners.push(r)
+    await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
+    await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
+    const a = (await r.run('echo-pid', {})) as { pid: number }
+    // Nur ein hello im Protokoll: nicht neu gestartet. Jetzt warm, also zaehlen die naechsten zwei.
+    expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual(['hello', 'hang', 'hang', 'echo-pid'])
+    await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
+    await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
+    const b = (await r.run('echo-pid', {})) as { pid: number }
+    expect(b.pid).not.toBe(a.pid)
+  }, 10_000)
+
+  it('parses a 22 MB response line in well under the deadline', async () => {
+    const r = createStdioRunner(FAKE, { firstRequestMs: 10_000, requestMs: 10_000 })
+    runners.push(r)
+    await r.run('echo-pid', {})
+    const t0 = Date.now()
+    const out = (await r.run('big', {})) as { s: string }
+    const ms = Date.now() - t0
+    expect(out.s.length).toBe(22 * 1024 * 1024)
+    expect(out.s[0]).toBe('x')
+    expect(ms).toBeLessThan(3_000)
+  }, 20_000)
+
+  it('debug writes one line per request with command, duration and outcome, never payload or result', async () => {
+    const lines: string[] = []
+    const r = createStdioRunner(FAKE, fast, { debug: true, log: (l) => void lines.push(l) })
+    runners.push(r)
+    await r.run('echo-payload', { secret: 'payload-geheim' })
+    await expect(r.run('fail', {})).rejects.toMatchObject({ code: 'MESSAGE_NOT_FOUND' })
+    expect(lines).toHaveLength(3)
+    expect(lines[0]).toMatch(/^apple-mail-mcp: hello \d+ ms ok$/)
+    expect(lines[1]).toMatch(/^apple-mail-mcp: echo-payload \d+ ms ok$/)
+    expect(lines[2]).toMatch(/^apple-mail-mcp: fail \d+ ms MESSAGE_NOT_FOUND$/)
+    expect(lines.join('\n')).not.toContain('geheim')
+  })
+
+  it('without debug nothing is logged', async () => {
+    const lines: string[] = []
+    const r = createStdioRunner(FAKE, fast, { debug: false, log: (l) => void lines.push(l) })
+    runners.push(r)
+    await r.run('echo-pid', {})
+    expect(lines).toEqual([])
+  })
+
+  it('exposes the helper version after the handshake', async () => {
+    const r = make()
+    expect(r.helperVersion()).toBeNull()
+    await r.run('echo-pid', {})
+    expect(r.helperVersion()).toBe('0.1.0')
+  })
 })

@@ -55,6 +55,8 @@ export function registerGetMessage(server: McpServer, ctx: ToolContext): void {
         const policy = await ctx.policy()
         if (policy.allowedMailboxIds.length === 0) throw new HelperError('MESSAGE_NOT_FOUND', '')
         const gid = Number(input.id)
+        // Jenseits von 2^53 waere die Zahl gerundet und traefe womoeglich eine andere Mail: nie an den Helper.
+        if (!Number.isSafeInteger(gid)) throw new HelperError('MESSAGE_NOT_FOUND', '')
         const raw = getMessagesResult.parse(
           await ctx.runner.run('get-messages', {
             allowedMailboxIds: policy.allowedMailboxIds,

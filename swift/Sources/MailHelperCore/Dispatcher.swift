@@ -85,7 +85,7 @@ public struct Dispatcher {
     private func untrustedProbe() -> ProbeResult {
         ProbeResult(osVersion: MailStore.osVersionString, mailDir: nil, access: .untrustedSignature,
                     schema: nil, counts: nil,
-                    accountNames: AccountNamesState(status: .unavailable, unmatchedAccounts: 0))
+                    accountNames: AccountNamesState(status: .unavailable, unmatchedAccounts: 0, reason: Accounts.notChecked))
     }
 
     private static func invalid(_ message: String) -> HelperFailure {

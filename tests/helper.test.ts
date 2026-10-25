@@ -6,7 +6,7 @@ import { createHelperRunner } from '../src/helper.js'
 const cfg = (helperPath: string | null) => ({ helperPath }) as Config
 const fakeInner = () => {
   const calls: string[] = []
-  return { calls, run: async (c: string) => { calls.push(c); return 'ok' }, stop: () => {} }
+  return { calls, run: async (c: string) => { calls.push(c); return 'ok' }, stop: () => {}, helperVersion: () => '0.1.0' }
 }
 
 describe('createHelperRunner', () => {
@@ -37,5 +37,15 @@ describe('createHelperRunner', () => {
     await expect(r.run('a', {})).rejects.toMatchObject({ code: 'HELPER_SIGNATURE_INVALID' })
     expect(n).toBe(1)
     expect(inner.calls).toEqual([])
+  })
+
+  it('passes the debug flag to the stdio runner and exposes the helper version', async () => {
+    const seen: Array<{ debug: boolean }> = []
+    const r = createHelperRunner({ helperPath: '/dev/X.app', debug: true } as Config, {
+      check: () => {},
+      makeRunner: (_exe, opts) => { seen.push(opts); return fakeInner() },
+    })
+    expect(seen).toEqual([{ debug: true }])
+    expect(r.helperVersion()).toBe('0.1.0')
   })
 })

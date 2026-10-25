@@ -256,8 +256,10 @@ async function schemaLines(deps: DoctorDeps): Promise<{ lines: string[]; ok: boo
   const p = probeResult.safeParse(raw)
   if (!p.success || !p.data.schema) return { lines: ['No schema information available.'], ok: false }
   const lines = [p.data.schema.fingerprint, ...p.data.schema.missing]
-  const ddl = (raw as { schema?: { ddl?: unknown } }).schema?.ddl
-  if (typeof ddl === 'string') lines.push(...ddl.split('\n').filter((l) => l.startsWith('CREATE ')))
+  // Nur Anweisungen, die mit CREATE beginnen, je eine Zeile (mehrzeiliges DDL zusammengezogen).
+  for (const statement of p.data.schema.ddl ?? []) {
+    if (statement.startsWith('CREATE ')) lines.push(statement.replace(/\s+/g, ' ').trim())
+  }
   return { lines, ok: true }
 }
 

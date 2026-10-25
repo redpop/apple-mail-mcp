@@ -9,12 +9,21 @@ export class HelperError extends Error {
   }
 }
 
-/** Meldung fuer FULL_DISK_ACCESS_REQUIRED (Spec 10), mit eingesetztem Bundle-Pfad. */
-function fdaText(pathSentence: string): string {
+/**
+ * Meldung fuer FULL_DISK_ACCESS_REQUIRED (Spec 10). `finder` sagt, ob gerade ein Finder-Fenster mit dem
+ * Helper geoeffnet wurde (nur einmal pro Prozess, Spec 12.1); nur dann behauptet der Text das.
+ */
+function fdaText(pathSentence: string, finder: 'opened' | 'earlier' | 'none'): string {
+  const steps =
+    finder === 'opened'
+      ? 'A Finder window showing it has been opened. The user needs to open System Settings > Privacy & Security > Full Disk Access, ' +
+        'drag "Mail MCP Helper" from that Finder window into the list, and switch it on. '
+      : (finder === 'earlier' ? 'A Finder window showing it was opened on the first attempt in this session and may have been closed since. ' : '') +
+        'The user needs to open System Settings > Privacy & Security > Full Disk Access, ' +
+        'drag "Mail MCP Helper" from Finder into the list, and switch it on. '
   return (
     'Apple Mail data is protected by macOS. Full Disk Access has to be granted to the small helper app "Mail MCP Helper", not to the MCP client. ' +
-    'A Finder window showing it has been opened. The user needs to open System Settings > Privacy & Security > Full Disk Access, ' +
-    'drag "Mail MCP Helper" from that Finder window into the list, and switch it on. ' +
+    steps +
     pathSentence +
     'If "Mail MCP Helper" is already listed and switched on, the entry is stale: remove it with −, then add it again. ' +
     'Retry afterwards; no restart is needed. In Terminal, `npx -y @redpop/apple-mail-mcp setup` walks through the same steps.'
@@ -22,12 +31,13 @@ function fdaText(pathSentence: string): string {
 }
 
 // Texte gehen an das Modell, das den Tool-Aufruf gemacht hat: auf Englisch, mit Klickpfad, wo nur ein Mensch handeln kann.
-export function fdaMessage(bundlePath: string): string {
-  return fdaText(`Alternatively click +, press Cmd-Shift-G and paste \`${bundlePath}\`. `)
+// `openedNow`: hat dieser Aufruf Einstellungen und Finder geoeffnet (openFdaOnce)?
+export function fdaMessage(bundlePath: string, openedNow: boolean): string {
+  return fdaText(`Alternatively click +, press Cmd-Shift-G and paste \`${bundlePath}\`. `, openedNow ? 'opened' : 'earlier')
 }
 
 const MESSAGES: Record<string, string> = {
-  FULL_DISK_ACCESS_REQUIRED: fdaText('Alternatively click + and add the "Mail MCP Helper" app from the installed package. '),
+  FULL_DISK_ACCESS_REQUIRED: fdaText('Alternatively click + and add the "Mail MCP Helper" app from the installed package. ', 'none'),
   MAIL_DATA_NOT_FOUND:
     'Apple Mail does not appear to be set up on this Mac. The user needs to open the Mail app and add an account, then retry.',
   SCHEMA_UNSUPPORTED:

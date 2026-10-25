@@ -167,7 +167,7 @@ then fails with `CONFIG_INVALID` naming the setting, and nothing falls back to "
 | `APPLE_MAIL_MAX_RESULTS` | `50` | Upper bound for the `limit` of a search (1 to 100). |
 | `APPLE_MAIL_MAX_BODY_CHARS` | `20000` | Upper bound for `maxChars` in `get_message` (1000 to 100000). |
 | `APPLE_MAIL_HELPER_PATH` | not set | Development only: path to a helper bundle (Dev or Ad hoc). A bundle with the release bundle id is refused. |
-| `APPLE_MAIL_MCP_DEBUG` | `false` | Accepted and validated, but currently has no effect. |
+| `APPLE_MAIL_MCP_DEBUG` | `false` | Write one line per helper request to stderr: command, duration and result code, for example `apple-mail-mcp: search 42 ms ok`. Never payloads or results. |
 
 Example: only the work account, no mailbox called Archive.
 
@@ -199,7 +199,8 @@ npx -y @redpop/apple-mail-mcp doctor        # from source: node dist/index.js do
 layout, how many messages have a local file, the mailbox roles and the effective settings. Its
 default output contains no names, addresses or subjects, so you can paste it into an issue as
 it is. `--verbose` adds mailbox names and account identifiers; `--json` is for machines;
-`--schema` prints only the database fingerprint and any missing columns. Exit code 1 means at
+`--schema` prints only the database fingerprint, any missing columns and the `CREATE TABLE`
+statements of Mail's database (structure, no data). Exit code 1 means at
 least one check failed.
 
 ## Reporting problems

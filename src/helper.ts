@@ -1,10 +1,12 @@
 import { fileURLToPath } from 'node:url'
 import type { Config } from './config.js'
 import { checkBundle } from './signing.js'
-import { createStdioRunner, type StdioHelperRunner } from './stdioRunner.js'
+import { createStdioRunner, type StdioHelperRunner, type StdioOptions } from './stdioRunner.js'
 
 export interface HelperRunner {
   run(command: string, payload: Record<string, unknown>): Promise<unknown>
+  /** helperVersion aus dem hello-Handshake, sobald einer stattgefunden hat (fuer state.json). */
+  helperVersion?(): string | null
 }
 
 /** Wo das Bundle im ausgelieferten Paket liegt (gleich fuer src/ und dist/). */
@@ -25,11 +27,12 @@ export function createHelperRunner(
   config: Config,
   deps: {
     check?: (bundle: string, opts: { override: boolean }) => void
-    makeRunner?: (executable: string) => StdioHelperRunner
+    makeRunner?: (executable: string, options: { debug: boolean }) => StdioHelperRunner
   } = {},
-): HelperRunner & { stop(): void; bundlePath: string } {
+): HelperRunner & { stop(): void; bundlePath: string; helperVersion(): string | null } {
   const bundlePath = resolveHelperBundle(config)
-  const inner = (deps.makeRunner ?? ((exe) => createStdioRunner(exe)))(helperExecutable(bundlePath))
+  const options = { debug: config.debug === true }
+  const inner = (deps.makeRunner ?? ((exe, opts: StdioOptions) => createStdioRunner(exe, undefined, opts)))(helperExecutable(bundlePath), options)
   const check = deps.check ?? checkBundle
   let gate: unknown
   return {
@@ -47,5 +50,6 @@ export function createHelperRunner(
       return inner.run(command, payload)
     },
     stop: () => inner.stop(),
+    helperVersion: () => inner.helperVersion(),
   }
 }

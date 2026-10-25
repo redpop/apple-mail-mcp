@@ -41,7 +41,14 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
       say('Mail database could not be read (busy or damaged); try again.')
       return 1
     }
-    recordAccessOk({ helperSha256: null, helperVersion: null }, deps.stateDir)
+    if (!p.schema.compatible) {
+      // Zugriff klappt, aber die Datenbank hat nicht das erwartete Layout: kein Erfolg, nichts vermerken.
+      say('This version of Apple Mail is not supported yet. Its Mail database lacks columns this server needs.')
+      say('Run `npx -y @redpop/apple-mail-mcp doctor --schema` and attach the output to an issue at https://github.com/redpop/apple-mail-mcp/issues.')
+      return 1
+    }
+    // helperSha256 bleibt null (Begruendung in src/context.ts); die Version stammt aus dem hello-Handshake.
+    recordAccessOk({ helperSha256: null, helperVersion: deps.runner.helperVersion?.() ?? null }, deps.stateDir)
     const c = p.counts
     say('Full Disk Access is granted. Apple Mail is readable.')
     if (c) say(`Found ${fmt(c.mailboxes)} mailboxes and ${fmt(c.uniqueMessages)} messages (${fmt(c.messages)} including copies).`)

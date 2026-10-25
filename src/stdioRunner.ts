@@ -10,8 +10,9 @@ export const PROTOCOL_VERSION = 1
 export const MAX_LINE_BYTES = 32 * 1024 * 1024
 
 /**
- * Fristen (Spec 7.2). Die erste Anfrage nach dem Start (hello) bekommt mehr Zeit
- * (kalter Cache, erstes Oeffnen einer grossen Datenbank); es gibt keinen Systemdialog.
+ * Fristen (Spec 7.2). hello und die erste echte Anfrage danach bekommen mehr Zeit: hello oeffnet
+ * die Datenbank nie, erst die erste echte Anfrage trifft auf den kalten Cache und das erste Oeffnen
+ * einer grossen Datenbank. Es gibt keinen Systemdialog.
  */
 export interface StdioTimeouts {
   firstRequestMs: number
@@ -20,9 +21,18 @@ export interface StdioTimeouts {
 
 export const DEFAULT_TIMEOUTS: StdioTimeouts = { firstRequestMs: 15_000, requestMs: 10_000 }
 
+export interface StdioOptions {
+  /** APPLE_MAIL_MCP_DEBUG: eine stderr-Zeile je Anfrage mit Kommando, Dauer und Ergebnis-Code. */
+  debug?: boolean
+  /** Ziel der Diagnosezeilen (Tests); Standard ist stderr, nie stdout. */
+  log?: (line: string) => void
+}
+
 export interface StdioHelperRunner extends HelperRunner {
   /** Beendet den Helper und lehnt alles Offene ab. */
   stop(): void
+  /** helperVersion aus dem letzten erfolgreichen hello; null vor dem ersten Handshake. */
+  helperVersion(): string | null
 }
 
 interface PendingRequest {
@@ -55,11 +65,16 @@ interface Live {
 export function createStdioRunner(
   executable: string,
   timeouts: StdioTimeouts = DEFAULT_TIMEOUTS,
+  options: StdioOptions = {},
 ): StdioHelperRunner {
+  const log = options.log ?? ((line: string) => void process.stderr.write(line + '\n'))
   let live: Live | undefined
-  let buffer = ''
+  /** Teile der noch unvollstaendigen Antwortzeile; gesucht wird nur im jeweils neuen Teil (linear statt quadratisch). */
+  let chunks: string[] = []
+  let chunkChars = 0
   let nextId = 1
-  /** Hat der aktuelle Prozess schon geantwortet (hello zaehlt)? Steuert die Frist. */
+  let helperVersion: string | null = null
+  /** Hat der aktuelle Prozess schon eine echte Anfrage beantwortet (hello zaehlt nicht)? Steuert die Frist. */
   let isWarm = false
   /** Timeouts in Folge auf einem warmen Helper; zwei davon heissen: haengt, neu starten. */
   let consecutiveTimeouts = 0
@@ -79,7 +94,8 @@ export function createStdioRunner(
   function discardChild(error: HelperError): void {
     const previous = live?.proc
     live = undefined
-    buffer = ''
+    chunks = []
+    chunkChars = 0
     isWarm = false
     consecutiveTimeouts = 0
     rejectAllPending(error)
@@ -107,8 +123,8 @@ export function createStdioRunner(
     const entry = pending.splice(index, 1)[0]
     if (entry === undefined) return
     clearTimeout(entry.timer)
-    // Auch hello macht den Helper warm: nur die allererste Anfrage nach dem Start bekommt die lange Frist (Spec 7.2).
-    isWarm = true
+    // Nur eine echte Anfrage macht den Helper warm; hello oeffnet die Datenbank nie (Spec 7.2).
+    if (!entry.isHello) isWarm = true
     consecutiveTimeouts = 0
 
     if (parsed.ok === true) {
@@ -119,11 +135,14 @@ export function createStdioRunner(
   }
 
   function onData(chunk: string): void {
-    buffer += chunk
-    let newlineIndex = buffer.indexOf('\n')
+    let rest = chunk
+    let newlineIndex = rest.indexOf('\n')
     while (newlineIndex !== -1) {
-      const line = buffer.slice(0, newlineIndex)
-      buffer = buffer.slice(newlineIndex + 1)
+      chunks.push(rest.slice(0, newlineIndex))
+      const line = chunks.join('')
+      chunks = []
+      chunkChars = 0
+      rest = rest.slice(newlineIndex + 1)
       if (Buffer.byteLength(line, 'utf8') > MAX_LINE_BYTES) {
         discardChild(new HelperError('HELPER_CRASHED', 'response too large'))
         return
@@ -134,15 +153,19 @@ export function createStdioRunner(
         handleLine(trimmed)
         if (live !== before) return // handleLine hat den Prozess verworfen.
       }
-      newlineIndex = buffer.indexOf('\n')
+      newlineIndex = rest.indexOf('\n')
+    }
+    if (rest.length > 0) {
+      chunks.push(rest)
+      chunkChars += rest.length
     }
     // Zeichen sind hoechstens so gross wie Bytes: diese Schranke greift sicher, nie zu frueh.
-    if (buffer.length > MAX_LINE_BYTES) discardChild(new HelperError('HELPER_CRASHED', 'response too large'))
+    if (chunkChars > MAX_LINE_BYTES) discardChild(new HelperError('HELPER_CRASHED', 'response too large'))
   }
 
   /** Schickt eine Anfrage an den aktuellen Prozess und setzt die Frist. */
   function send(proc: ChildProcess, command: string, payload: Record<string, unknown>, timeoutMs: number, isHello: boolean): Promise<unknown> {
-    return new Promise<unknown>((resolve, reject) => {
+    const request = new Promise<unknown>((resolve, reject) => {
       const id = nextId++
       const entry: PendingRequest = {
         id,
@@ -170,6 +193,15 @@ export function createStdioRunner(
       pending.push(entry)
       proc.stdin?.write(`${JSON.stringify({ id, command, payload })}\n`)
     })
+    if (!options.debug) return request
+    // Diagnose (APPLE_MAIL_MCP_DEBUG): nur Kommando, Dauer und Code, nie Payload oder Ergebnis.
+    const started = performance.now()
+    const done = (outcome: string): void => log(`apple-mail-mcp: ${command} ${Math.round(performance.now() - started)} ms ${outcome}`)
+    request.then(
+      () => done('ok'),
+      (error: unknown) => done(error instanceof HelperError ? error.code : 'error'),
+    )
+    return request
   }
 
   function ensureChild(): Live {
@@ -178,7 +210,8 @@ export function createStdioRunner(
     // stderr geht unveraendert an den Elternprozess (Diagnose des Helpers).
     const proc = spawn(executable, ['serve'], { stdio: ['pipe', 'pipe', 'inherit'] })
     isWarm = false
-    buffer = ''
+    chunks = []
+    chunkChars = 0
 
     proc.stdout?.setEncoding('utf8')
     proc.stdout?.on('data', onData)
@@ -199,6 +232,7 @@ export function createStdioRunner(
         discardChild(error)
         throw error
       }
+      helperVersion = hello.data.helperVersion
     })
     ready.catch(() => {}) // Fehler erreichen den Aufrufer ueber run(); hier nur unbehandelte Rejection vermeiden.
     live = { proc, ready }
@@ -217,5 +251,7 @@ export function createStdioRunner(
     stop() {
       discardChild(new HelperError('HELPER_CRASHED', 'The helper was shut down.'))
     },
+
+    helperVersion: () => helperVersion,
   }
 }

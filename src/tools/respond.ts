@@ -24,10 +24,10 @@ export async function respond(produce: () => Promise<{ structured: Record<string
     const { structured } = await produce()
     return { content: [{ type: 'text', text: JSON.stringify(structured, null, 2) }], structuredContent: structured } satisfies ToolResult
   } catch (error) {
-    ctx.onHelperError(error)
+    const openedNow = ctx.onHelperError(error)
     let text: string
     if (error instanceof HelperError) {
-      text = error.code === 'FULL_DISK_ACCESS_REQUIRED' ? fdaMessage(ctx.bundlePath) : describeError(error.code, DETAIL_CODES.has(error.code) ? error.message : undefined)
+      text = error.code === 'FULL_DISK_ACCESS_REQUIRED' ? fdaMessage(ctx.bundlePath, openedNow) : describeError(error.code, DETAIL_CODES.has(error.code) ? error.message : undefined)
     } else {
       // Keine Nutzerdaten und kein Stacktrace an das Modell.
       text = describeError('UNKNOWN')

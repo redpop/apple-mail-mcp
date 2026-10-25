@@ -24,15 +24,12 @@ function reply(object) {
   process.stdout.write(JSON.stringify(object) + '\n')
 }
 
-let helloDone = false
 function handle(request) {
-  if (helloDone && request.command !== 'hello') return // haengt nach hello
   const id = request.id
   if (log) appendFileSync(log, `${request.command}\n`)
   switch (request.command) {
     case 'hello':
       if (process.env.FAKE_HELLO_HANG) return
-      if (process.env.FAKE_HANG_AFTER_HELLO) helloDone = true
       reply({ id, ok: true, result: { protocolVersion, helperVersion: '0.1.0' } })
       return
     case 'echo-pid':
@@ -51,6 +48,10 @@ function handle(request) {
       process.exit(3)
       return
     case 'hang':
+      return
+    case 'big':
+      // Eine gueltige, aber grosse Antwortzeile (unter der 32-MiB-Grenze).
+      reply({ id, ok: true, result: { s: 'x'.repeat(22 * 1024 * 1024) } })
       return
     case 'huge':
       process.stdout.write('x'.repeat(33 * 1024 * 1024) + '\n')

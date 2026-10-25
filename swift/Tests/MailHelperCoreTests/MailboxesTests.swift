@@ -38,7 +38,7 @@ import Testing
         #expect(r.accountNames == .unavailable)
         #expect(r.accountNamesReason == "Accounts database not found")
         #expect(r.mailboxes.count == f.seed.mailboxes.count)
-        #expect(MailStore(config: f.config).probe().accountNames == AccountNamesState(status: .unavailable, unmatchedAccounts: 0))
+        #expect(MailStore(config: f.config).probe().accountNames == AccountNamesState(status: .unavailable, unmatchedAccounts: 0, reason: "Accounts database not found"))
     }
 
     @Test func unreadableAccountsDbIsUnavailable() throws {

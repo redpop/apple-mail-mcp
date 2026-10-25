@@ -38,9 +38,10 @@ function collapse(s: string): string {
 /**
  * Faltet pro Codepoint und merkt sich, aus welcher Position des Originals jedes gefaltete
  * Zeichen stammt. So bleiben Fundstellen auch dort exakt, wo die Faltung die Laenge aendert
- * (ß wird zu ss). Pro Codepoint zu falten weicht nur bei kontextabhaengigen Faellen
- * (griechisches Schluss-Sigma) von der Faltung des ganzen Strings ab; Suchbegriff und Text
- * werden hier gleich behandelt, die Treffer sind also in sich stimmig.
+ * (ß wird zu ss). Pro Codepoint zu falten weicht bei kontextabhaengigen Faellen (griechisches
+ * Schluss-Sigma) von der Faltung des ganzen Strings ab, und NFC kann pro Codepoint nichts
+ * zusammensetzen: ein zerlegtes "o" + Trema bleibt zerlegt. Deshalb wird der Suchbegriff vorher
+ * als Ganzes nach NFC gebracht (foldTerm); Mailtexte sind praktisch immer schon NFC.
  */
 function foldWithMap(text: string): { folded: string; origin: number[] } {
   let folded = ''
@@ -55,8 +56,9 @@ function foldWithMap(text: string): { folded: string; origin: number[] } {
   return { folded, origin }
 }
 
+/** Suchbegriff: erst als Ganzes NFC (zerlegte Umlaute aus der Eingabe), dann wie der Text falten. */
 function foldTerm(term: string): string {
-  return collapse(foldWithMap(collapse(term)).folded)
+  return collapse(foldWithMap(collapse(term.normalize('NFC'))).folded)
 }
 
 /** Erste Fundstelle des gefalteten Begriffs; Kontext aus dem Original (nur Leerraum zusammengezogen). */

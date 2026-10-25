@@ -104,13 +104,17 @@ what remains.
 - Node starts the helper lazily on the first tool call, directly from the bundle
   (`Contents/MacOS/mail-helper`), with no install or copy step.
 - Requests are queued first in, first out; each carries an id that the helper mirrors.
-- The first request gets a longer deadline (15 s) than later ones (10 s), because it includes
-  process start, the disclaim re-exec and the database open.
+- The handshake (`hello`) and the first real request after it get a longer deadline (15 s)
+  than later ones (10 s): the handshake covers process start and the disclaim re-exec, the first
+  real request the database open. Two timeouts in a row on a helper that has already answered a
+  real request restart it.
 - If the helper crashes, the next request restarts it. End of input on stdin ends the helper;
   SIGINT and SIGTERM stop it before the server exits.
 - **stdout carries protocol only, on both legs.** Logs go to stderr.
 - The state file `~/Library/Application Support/apple-mail-mcp/state.json` (mode 0600) records
-  when access last worked and which helper hash and version were used. It contains no mail
+  when access last worked and which helper version was used (from the handshake). The hash field
+  stays empty: the grant follows bundle id and signature, not the file hash, so a hash would not
+  help the diagnosis. It contains no mail
   data. `doctor` uses it to recognise a stale Full Disk Access entry: the TCC database is
   itself protected, so a helper without access cannot look up whether it is listed.
 
@@ -159,7 +163,12 @@ bound for the Swift code:
 
 These are not benchmarks of the finished helper. They came from synthetic data and a different
 language. The Swift search was not timed against a real mailbox when this was written; the
-manual run with the dev build adds that measurement.
+manual run with the dev build adds that measurement. To time it, start the server with
+`APPLE_MAIL_MCP_DEBUG=true`: every helper request then writes one line to stderr with the
+command, its duration including the pipe round trip, and the result code, for example
+`apple-mail-mcp: search 42 ms ok`. A `search_messages` page is one `search` line (plus
+`get-messages` lines when `bodyContains` scans bodies); the first request after a start also pays
+for opening the database.
 
 Separately measured on a real mailbox during the spike: `LIKE` over all subjects 42 ms and over
 sender addresses 27 ms with `sqlite3` including process start; `count(*)` through the helper 2
