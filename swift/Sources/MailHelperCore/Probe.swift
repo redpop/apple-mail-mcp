@@ -54,17 +54,19 @@ extension MailStore {
 
     /// Liefert nie einen Fehler, sondern einen Zustand.
     public func probe() -> ProbeResult {
-        func result(_ access: Access, dir: String? = nil, schema: SchemaReport? = nil, counts: Counts? = nil) -> ProbeResult {
+        func result(_ access: Access, dir: String? = nil, schema: SchemaReport? = nil, counts: Counts? = nil,
+                    names: AccountNamesLookup = .unavailable(Accounts.notFound)) -> ProbeResult {
             ProbeResult(osVersion: Self.osVersionString, mailDir: dir, access: access, schema: schema, counts: counts,
-                        // Task 5 fuellt die Kontonamen.
-                        accountNames: AccountNamesState(status: .unavailable, unmatchedAccounts: 0))
+                        accountNames: AccountNamesState(status: names.available ? .available : .unavailable,
+                                                        unmatchedAccounts: names.unmatched))
         }
         let located: MailRoot.Located
         do { located = try MailRoot.locate(root: config.mailRoot) } catch {
             return result(error.code == .fullDiskAccessRequired ? .denied : .noMailData)
         }
         do {
-            let db = try Database(readOnlyAt: located.envelopeIndex)
+            // Nutzt die gecachte Verbindung (Spec 5.2); Fehlschlaege werden nicht gecacht, der FDA-Zustand bleibt aktuell.
+            let db = try envelopeDatabase()
             let schema = try Schema.check(db)
             guard schema.compatible else { return result(.granted, dir: located.name, schema: schema) }
             var counts: Counts?
@@ -75,7 +77,8 @@ extension MailStore {
                 """) { row in
                 counts = Counts(mailboxes: row.int(0), messages: row.int(1), uniqueMessages: row.int(2))
             }
-            return result(.granted, dir: located.name, schema: schema, counts: counts)
+            let names = accountNames(for: try readMailboxes())
+            return result(.granted, dir: located.name, schema: schema, counts: counts, names: names)
         } catch {
             switch error.code {
             case .fullDiskAccessRequired: return result(.denied)
