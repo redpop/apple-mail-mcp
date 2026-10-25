@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod/v4'
 import type { ToolContext } from '../context.js'
+import { scanBodies, type ScanInfo } from '../bodyScan.js'
 import { decodeCursor, encodeCursor, queryHash } from '../cursor.js'
 import { parseDateInput } from '../dates.js'
 import { HelperError } from '../errors.js'
@@ -28,13 +29,31 @@ const Input = z
   })
   .strict()
 
+const ScanInfoSchema = z.object({
+  scanned: z.number().int(),
+  unavailable: z.number().int(),
+  stoppedBy: z.enum(['limit', 'cap', 'time']).nullable(),
+  complete: z.boolean(),
+})
+
 const Output = z.object({
   messages: z.array(MessageSummary),
   totalMatched: z.number().int().optional(),
   totalMatchedCapped: z.boolean().optional(),
   nextCursor: z.string().nullable(),
+  scan: ScanInfoSchema.optional(),
   note: z.string().optional(),
 })
+
+const fmt = (n: number): string => n.toLocaleString('en-US')
+
+function scanNote(scan: ScanInfo, matches: number): string {
+  const found = `${matches} ${matches === 1 ? 'match' : 'matches'}`
+  const noBody = scan.unavailable > 0 ? ` ${fmt(scan.unavailable)} of them had no body available on this Mac and could not be searched.` : ''
+  if (scan.complete) return `Scanned all ${fmt(scan.scanned)} candidate messages and found ${found}.${noBody}`
+  const why = { limit: 'the requested number of matches was reached', cap: 'the scan limit of 2,000 messages was reached', time: 'the 3 second time budget ran out' }[scan.stoppedBy!]
+  return `Scanned the ${fmt(scan.scanned)} newest candidate messages and found ${found}; stopped because ${why}.${noBody} Call again with nextCursor to continue, or narrow the search with from, since or mailboxIds.`
+}
 
 function defined(o: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
@@ -53,8 +72,9 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
     async (input) =>
       respond(async () => {
         const config = ctx.config()
-        // Task 15 ersetzt das durch den Body-Scan.
-        if (input.bodyContains !== undefined) throw new HelperError('INVALID_INPUT', 'bodyContains is not available yet')
+        if (input.bodyContains !== undefined && !config.bodySearch) {
+          throw new HelperError('INVALID_INPUT', 'Body search is disabled: the user turned it off (APPLE_MAIL_BODY_SEARCH=false), so bodyContains cannot be used.')
+        }
         const policy = await ctx.policy()
 
         let mailboxIds: number[] | undefined
@@ -90,8 +110,30 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
           flagged: input.flagged,
           hasAttachment: input.hasAttachment,
         })
-        const hash = queryHash(filters, policy.fingerprint)
+        // bodyContains gehoert in den Hash, damit ein Cursor nur zur selben Body-Suche passt.
+        const hash = queryHash(input.bodyContains !== undefined ? { ...filters, bodyContains: input.bodyContains } : filters, policy.fingerprint)
         const after = input.cursor !== undefined ? decodeCursor(input.cursor, hash) : undefined
+
+        if (input.bodyContains !== undefined) {
+          const res = await scanBodies({
+            runner: ctx.runner,
+            policy,
+            config,
+            filters: defined({ ...filters, mailboxIds }),
+            term: input.bodyContains,
+            after: after ?? null,
+            limit,
+          })
+          const messages = res.matches.map((m) => ({ ...toSummary(m.row, policy, config, 5), matchContext: m.matchContext }))
+          return {
+            structured: Output.parse({
+              messages,
+              nextCursor: res.resumeAfter ? encodeCursor(res.resumeAfter, hash) : null,
+              scan: res.scan,
+              note: scanNote(res.scan, messages.length),
+            }),
+          }
+        }
 
         const raw = searchResult.parse(
           await ctx.runner.run('search', {

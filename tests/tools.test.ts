@@ -184,14 +184,6 @@ describe('search_messages', () => {
     expect(other.content[0].text).toContain('cursor')
   })
 
-  it('bodyContains is rejected as not available yet', async () => {
-    const { server, calls } = setup(() => ({}))
-    const res = await call(server, 'search_messages', { bodyContains: 'invoice' })
-    expect(res.isError).toBe(true)
-    expect(res.content[0].text).toContain('bodyContains is not available yet')
-    expect(calls).toHaveLength(0)
-  })
-
   it('redacts security subjects in summaries', async () => {
     const { server } = setup(() => ({ messages: [row(1, { subject: 'Your verification code 123456' })], hasMore: false }))
     const res = await call(server, 'search_messages', {})
