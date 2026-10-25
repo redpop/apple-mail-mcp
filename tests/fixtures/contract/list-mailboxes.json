@@ -1,0 +1,64 @@
+{
+  "id" : 3,
+  "ok" : true,
+  "result" : {
+    "accountNames" : "available",
+    "accounts" : [
+      {
+        "description" : "Privat",
+        "username" : "anna@example.com",
+        "uuid" : "A0000000-0000-4000-8000-00000000000A"
+      }
+    ],
+    "mailboxes" : [
+      {
+        "id" : 1,
+        "total" : 3,
+        "unread" : 2,
+        "url" : "imap://A0000000-0000-4000-8000-00000000000A/INBOX"
+      },
+      {
+        "id" : 2,
+        "total" : 1,
+        "unread" : 1,
+        "url" : "imap://A0000000-0000-4000-8000-00000000000A/Archiv/2024"
+      },
+      {
+        "id" : 3,
+        "total" : 1,
+        "unread" : 0,
+        "url" : "imap://B0000000-0000-4000-8000-00000000000B/%5BGmail%5D/All%20Mail"
+      },
+      {
+        "id" : 4,
+        "total" : 2,
+        "unread" : 2,
+        "url" : "imap://A0000000-0000-4000-8000-00000000000A/Junk"
+      },
+      {
+        "id" : 5,
+        "total" : 1,
+        "unread" : 0,
+        "url" : "imap://A0000000-0000-4000-8000-00000000000A/Papierkorb"
+      },
+      {
+        "id" : 6,
+        "total" : 1,
+        "unread" : 0,
+        "url" : "imap://A0000000-0000-4000-8000-00000000000A/Gesendete%20Objekte"
+      },
+      {
+        "id" : 7,
+        "total" : 3,
+        "unread" : 3,
+        "url" : "imap://A0000000-0000-4000-8000-00000000000A/Spezial%C3%84rger"
+      },
+      {
+        "id" : 8,
+        "total" : 1,
+        "unread" : 0,
+        "url" : "local://10CA1000-0000-4000-8000-00000000000C/Lokal"
+      }
+    ]
+  }
+}

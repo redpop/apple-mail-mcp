@@ -1,0 +1,8 @@
+{
+  "error" : {
+    "code" : "MESSAGE_NOT_FOUND",
+    "message" : "Message not found."
+  },
+  "id" : 7,
+  "ok" : false
+}

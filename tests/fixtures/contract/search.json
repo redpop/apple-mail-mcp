@@ -1,0 +1,151 @@
+{
+  "id" : 4,
+  "ok" : true,
+  "result" : {
+    "hasMore" : true,
+    "messages" : [
+      {
+        "attachmentCount" : 0,
+        "attachmentNames" : [
+
+        ],
+        "conversationId" : 0,
+        "dateReceived" : 1700002200,
+        "dateSent" : 1700002140,
+        "file" : "full",
+        "flagged" : false,
+        "gid" : 1021,
+        "mailboxIds" : [
+          1
+        ],
+        "messageIdHeader" : "<senderDangling-1021@example.com>",
+        "read" : false,
+        "recipientCount" : 1,
+        "recipients" : [
+          {
+            "address" : "anna@example.com",
+            "name" : "Anna Tester",
+            "type" : "to"
+          }
+        ],
+        "sender" : null,
+        "subject" : "Absender ohne Adresszeile"
+      },
+      {
+        "attachmentCount" : 0,
+        "attachmentNames" : [
+
+        ],
+        "conversationId" : 0,
+        "dateReceived" : 1700002100,
+        "dateSent" : 1700002040,
+        "file" : "none",
+        "flagged" : false,
+        "gid" : 1018,
+        "mailboxIds" : [
+          5
+        ],
+        "messageIdHeader" : "<trash-1018@example.com>",
+        "read" : false,
+        "recipientCount" : 1,
+        "recipients" : [
+          {
+            "address" : "anna@example.com",
+            "name" : "Anna Tester",
+            "type" : "to"
+          }
+        ],
+        "sender" : {
+          "address" : "alice@example.com",
+          "name" : "Alice Beispiel"
+        },
+        "subject" : "Im Papierkorb"
+      },
+      {
+        "attachmentCount" : 0,
+        "attachmentNames" : [
+
+        ],
+        "conversationId" : 0,
+        "dateReceived" : 1700002000,
+        "dateSent" : 1700001940,
+        "file" : "full",
+        "flagged" : false,
+        "gid" : 1017,
+        "mailboxIds" : [
+          3
+        ],
+        "messageIdHeader" : "<allmail-1017@example.com>",
+        "read" : false,
+        "recipientCount" : 1,
+        "recipients" : [
+          {
+            "address" : "anna@example.com",
+            "name" : "Anna Tester",
+            "type" : "to"
+          }
+        ],
+        "sender" : {
+          "address" : "carol@example.net",
+          "name" : "Carol"
+        },
+        "subject" : "Gmail Nachricht"
+      },
+      {
+        "attachmentCount" : 0,
+        "attachmentNames" : [
+
+        ],
+        "conversationId" : 0,
+        "dateReceived" : 1700001900,
+        "dateSent" : 1700001840,
+        "file" : "full",
+        "flagged" : false,
+        "gid" : 1016,
+        "mailboxIds" : [
+          8
+        ],
+        "messageIdHeader" : null,
+        "read" : false,
+        "recipientCount" : 0,
+        "recipients" : [
+
+        ],
+        "sender" : null,
+        "subject" : "Notiz lokal"
+      },
+      {
+        "attachmentCount" : 0,
+        "attachmentNames" : [
+
+        ],
+        "conversationId" : 0,
+        "dateReceived" : 1700001800,
+        "dateSent" : 1700001740,
+        "file" : "full",
+        "flagged" : false,
+        "gid" : 1019,
+        "mailboxIds" : [
+          1
+        ],
+        "messageIdHeader" : "<wildcard-1019@example.com>",
+        "read" : false,
+        "recipientCount" : 1,
+        "recipients" : [
+          {
+            "address" : "anna@example.com",
+            "name" : "Anna Tester",
+            "type" : "to"
+          }
+        ],
+        "sender" : {
+          "address" : "alice@example.com",
+          "name" : "Alice Beispiel"
+        },
+        "subject" : "100% sicher_test"
+      }
+    ],
+    "totalMatched" : 20,
+    "totalMatchedCapped" : false
+  }
+}

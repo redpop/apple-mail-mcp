@@ -1,0 +1,100 @@
+{
+  "id" : 6,
+  "ok" : true,
+  "result" : {
+    "conversationId" : 77,
+    "hasMore" : false,
+    "messages" : [
+      {
+        "attachmentCount" : 0,
+        "attachmentNames" : [
+
+        ],
+        "conversationId" : 77,
+        "dateReceived" : 1700001000,
+        "dateSent" : 1700000940,
+        "file" : "full",
+        "flagged" : false,
+        "gid" : 1007,
+        "mailboxIds" : [
+          1
+        ],
+        "messageIdHeader" : "<thread1-1007@example.com>",
+        "read" : true,
+        "recipientCount" : 1,
+        "recipients" : [
+          {
+            "address" : "anna@example.com",
+            "name" : "Anna Tester",
+            "type" : "to"
+          }
+        ],
+        "sender" : {
+          "address" : "alice@example.com",
+          "name" : "Alice Beispiel"
+        },
+        "subject" : "Projektplan"
+      },
+      {
+        "attachmentCount" : 0,
+        "attachmentNames" : [
+
+        ],
+        "conversationId" : 77,
+        "dateReceived" : 1700001100,
+        "dateSent" : 1700001040,
+        "file" : "full",
+        "flagged" : false,
+        "gid" : 1008,
+        "mailboxIds" : [
+          6
+        ],
+        "messageIdHeader" : "<thread2-1008@example.com>",
+        "read" : false,
+        "recipientCount" : 1,
+        "recipients" : [
+          {
+            "address" : "alice@example.com",
+            "name" : "Alice Beispiel",
+            "type" : "to"
+          }
+        ],
+        "sender" : {
+          "address" : "anna@example.com",
+          "name" : "Anna Tester"
+        },
+        "subject" : "Re: Re: Projektplan"
+      },
+      {
+        "attachmentCount" : 0,
+        "attachmentNames" : [
+
+        ],
+        "conversationId" : 77,
+        "dateReceived" : 1700001200,
+        "dateSent" : 1700001140,
+        "file" : "full",
+        "flagged" : false,
+        "gid" : 1009,
+        "mailboxIds" : [
+          4
+        ],
+        "messageIdHeader" : "<thread3-1009@example.com>",
+        "read" : false,
+        "recipientCount" : 1,
+        "recipients" : [
+          {
+            "address" : "anna@example.com",
+            "name" : "Anna Tester",
+            "type" : "to"
+          }
+        ],
+        "sender" : {
+          "address" : "alice@example.com",
+          "name" : "Alice Beispiel"
+        },
+        "subject" : "Re: Re: Projektplan"
+      }
+    ]
+  }
+}

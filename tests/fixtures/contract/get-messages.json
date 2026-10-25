@@ -1,0 +1,56 @@
+{
+  "id" : 5,
+  "ok" : true,
+  "result" : {
+    "budgetExhausted" : false,
+    "messages" : [
+      {
+        "attachmentCount" : 2,
+        "attachmentNames" : [
+          "rechnung-2024-0815.pdf",
+          "anlage.txt"
+        ],
+        "conversationId" : 0,
+        "dateReceived" : 1700001400,
+        "dateSent" : 1700001340,
+        "file" : "full",
+        "flagged" : false,
+        "gid" : 1011,
+        "mailboxIds" : [
+          1
+        ],
+        "messageIdHeader" : "<invoice-1011@example.com>",
+        "raw" : "MzQ4CkZyb206IEJ1Y2hoYWx0dW5nIDxiaWxsaW5nQGV4YW1wbGUub3JnPg0KVG86IEFubmEgVGVzdGVyIDxhbm5hQGV4YW1wbGUuY29tPg0KQ2M6IEJvYiBNdXN0ZXIgPGJvYkBleGFtcGxlLm9yZz4NClN1YmplY3Q6IFJlY2hudW5nIDIwMjQtMDgxNQ0KRGF0ZTogVHVlLCAxNCBOb3YgMjAyMyAyMjozNTo0MCArMDAwMA0KTWVzc2FnZS1JRDogPGludm9pY2UtMTAxMUBleGFtcGxlLmNvbT4NCk1JTUUtVmVyc2lvbjogMS4wDQpDb250ZW50LVR5cGU6IHRleHQvcGxhaW47IGNoYXJzZXQ9dXRmLTgNCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IDhiaXQNCg0KU3ludGhldGlzY2hlciBUZXh0IGZ1ZXIgaW52b2ljZS4NCjw/eG1sIHZlcnNpb249IjEuMCIgZW5jb2Rpbmc9IlVURi04Ij8+CjwhRE9DVFlQRSBwbGlzdCBQVUJMSUMgIi0vL0FwcGxlLy9EVEQgUExJU1QgMS4wLy9FTiIgImh0dHA6Ly93d3cuYXBwbGUuY29tL0RURHMvUHJvcGVydHlMaXN0LTEuMC5kdGQiPgo8cGxpc3QgdmVyc2lvbj0iMS4wIj4KPGRpY3Q+CjxrZXk+ZmxhZ3M8L2tleT4KPGludGVnZXI+MDwvaW50ZWdlcj4KPC9kaWN0Pgo8L3BsaXN0Pgo=",
+        "rawSize" : 578,
+        "rawTruncated" : false,
+        "read" : false,
+        "recipientCount" : 3,
+        "recipients" : [
+          {
+            "address" : "anna@example.com",
+            "name" : "Anna Tester",
+            "type" : "to"
+          },
+          {
+            "address" : "bob@example.org",
+            "name" : "Bob Muster",
+            "type" : "cc"
+          },
+          {
+            "address" : "audit@example.net",
+            "name" : "Revision",
+            "type" : "bcc"
+          }
+        ],
+        "sender" : {
+          "address" : "billing@example.org",
+          "name" : "Buchhaltung"
+        },
+        "subject" : "Rechnung 2024-0815"
+      }
+    ],
+    "missing" : [
+
+    ]
+  }
+}

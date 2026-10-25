@@ -64,6 +64,8 @@ Consequences:
 
 **Comments are in German, ASCII-transliterated** (`ae`, `oe`, `ue`, `ss`). User-facing text, error messages, docs and commit messages are in English.
 
+**The helper's JSON is a contract with golden files.** `tests/fixtures/contract/*.json` hold one response per helper command plus one error, produced from the Swift fixture by `swift/Tests/MailHelperCoreTests/ContractTests.swift`; `tests/contract.test.ts` parses them with strict variants of the `src/schemas.ts` schemas, so a key Swift sends but Node does not declare fails. After changing a response shape, regenerate with `UPDATE_CONTRACT=1 npm run test:swift`, review the diff and commit it; without the variable the Swift test compares against the committed files. `osVersion` and `helperVersion` are replaced by `0.0.0` placeholders.
+
 **Errors are mapped, not thrown raw.** `src/errors.ts` maps every code to an English sentence for the model; `respond()` is the only place errors become tool results. Never a stack trace, never user data in the details. A new helper error code needs a message there.
 
 **Invalid configuration does not stop the server.** It starts and answers every tool call with `CONFIG_INVALID`. Invalid config never falls back to "allow all".
