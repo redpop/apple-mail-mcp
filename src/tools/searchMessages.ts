@@ -49,7 +49,7 @@ const fmt = (n: number): string => n.toLocaleString('en-US')
 
 function scanNote(scan: ScanInfo, matches: number): string {
   const found = `${matches} ${matches === 1 ? 'match' : 'matches'}`
-  const noBody = scan.unavailable > 0 ? ` ${fmt(scan.unavailable)} of them had no body available on this Mac and could not be searched.` : ''
+  const noBody = scan.unavailable > 0 ? ` ${fmt(scan.unavailable)} of them could not be searched because their body is not on this Mac or could not be read.` : ''
   if (scan.complete) return `Scanned all ${fmt(scan.scanned)} candidate messages and found ${found}.${noBody}`
   const why = { limit: 'the requested number of matches was reached', cap: 'the scan limit of 2,000 messages was reached', time: 'the 3 second time budget ran out' }[scan.stoppedBy!]
   return `Scanned the ${fmt(scan.scanned)} newest candidate messages and found ${found}; stopped because ${why}.${noBody} Call again with nextCursor to continue, or narrow the search with from, since or mailboxIds.`

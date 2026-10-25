@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { CANDIDATE_CAP, findMatch, foldFast, scanBodies } from '../src/bodyScan.js'
 import { fold } from '../src/fold.js'
+import { parseForScan, parseMessage } from '../src/mime.js'
 import { loadConfig, type Config } from '../src/config.js'
 import { createContext } from '../src/context.js'
 import { HelperError } from '../src/errors.js'
@@ -286,6 +287,51 @@ describe('scanBodies', () => {
     expect(res.matches.map((m) => m.row.gid)).toEqual([1])
     expect(res.matches[0]!.matchContext).toBe('Rechnung 482913 im Anhang')
     expect(res.scan).toEqual({ scanned: 3, unavailable: 0, stoppedBy: null, complete: true })
+  })
+
+  it('scan counters do not depend on the term when the full parse fails after the prefilter (E2)', async () => {
+    // A: reines HTML, so tief verschachtelt, dass html-to-text scheitert; der schnelle Weg geht.
+    const deep = html(`${'<div>'.repeat(30000)}Your verification code is 482913${'</div>'.repeat(30000)}`)
+    // B: unbekannter Zeichensatz nur im Anhang; gekuerzt ist er weg, ungekuerzt scheitert parseMessage.
+    const att = 'Content-Type: text/plain; charset=x-unknown-cs\r\n\r\nirrelevant\r\n'
+    const unknown =
+      'From: Anna <anna@example.com>\r\nSubject: x\r\nContent-Type: multipart/mixed; boundary="m"\r\n\r\n' +
+      '--m\r\nContent-Type: text/plain\r\n\r\nYour one-time code is 482913\r\n' +
+      `--m\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename="x.eml"\r\n\r\n${att}--m--\r\n`
+    for (const mime of [deep, unknown]) {
+      expect((await parseMessage(Buffer.from(rawMime(mime), 'base64'))).ok).toBe(false)
+      expect((await parseForScan(Buffer.from(rawMime(mime), 'base64'))).ok).toBe(true)
+    }
+    const rows = rowsOf(3, () => ({ subject: 'Hello' }))
+    const mimes = { 1: deep, 2: unknown }
+    const results = []
+    for (const term of ['482913', '4', '48', '4829', '999999']) {
+      const { res } = await scan({ rows, bodies: { 3: 'no digits here' }, mimes }, { term, limit: 2 })
+      expect(res.matches).toEqual([])
+      results.push({ scan: res.scan, resumeAfter: res.resumeAfter })
+    }
+    for (const r of results) expect(r).toEqual(results[0])
+    expect(results[0]).toEqual({ scan: { scanned: 3, unavailable: 0, stoppedBy: null, complete: true }, resumeAfter: null })
+  })
+
+  describe('html prefilter recall: whatever the full parse matches, the scan matches', () => {
+    const cases: Array<[string, string, string]> = [
+      ['unknown named entity', 'Ich &hearts; K&ouml;ln', '\u2665 k\u00f6ln'],
+      ['legacy entity without semicolon', 'Firma &copy2026 Beispiel', '\u00a92026 beispiel'],
+      ['upper-case legacy entity', 'A &AMP; B', 'a & b'],
+      ['title inside an svg in the body', '<html><head><title>T</title></head><body><svg><title>Rechnungsdetails</title></svg> Ende</body></html>', 'rechnungsdetails ende'],
+      ['zero-width space', 'Rech&#8203;nung', 'rech nung'],
+      ['">" inside a quoted attribute value', '<p>Ihre <span title="a > b">Rech</span>nung</p>', 'ihre rechnung'],
+    ]
+    for (const [name, body, term] of cases) {
+      it(name, async () => {
+        const full = await parseMessage(Buffer.from(rawMime(html(body)), 'base64'))
+        if (!full.ok) throw new Error('expected ok')
+        expect(findMatch(full.text, term)).not.toBeNull()
+        const { res } = await scan({ rows: rowsOf(1), bodies: {}, mimes: { 1: html(body) } }, { term })
+        expect(res.matches.map((m) => m.row.gid)).toEqual([1])
+      })
+    }
   })
 
   it('html-only mails match across tags and entities with context from html-to-text', async () => {

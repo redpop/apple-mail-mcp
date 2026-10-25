@@ -72,8 +72,9 @@ with `totalMatchedCapped: false`. Later pages (with `cursor`) omit both.
 the newest candidates for the other filters, or until 3 seconds have passed, or until `limit`
 matches are found. The result then includes `scan` (`scanned`, `unavailable`, `stoppedBy` as
 `limit`, `cap` or `time`, `complete`) and a `note` that says how far it got. Call again with
-`nextCursor` to continue, or narrow with `from`, `since` or `mailboxIds`. Messages without a
-local body count as `unavailable`. Security mails are never matched by body.
+`nextCursor` to continue, or narrow with `from`, `since` or `mailboxIds`. Messages whose body is
+not on this Mac or cannot be decoded count as `unavailable`; this count never depends on the
+search term. Security mails are never matched by body.
 `APPLE_MAIL_BODY_SEARCH=false` turns the parameter off.
 
 Errors: `MAILBOX_NOT_FOUND` (unknown or hidden mailbox id; both look the same), `INVALID_CURSOR`,

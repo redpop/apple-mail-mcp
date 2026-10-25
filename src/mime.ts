@@ -140,11 +140,15 @@ export async function parseMessage(raw: Buffer): Promise<ParsedMessage> {
  * Text fuer den Body-Scan. Ist `exact` gesetzt, ist `quick` genau der Text von parseMessage.
  * Sonst ist `quick` nur eine Naeherung zum Vorfiltern: bei reinem HTML die grobe Fassung
  * (quickHtmlText), bei einer fuer den Scan gekuerzten Nachricht (trimForScan) der Text ohne die
- * entfernten Teile. `full()` liefert dann den Text von parseMessage aus der ungekuerzten
+ * entfernten Teile. null heisst: kein verlaesslicher Vorfilter (unbekanntes Entity), gleich
+ * `full()` pruefen. `full()` liefert dann den Text von parseMessage aus der ungekuerzten
  * Nachricht, oder null, wenn er nicht entsteht. So zahlt nur ein moeglicher Treffer den teuren
  * Weg, und Treffer sowie Sicherheitspruefung sehen denselben Text wie get_message. Wirft nie.
  */
-export type ScanBody = { ok: false } | { ok: true; exact: boolean; quick: string; full: () => Promise<string | null> }
+export type ScanBody =
+  | { ok: false }
+  | { ok: true; exact: true; quick: string; full: () => Promise<string | null> }
+  | { ok: true; exact: false; quick: string | null; full: () => Promise<string | null> }
 
 export async function parseForScan(raw: Buffer): Promise<ScanBody> {
   try {
@@ -165,7 +169,8 @@ export async function parseForScan(raw: Buffer): Promise<ScanBody> {
       if (approximate) return { ok: true, exact: false, quick: text, full }
       return { ok: true, exact: true, quick: text, full: async () => text }
     }
-    return { ok: true, exact: false, quick: quickHtmlText(source.html), full }
+    const quick = quickHtmlText(source.html)
+    return { ok: true, exact: false, quick: quick.sure ? quick.text : null, full }
   } catch {
     return { ok: false }
   }

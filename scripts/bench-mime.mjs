@@ -155,7 +155,7 @@ for (const [name, raw] of Object.entries(messages)) {
   const hasPlain = typeof email.text === 'string' && email.text.trim() !== ''
   const source = hasPlain ? email.text : htmlToText(email.html ?? '')
   const text = normalise(source)
-  const quick = hasPlain ? '' : quickHtmlText(email.html ?? '')
+  const quick = hasPlain ? '' : quickHtmlText(email.html ?? '').text
   const s = {
     b64: await per([base64], (x) => Buffer.from(x, 'base64')),
     strip: await per(one, (x) => stripEmlxFrame(x)),
@@ -168,7 +168,7 @@ for (const [name, raw] of Object.entries(messages)) {
     norm: await per([source], (x) => normalise(x)),
     classify: await per([text], (x) => classify({ subject: 'Hello', fromAddress: 'anna@example.com', text: x })),
     match: await per([text], (x) => findMatch(x, TERM)),
-    loose: hasPlain ? 0 : await per([quick], (x) => foldFast(x.replace(/\s+/gu, '')).includes(TERM)),
+    loose: hasPlain ? 0 : await per([quick], (x) => foldFast(x.replace(/[\s\u200b]+/g, '')).includes(TERM)),
     full: await per(one, fullPath),
     scan: await per([base64], scanPath),
   }

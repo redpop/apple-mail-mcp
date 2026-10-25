@@ -72,12 +72,13 @@ function foldRun(run: string): string {
   return out
 }
 
-// Unterhalb von U+0340 gleicht fold(c) fuer jedes Zeichen ausser ß dem einfachen toLowerCase
+// Unterhalb von U+0340 gleicht fold(c) fuer jedes Zeichen ausser dem scharfen s (U+00DF) dem
+// einfachen toLowerCase
 // (tests/bodyScan.test.ts prueft das fuer jeden Codepoint); nur der Rest braucht fold pro Zeichen.
-const NEEDS_FOLD = /ß|[^\x00-\u033f]+/g
+const NEEDS_FOLD = /\u00df|[^\x00-\u033f]+/g
 
 /**
- * Liefert genau foldWithMap(text).folded, nur schnell: ß und Laeufe ab U+0340 werden pro
+ * Liefert genau foldWithMap(text).folded, nur schnell: U+00DF und Laeufe ab U+0340 werden pro
  * Codepoint gefaltet, danach schreibt toLowerCase den Rest klein. Das ist gleichwertig, weil die
  * Ausgabe von fold fuer jeden Codepoint schon klein ist (toLowerCase aendert sie nicht) und kein
  * grosses Sigma enthaelt, die einzige kontextabhaengige Abbildung von toLowerCase. Die
@@ -159,22 +160,29 @@ async function fetchBatch(runner: HelperRunner, policy: Policy, batch: MessageRo
   return out
 }
 
+// Leerraum fuer den Vorfilter; U+200B zaehlt dazu, wie bei html-to-text.
+const LOOSE_SPACE = /[\s\u200b]+/g
+
 /**
  * Prueft eine Nachricht: Treffer-Kontext, null ohne Treffer, undefined wenn nicht verfuegbar.
  * Erst wird gesucht, dann klassifiziert: die Klassifikation entscheidet nur ueber Treffer.
  * Ist der Scan-Text nur eine Naeherung (reines HTML oder gekuerzte Nachricht, siehe
  * parseForScan), filtert er ohne Leerraum vor; ein moeglicher Treffer wird am Text von
  * parseMessage bestaetigt, und genau dieser Text geht in die Sicherheitspruefung (E2).
+ *
+ * "Nicht verfuegbar" haengt nur vom Rohtext und vom schnellen Parsen ab, nie vom Suchbegriff.
+ * Scheitert der volle Text nach einem Vorfilter-Treffer, zaehlt das wie ein Fehlschlag des
+ * Vorfilters. Sonst verriete `unavailable` bei Begriffen wie "4", "48", ... einen Code.
  */
 export async function examine(raw: string, row: MessageRow, term: string, looseTerm: string, showSecurityMails: boolean): Promise<string | null | undefined> {
   const body = await parseForScan(Buffer.from(raw, 'base64'))
   if (!body.ok) return undefined
   let text: string | null = body.quick
   if (!body.exact) {
-    if (!foldFast(body.quick.replace(/\s+/g, '')).includes(looseTerm)) return null
+    if (body.quick !== null && !foldFast(body.quick.replace(LOOSE_SPACE, '')).includes(looseTerm)) return null
     text = await body.full()
-    if (text === null) return undefined
   }
+  if (text === null) return null
   const ctx = findMatch(text, term)
   if (ctx === null) return null
   if (showSecurityMails) return ctx
@@ -196,7 +204,7 @@ export async function scanBodies(a: {
   const started = now()
   const term = foldTerm(a.term)
   if (term === '') throw new HelperError('INVALID_INPUT', 'bodyContains must contain a visible character.')
-  const looseTerm = term.replace(/\s+/g, '')
+  const looseTerm = term.replace(LOOSE_SPACE, '')
 
   const matches: ScanResult['matches'] = []
   let scanned = 0

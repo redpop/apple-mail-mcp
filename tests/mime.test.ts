@@ -124,17 +124,36 @@ test('quickHtmlText drops tags, comments, script and style and decodes entities'
     '<!DOCTYPE html><html><head><title>Titel</title><style>p{color:red}</style></head><body>' +
       '<!-- versteckt --><p>Gr&ouml;&szlig;e &amp; Preis &euro;&#160;12 &#x2013; a &lt; b</p><script>var x = 1</script>' +
       '<p>Mehr <a href="https://example.com/x?a=1&amp;b=2">Details</a> und <a href="https://example.com">https://example.com</a></p>' +
-      '<img src="https://example.com/i.png" alt="Bild"> 3 < 4 &unknown;</body></html>',
+      '<img src="https://example.com/i.png" alt="Bild > Text"> 3 < 4 &unknown</body></html>',
   )
-  const words = t.replace(/\s+/g, ' ').trim()
-  expect(words).toBe('Größe & Preis € 12 – a < b Mehr Details [https://example.com/x?a=1&b=2] und https://example.com 3 < 4 &unknown;')
+  const words = t.text.replace(/\s+/g, ' ').trim()
+  expect(words).toBe('Größe & Preis € 12 – a < b Mehr Details [https://example.com/x?a=1&b=2] und https://example.com 3 < 4 &unknown')
+  // Ohne Semikolon ist "&unknown" kein Entity; das ist sicher.
+  expect(t.sure).toBe(true)
+})
+
+test('quickHtmlText is unsure about unknown named entities and decodes legacy ones like HTML', () => {
+  expect(quickHtmlText('I &hearts; it').sure).toBe(false)
+  expect(quickHtmlText('A &AUML; B').sure).toBe(false)
+  const legacy = quickHtmlText('&copy2026 &AMP; &COPY; &notit &amp')
+  expect(legacy).toEqual({ text: '\u00a92026 & \u00a9 \u00acit &', sure: true })
+  // Im Attribut bleibt ein Legacy-Name vor Buchstabe, Ziffer oder "=" stehen.
+  expect(quickHtmlText('<a href="https://example.com/?a=1&copy=2&notx=3">x</a>').text).toContain('[https://example.com/?a=1&copy=2&notx=3]')
+  expect(quickHtmlText('<a href="https://example.com/?a&copy;">x</a>').text).toContain('?a\u00a9]')
+})
+
+test('quickHtmlText keeps a title inside the body and ends tags outside quoted values', () => {
+  const t = quickHtmlText('<html><head><title>Kopf</title></head><body><svg><title>Grafik</title></svg><img alt="Weiter >">Ende</body></html>').text
+  expect(t.replace(/\s+/g, ' ').trim()).toBe('Grafik Ende')
+  expect(quickHtmlText('<p title=\'a > b\' x=y>Text</p>').text.trim()).toBe('Text')
 })
 
 test('quickHtmlText survives unterminated markup', () => {
-  expect(quickHtmlText('a <b c="d').trim()).toBe('a')
-  expect(quickHtmlText('a <script>never closed').trim()).toBe('a')
-  expect(quickHtmlText('a <!-- open').trim()).toBe('a')
-  expect(quickHtmlText('<style>x</style>').trim()).toBe('')
+  expect(quickHtmlText('a <b c="d').text.trim()).toBe('a')
+  expect(quickHtmlText('a <b c="d>e').text.trim()).toBe('a')
+  expect(quickHtmlText('a <script>never closed').text.trim()).toBe('a')
+  expect(quickHtmlText('a <!-- open').text.trim()).toBe('a')
+  expect(quickHtmlText('<style>x</style>').text.trim()).toBe('')
 })
 
 test('quickHtmlText keeps every word of the html-to-text output', async () => {
@@ -143,7 +162,8 @@ test('quickHtmlText keeps every word of the html-to-text output', async () => {
   if (!parsed.ok) throw new Error('expected ok')
   const scan = await parseForScan(html)
   if (!scan.ok) throw new Error('expected ok')
-  const quick = scan.quick.replace(/\s+/g, '')
+  const quick = (scan.quick ?? '').replace(/\s+/g, '')
+  expect(scan.quick).not.toBeNull()
   for (const word of parsed.text.split(/[\s[\]]+/).filter((w) => w !== '')) expect(quick).toContain(word)
 })
 

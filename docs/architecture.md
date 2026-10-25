@@ -229,6 +229,16 @@ the `html-to-text` output. Both are only a prefilter, compared without any white
 message that passes it is parsed again exactly as `get_message` does, and that text decides the
 match, the `matchContext` and the security check. Search runs first and the security check only
 on a match, which gives the same result because the check only ever removes matches.
+`unavailable` counts only messages without raw bytes or whose fast parse fails; it never
+depends on the search term. A message whose exact parse fails after the prefilter passed counts
+as searched without a match, exactly like a prefilter miss. Otherwise terms such as `4`, `48`,
+... could read a code digit by digit from the counter. An HTML entity the prefilter does not
+know (`&name;`) skips the prefilter for that message, which then always takes the exact parse.
+
+One side channel is accepted: a message that passes the prefilter costs the exact parse and the
+security check, so the response time of a scan grows slightly when a term occurs in a security
+mail that is then withheld. The response content is the same either way (E2). Narrowing a code
+this way would take many calls with timing noise from the helper and the other candidates.
 `node scripts/bench-mime.mjs` (after `npm run build`) prints the per-stage timings on synthetic
 mail; on the development machine the scan path handles about 2,400 messages per second there,
 the full path about 600.
