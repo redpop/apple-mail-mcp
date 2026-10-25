@@ -1,0 +1,812 @@
+{
+ "accounts": [
+  {
+   "name": "A",
+   "uuid": "A0000000-0000-4000-8000-00000000000A",
+   "type": "imap",
+   "description": "Privat",
+   "username": "anna@example.com",
+   "inAccounts4": true
+  },
+  {
+   "name": "B",
+   "uuid": "B0000000-0000-4000-8000-00000000000B",
+   "type": "imap",
+   "description": "Gmail",
+   "username": "anna@example.net",
+   "inAccounts4": false
+  },
+  {
+   "name": "L",
+   "uuid": "10CA1000-0000-4000-8000-00000000000C",
+   "type": "local",
+   "description": "Auf meinem Mac",
+   "username": "",
+   "inAccounts4": false
+  },
+  {
+   "name": "C",
+   "uuid": "CA1DA000-0000-4000-8000-00000000000D",
+   "type": "caldav",
+   "description": "Kalender",
+   "username": "kalender@example.org",
+   "inAccounts4": true
+  }
+ ],
+ "mailboxes": [
+  {
+   "id": 1,
+   "name": "inbox",
+   "account": "A",
+   "url": "imap://A0000000-0000-4000-8000-00000000000A/INBOX",
+   "total": 3,
+   "unread": 2,
+   "stores": [
+    "5D0E0001-0000-4000-8000-000000000001"
+   ]
+  },
+  {
+   "id": 2,
+   "name": "archiv2024",
+   "account": "A",
+   "url": "imap://A0000000-0000-4000-8000-00000000000A/Archiv/2024",
+   "total": 1,
+   "unread": 1,
+   "stores": [
+    "5D0E0002-0000-4000-8000-000000000001"
+   ]
+  },
+  {
+   "id": 3,
+   "name": "allmail",
+   "account": "B",
+   "url": "imap://B0000000-0000-4000-8000-00000000000B/%5BGmail%5D/All%20Mail",
+   "total": 1,
+   "unread": 0,
+   "stores": [
+    "5D0E0003-0000-4000-8000-000000000001"
+   ]
+  },
+  {
+   "id": 4,
+   "name": "junk",
+   "account": "A",
+   "url": "imap://A0000000-0000-4000-8000-00000000000A/Junk",
+   "total": 2,
+   "unread": 2,
+   "stores": [
+    "5D0E0004-0000-4000-8000-000000000001"
+   ]
+  },
+  {
+   "id": 5,
+   "name": "trash",
+   "account": "A",
+   "url": "imap://A0000000-0000-4000-8000-00000000000A/Papierkorb",
+   "total": 1,
+   "unread": 0,
+   "stores": [
+    "5D0E0005-0000-4000-8000-000000000001"
+   ]
+  },
+  {
+   "id": 6,
+   "name": "sent",
+   "account": "A",
+   "url": "imap://A0000000-0000-4000-8000-00000000000A/Gesendete%20Objekte",
+   "total": 1,
+   "unread": 0,
+   "stores": [
+    "5D0E0006-0000-4000-8000-000000000001"
+   ]
+  },
+  {
+   "id": 7,
+   "name": "aerger",
+   "account": "A",
+   "url": "imap://A0000000-0000-4000-8000-00000000000A/Spezial%C3%84rger",
+   "total": 3,
+   "unread": 3,
+   "stores": [
+    "5D0E0007-0000-4000-8000-000000000001",
+    "5D0E0007-0000-4000-8000-000000000002"
+   ]
+  },
+  {
+   "id": 8,
+   "name": "lokal",
+   "account": "L",
+   "url": "local://10CA1000-0000-4000-8000-00000000000C/Lokal",
+   "total": 1,
+   "unread": 0,
+   "stores": [
+    "5D0E0008-0000-4000-8000-000000000001"
+   ]
+  }
+ ],
+ "messages": [
+  {
+   "name": "small",
+   "gid": 1002,
+   "rowid": 7,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "Willkommen",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700000100,
+   "dateSent": 1700000040,
+   "read": true,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<small-1002@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer small.\n"
+  },
+  {
+   "name": "dup3",
+   "gid": 1001,
+   "rowid": 4711,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "Dreifach vorhanden",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700000300,
+   "dateSent": 1700000240,
+   "read": true,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<dup3-1001@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer dup3.\n"
+  },
+  {
+   "name": "dup3",
+   "gid": 1001,
+   "rowid": 123456,
+   "mailbox": "archiv2024",
+   "subjectPrefix": "",
+   "subject": "Dreifach vorhanden",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700000200,
+   "dateSent": 1700000140,
+   "read": false,
+   "flagged": true,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<dup3-1001@example.com>",
+   "attachments": [],
+   "file": "partial",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer dup3.\n"
+  },
+  {
+   "name": "dup3",
+   "gid": 1001,
+   "rowid": 4712,
+   "mailbox": "junk",
+   "subjectPrefix": "",
+   "subject": "Dreifach vorhanden",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700000250,
+   "dateSent": 1700000190,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<dup3-1001@example.com>",
+   "attachments": [],
+   "file": "none",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer dup3.\n"
+  },
+  {
+   "name": "noHeader",
+   "gid": 1003,
+   "rowid": 20,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "",
+   "sender": null,
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700000400,
+   "dateSent": 1700000340,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": null,
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer noHeader.\n"
+  },
+  {
+   "name": "deleted",
+   "gid": 1004,
+   "rowid": 21,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "Geloescht",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700000500,
+   "dateSent": 1700000440,
+   "read": false,
+   "flagged": false,
+   "deleted": true,
+   "conversationId": 0,
+   "messageIdHeader": "<deleted-1004@example.com>",
+   "attachments": [],
+   "file": "none",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer deleted.\n"
+  },
+  {
+   "name": "tie1",
+   "gid": 1005,
+   "rowid": 22,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "Gleiche Zeit A",
+   "sender": {
+    "address": "bob@example.org",
+    "comment": "Bob Muster"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700000600,
+   "dateSent": 1700000540,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<tie1-1005@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer tie1.\n"
+  },
+  {
+   "name": "tie2",
+   "gid": 1006,
+   "rowid": 23,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "Gleiche Zeit B",
+   "sender": {
+    "address": "bob@example.org",
+    "comment": "Bob Muster"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700000600,
+   "dateSent": 1700000540,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<tie2-1006@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer tie2.\n"
+  },
+  {
+   "name": "thread1",
+   "gid": 1007,
+   "rowid": 24,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "Projektplan",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700001000,
+   "dateSent": 1700000940,
+   "read": true,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 77,
+   "messageIdHeader": "<thread1-1007@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer thread1.\n"
+  },
+  {
+   "name": "thread2",
+   "gid": 1008,
+   "rowid": 25,
+   "mailbox": "sent",
+   "subjectPrefix": "Re: ",
+   "subject": "Re: Projektplan",
+   "sender": {
+    "address": "anna@example.com",
+    "comment": "Anna Tester"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "alice@example.com",
+     "comment": "Alice Beispiel"
+    }
+   ],
+   "dateReceived": 1700001100,
+   "dateSent": 1700001040,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 77,
+   "messageIdHeader": "<thread2-1008@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer thread2.\n"
+  },
+  {
+   "name": "thread3",
+   "gid": 1009,
+   "rowid": 26,
+   "mailbox": "junk",
+   "subjectPrefix": "Re: ",
+   "subject": "Re: Projektplan",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700001200,
+   "dateSent": 1700001140,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 77,
+   "messageIdHeader": "<thread3-1009@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer thread3.\n"
+  },
+  {
+   "name": "otp",
+   "gid": 1010,
+   "rowid": 27,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "123456 is your code",
+   "sender": {
+    "address": "security@example.net",
+    "comment": "Sicherheit"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700001300,
+   "dateSent": 1700001240,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<otp-1010@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Your code is 123456. Do not share it.\n"
+  },
+  {
+   "name": "invoice",
+   "gid": 1011,
+   "rowid": 28,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "Rechnung 2024-0815",
+   "sender": {
+    "address": "billing@example.org",
+    "comment": "Buchhaltung"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    },
+    {
+     "type": 1,
+     "address": "bob@example.org",
+     "comment": "Bob Muster"
+    },
+    {
+     "type": 2,
+     "address": "audit@example.net",
+     "comment": "Revision"
+    }
+   ],
+   "dateReceived": 1700001400,
+   "dateSent": 1700001340,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<invoice-1011@example.com>",
+   "attachments": [
+    "rechnung-2024-0815.pdf",
+    "anlage.txt"
+   ],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer invoice.\n"
+  },
+  {
+   "name": "aerger",
+   "gid": 1012,
+   "rowid": 29,
+   "mailbox": "aerger",
+   "subjectPrefix": "",
+   "subject": "Ärger mit der Heizung",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700001500,
+   "dateSent": 1700001440,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<aerger-1012@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 1,
+   "emlx": null,
+   "body": "Synthetischer Text fuer aerger.\n"
+  },
+  {
+   "name": "aerger2",
+   "gid": 1015,
+   "rowid": 32,
+   "mailbox": "aerger",
+   "subjectPrefix": "",
+   "subject": "ärger im Büro",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700001520,
+   "dateSent": 1700001460,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<aerger2-1015@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer aerger2.\n"
+  },
+  {
+   "name": "strasse",
+   "gid": 1013,
+   "rowid": 30,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "STRASSE gesperrt",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700001600,
+   "dateSent": 1700001540,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<strasse-1013@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer strasse.\n"
+  },
+  {
+   "name": "strasse2",
+   "gid": 1014,
+   "rowid": 31,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "Die Straße ist frei",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700001700,
+   "dateSent": 1700001640,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<strasse2-1014@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer strasse2.\n"
+  },
+  {
+   "name": "wildcard",
+   "gid": 1019,
+   "rowid": 36,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "100% sicher_test",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700001800,
+   "dateSent": 1700001740,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<wildcard-1019@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer wildcard.\n"
+  },
+  {
+   "name": "lokal",
+   "gid": 1016,
+   "rowid": 33,
+   "mailbox": "lokal",
+   "subjectPrefix": "",
+   "subject": "Notiz lokal",
+   "sender": null,
+   "recipients": [],
+   "dateReceived": 1700001900,
+   "dateSent": 1700001840,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": null,
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer lokal.\n"
+  },
+  {
+   "name": "allmail",
+   "gid": 1017,
+   "rowid": 34,
+   "mailbox": "allmail",
+   "subjectPrefix": "",
+   "subject": "Gmail Nachricht",
+   "sender": {
+    "address": "carol@example.net",
+    "comment": "Carol"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700002000,
+   "dateSent": 1700001940,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<allmail-1017@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer allmail.\n"
+  },
+  {
+   "name": "trash",
+   "gid": 1018,
+   "rowid": 35,
+   "mailbox": "trash",
+   "subjectPrefix": "",
+   "subject": "Im Papierkorb",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700002100,
+   "dateSent": 1700002040,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<trash-1018@example.com>",
+   "attachments": [],
+   "file": "none",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer trash.\n"
+  },
+  {
+   "name": "aerger3",
+   "gid": 1020,
+   "rowid": 37,
+   "mailbox": "aerger",
+   "subjectPrefix": "",
+   "subject": "Dritte Nachricht",
+   "sender": {
+    "address": "alice@example.com",
+    "comment": "Alice Beispiel"
+   },
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700001510,
+   "dateSent": 1700001450,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<aerger3-1020@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 1,
+   "emlx": null,
+   "body": "Synthetischer Text fuer aerger3.\n"
+  }
+ ]
+}
