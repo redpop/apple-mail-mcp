@@ -33,6 +33,6 @@ export function decodeCursor(s: string, hash: string): { d: number; g: number } 
   }
   if (o === null || typeof o !== 'object' || Array.isArray(o)) throw bad()
   const c = o as Record<string, unknown>
-  if (c.v !== 1 || !Number.isInteger(c.d) || !Number.isInteger(c.g) || typeof c.h !== 'string' || c.h !== hash) throw bad()
+  if (c.v !== 1 || !Number.isSafeInteger(c.d) || !Number.isSafeInteger(c.g) || typeof c.h !== 'string' || c.h !== hash) throw bad()
   return { d: c.d as number, g: c.g as number }
 }

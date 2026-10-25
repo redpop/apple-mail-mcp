@@ -25,3 +25,9 @@ test('queryHash is key-order independent, 16 hex, depends on params and fingerpr
   expect(queryHash({ a: 2, b: { x: 1, y: [1, 2] } }, 'fp')).not.toBe(a)
   expect(queryHash({ a: 1, b: { x: 1, y: [1, 2] } }, 'other')).not.toBe(a)
 })
+
+test('decode rejects unsafe integers', () => {
+  const enc = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url')
+  expect(() => decodeCursor(enc({ v: 1, d: 1e30, g: 2, h: 'h' }), 'h')).toThrow(/INVALID_CURSOR/)
+  expect(() => decodeCursor(enc({ v: 1, d: 1, g: 1e30, h: 'h' }), 'h')).toThrow(/INVALID_CURSOR/)
+})

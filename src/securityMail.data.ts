@@ -1,11 +1,14 @@
 // Woerterlisten fuer die Sicherheitsmail-Erkennung (Spec 8.3). Eintraege klein geschrieben; Abgleich laeuft ueber fold().
 // Ergaenzungen per Pull Request ohne Codeaenderung.
+// Bindestriche und Leerzeichen gelten beim Abgleich gleich; ein '*' steht fuer bis zu zwei beliebige Woerter.
 
 export const SECURITY_KEYWORDS: readonly string[] = [
   // Deutsch
   'bestätigungscode', 'sicherheitscode', 'einmalcode', 'anmeldecode', 'verifizierungscode', 'einmalpasswort', 'einmal-passwort',
   'passwort zurücksetzen', 'kennwort zurücksetzen', 'passwort zurückzusetzen', 'e-mail-adresse bestätigen', 'anmeldelink',
+  'sicherheits code', 'bestätigungs code', 'anmelde code', 'einmal code', 'passwort reset', 'kennwort reset', 'anmelde link',
   // Englisch
+  'authentication code', 'recovery code', 'sign-in link', 'sign in link', 'login link', 'verify your account', 'reset your * password',
   'verification code', 'security code', 'one-time code', 'one time code', 'one-time password', 'one time password', 'otp', '2fa',
   'two-factor', 'two factor', 'sign-in code', 'sign in code', 'login code', 'magic link', 'reset your password', 'password reset',
   'confirm your email', 'verify your email',

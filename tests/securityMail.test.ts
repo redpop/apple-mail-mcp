@@ -27,3 +27,21 @@ test('redaction', () => {
   expect(redactSubject('123456 is your code')).toBe('•••• is your code')
   expect(redactSubject('a 123 b 12345678 c 123456789')).toBe('a 123 b •••• c 123456789')
 })
+
+test.each([
+  'Reset your Microsoft password', 'Dein Passwort-Reset', 'Ihr Sicherheits-Code', 'Anmelde-Code', 'Bestätigungs-Code',
+  'Your authentication code', 'Recovery code', 'Sign-in link', 'Verify your account', 'Reset your password',
+  'Your code is 482 913', 'Code 48-29-13',
+])('%s is security mail (variants)', (s) => expect(classify({ subject: s, fromAddress: null }).security).toBe(true))
+
+test.each(['Postleitzahl 80331', 'Invoice 12345678', 'Meeting 1430', 'Order 55512 shipped', 'Rechnung 2024-0815', 'Reset the router'])(
+  '%s is not (variants)',
+  (s) => expect(classify({ subject: s, fromAddress: null }).security).toBe(false),
+)
+
+test('redaction masks grouped digit codes', () => {
+  expect(redactSubject('Your code is 482 913')).toBe('Your code is ••••')
+  expect(redactSubject('Code 48-29-13')).toBe('Code ••••')
+  expect(redactSubject('Code 482-913')).toBe('Code ••••')
+  expect(redactSubject('Code 1 2 3')).toBe('Code 1 2 3')
+})
