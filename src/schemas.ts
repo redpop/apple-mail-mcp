@@ -8,7 +8,7 @@ export const messageRow = z.object({
   gid: z.number().int(),
   messageIdHeader: z.string().nullable(),
   subject: z.string(),
-  sender: person,
+  sender: person.nullable(),
   recipients: z.array(person.extend({ type: z.enum(['to', 'cc', 'bcc']) })),
   recipientCount: z.number().int(),
   dateReceived: z.number().int(),

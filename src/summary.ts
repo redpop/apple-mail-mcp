@@ -34,7 +34,7 @@ export type MessageSummary = z.infer<typeof MessageSummary>
 export const DEFAULT_MAX_RECIPIENTS = 5
 
 export function toSummary(row: MessageRow, policy: Policy, config: Config, maxRecipients: number = DEFAULT_MAX_RECIPIENTS): MessageSummary {
-  const from = row.sender.address === '' ? null : { address: row.sender.address, name: row.sender.name }
+  const from = row.sender === null || row.sender.address === '' ? null : { address: row.sender.address, name: row.sender.name }
   const verdict = classify({ subject: row.subject, fromAddress: from?.address ?? null })
   const redact = verdict.security && !config.showSecurityMails
   const pick = (type: 'to' | 'cc') =>

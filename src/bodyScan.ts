@@ -181,7 +181,7 @@ export async function scanBodies(a: {
         if (text === null) {
           unavailable++
         } else {
-          const verdict = classify({ subject: row.subject, fromAddress: row.sender.address === '' ? null : row.sender.address, text })
+          const verdict = classify({ subject: row.subject, fromAddress: row.sender === null || row.sender.address === '' ? null : row.sender.address, text })
           if (!verdict.security || a.config.showSecurityMails) {
             const ctx = findMatch(text, term)
             if (ctx !== null) matches.push({ row, matchContext: ctx })

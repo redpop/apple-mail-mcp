@@ -5,7 +5,9 @@ import Foundation
 // Bekannte Abweichung zu JS toLowerCase beim griechischen Schluss-Sigma; unkritisch, weil in Swift
 // beide Seiten jeder DB-Suche gefaltet werden.
 public func fold(_ s: String) -> String {
-    s.lowercased()
+    // Reines ASCII: nur Kleinschreibung, NFC und ss-Ersatz aendern nichts (gleiches Ergebnis wie der allgemeine Weg).
+    if s.utf8.allSatisfy({ $0 < 0x80 }) { return s.lowercased() }
+    return s.lowercased()
         .precomposedStringWithCanonicalMapping
         .replacingOccurrences(of: "ß", with: "ss")
 }

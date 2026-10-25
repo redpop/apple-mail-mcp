@@ -97,7 +97,9 @@ import Testing
     @Test func fromMatchesAddressAndName() throws {
         #expect(gids(try store.search(.init(allowedMailboxIds: all, from: "BILLING@", limit: 10))) == names(["invoice"]))
         #expect(gids(try store.search(.init(allowedMailboxIds: all, from: "carol", limit: 10))) == names(["allmail"]))
-        let byName = try store.search(.init(allowedMailboxIds: all, from: "bob@example.org", limit: 10))
+        let byAddress = try store.search(.init(allowedMailboxIds: all, from: "bob@example.org", limit: 10))
+        #expect(gids(byAddress) == names(["tie1", "tie2"]))
+        let byName = try store.search(.init(allowedMailboxIds: all, from: "BOB MUSTER", limit: 10))
         #expect(gids(byName) == names(["tie1", "tie2"]))
     }
 
@@ -206,6 +208,38 @@ import Testing
         print("search page over 10000 extra rows: \(elapsed)")
         #expect(r.messages.count == 20 && r.hasMore)
         #expect(elapsed < .seconds(2))
+    }
+
+    @Test func filteredPagesOnTenThousandRowsAreFast() throws {
+        let big = try FixtureBuilder.build(extraMessages: 10_000)
+        let s = MailStore(config: big.config)
+        let ids = big.allMailboxIds
+        _ = try s.search(.init(allowedMailboxIds: ids, limit: 1))
+        let cases: [(String, SearchRequest, Int)] = [
+            ("subject", .init(allowedMailboxIds: ids, subject: "thema 17", limit: 20, countTotal: true), 20),
+            ("from", .init(allowedMailboxIds: ids, from: "ABSENDER 42", limit: 20, countTotal: true), 20),
+            ("to", .init(allowedMailboxIds: ids, to: "empfaenger7@", limit: 20, countTotal: true), 20),
+            ("query", .init(allowedMailboxIds: ids, query: "empfaenger 123", limit: 20, countTotal: true), 20),
+        ]
+        for (name, req, _) in cases {
+            let t0 = ContinuousClock.now
+            let r = try s.search(req)
+            let elapsed = ContinuousClock.now - t0
+            print("filtered search \(name): \(elapsed)")
+            #expect(!r.messages.isEmpty, "\(name)")
+            #expect(r.totalMatched == r.messages.count || r.hasMore, "\(name)")
+            #expect(elapsed < .milliseconds(500), "\(name)")
+        }
+        // Zahlen stimmen: "thema 17" trifft Thema 17 und 170-179 (11 Betreffs) mit je 20 Zeilen.
+        let r = try s.search(.init(allowedMailboxIds: ids, subject: "thema 17", limit: 1000, countTotal: true))
+        #expect(r.totalMatched == 220 && r.messages.count == 220)
+    }
+
+    @Test func foldAsciiFastPathEqualsGeneralPath() {
+        for s in ["Hello World", "ABC xyz 123 %_", "", "Re: Rechnung 2024-0815"] {
+            #expect(fold(s) == s.lowercased().precomposedStringWithCanonicalMapping.replacingOccurrences(of: "ß", with: "ss"))
+        }
+        #expect(fold("Straße ÄRGER") == "strasse ärger")
     }
 
     @Test func mailboxIdsOutsideAllowedIsInvalidInput() throws {

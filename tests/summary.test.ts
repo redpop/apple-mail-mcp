@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import type { Config } from '../src/config.js'
 import { computePolicy } from '../src/policy.js'
-import type { ListMailboxesResult, MessageRow } from '../src/schemas.js'
+import { messageRow, type ListMailboxesResult, type MessageRow } from '../src/schemas.js'
 import { toSummary } from '../src/summary.js'
 
 const config: Config = {
@@ -25,6 +25,12 @@ const rowNoHeader = row({ messageIdHeader: null, subject: '', sender: { address:
 
 test('summary of message without header, sender, subject', () => {
   expect(toSummary(rowNoHeader, policy, config)).toMatchObject({ link: null, from: null, subject: '', threadId: null, bodyLocal: 'none' })
+})
+test('Swift-shaped row with sender null parses and yields from null', () => {
+  const swiftShaped = JSON.parse(JSON.stringify({ ...row(), sender: null }))
+  const parsed = messageRow.parse(swiftShaped)
+  expect(parsed.sender).toBeNull()
+  expect(toSummary(parsed, policy, config).from).toBeNull()
 })
 test('basic field mapping', () => {
   expect(toSummary(row(), policy, config)).toEqual({

@@ -79,51 +79,59 @@ extension MailStore {
     /// erlaubten Kopien, damit Keyset und angezeigtes Datum uebereinstimmen.
     private func candidateCTE(_ r: SearchRequest) -> (sql: String, bind: [SQLValue]) {
         var bind: [SQLValue] = r.allowedMailboxIds.map { .int($0) }
+        var wherePre: [String] = []
+        var whereBind: [SQLValue] = []
         var having: [String] = []
+        var havingBind: [SQLValue] = []
+        let allowedIn = "m2.mailbox IN (\(placeholders(r.allowedMailboxIds.count)))"
+        let allowedBind: [SQLValue] = r.allowedMailboxIds.map { .int($0) }
 
-        func anyCopy(_ cond: String, _ b: [SQLValue]) {
-            having.append("max(CASE WHEN \(cond) THEN 1 ELSE 0 END) = 1")
-            bind += b
-        }
         func term(_ s: String?) -> String? {
             guard let s else { return nil }
             let f = fold(s)
             return f.isEmpty ? nil : f
         }
-        let senderCond = "(instr(mcp_fold(a.address), ?) > 0 OR instr(mcp_fold(a.comment), ?) > 0)"
-        let subjectCond = "instr(mcp_fold(s.subject), ?) > 0"
-        let recipientCond = """
-            EXISTS (SELECT 1 FROM recipients r JOIN addresses ra ON ra.ROWID = r.address
-                    WHERE r.message = m.ROWID
-                      AND (instr(mcp_fold(ra.address), ?) > 0 OR instr(mcp_fold(ra.comment), ?) > 0))
+        // Textfilter: die kleinen Woerterbuchtabellen (subjects, addresses) werden gefaltet, nicht die
+        // Nachrichten- oder Empfaengerzeilen. Ein IN je Filter, damit "irgendeine erlaubte Kopie" je Filter gilt.
+        let subjectDict = "m2.subject IN (SELECT ROWID FROM subjects WHERE instr(mcp_fold(subject), ?) > 0)"
+        let senderDict = "m2.sender IN (SELECT ROWID FROM addresses WHERE instr(mcp_fold(address), ?) > 0 OR instr(mcp_fold(comment), ?) > 0)"
+        let recipientDict = """
+            m2.ROWID IN (SELECT r.message FROM recipients r WHERE r.address IN
+                (SELECT ROWID FROM addresses WHERE instr(mcp_fold(address), ?) > 0 OR instr(mcp_fold(comment), ?) > 0))
             """
+        func textFilter(_ cond: String, _ binds: [SQLValue]) {
+            wherePre.append("""
+                m.global_message_id IN (SELECT m2.global_message_id FROM messages m2
+                    WHERE m2.deleted = 0 AND \(allowedIn) AND (\(cond)))
+                """)
+            whereBind += allowedBind + binds
+        }
+        if let t = term(r.from) { textFilter(senderDict, [.text(t), .text(t)]) }
+        if let t = term(r.to) { textFilter(recipientDict, [.text(t), .text(t)]) }
+        if let t = term(r.subject) { textFilter(subjectDict, [.text(t)]) }
+        if let t = term(r.query) {
+            textFilter("\(subjectDict) OR \(senderDict) OR \(recipientDict)", [.text(t), .text(t), .text(t), .text(t), .text(t)])
+        }
 
         if let ids = r.mailboxIds {
             having.append("max(CASE WHEN m.mailbox IN (\(placeholders(ids.count))) THEN 1 ELSE 0 END) = 1")
-            bind += ids.map { .int($0) }
+            havingBind += ids.map { .int($0) }
         }
-        if let t = term(r.from) { anyCopy(senderCond, [.text(t), .text(t)]) }
-        if let t = term(r.to) { anyCopy(recipientCond, [.text(t), .text(t)]) }
-        if let t = term(r.subject) { anyCopy(subjectCond, [.text(t)]) }
-        if let t = term(r.query) {
-            anyCopy("(\(subjectCond) OR \(senderCond) OR \(recipientCond))",
-                    [.text(t), .text(t), .text(t), .text(t), .text(t)])
-        }
-        if let since = r.since { having.append("max(m.date_received) >= ?"); bind.append(.int(since)) }
-        if let before = r.before { having.append("max(m.date_received) < ?"); bind.append(.int(before)) }
+        if let since = r.since { having.append("max(m.date_received) >= ?"); havingBind.append(.int(since)) }
+        if let before = r.before { having.append("max(m.date_received) < ?"); havingBind.append(.int(before)) }
         if let u = r.unread { having.append("max(m.read) = \(u ? 0 : 1)") }
         if let f = r.flagged { having.append("max(m.flagged) = \(f ? 1 : 0)") }
         if let h = r.hasAttachment {
             having.append("max(EXISTS (SELECT 1 FROM attachments t WHERE t.message = m.ROWID)) = \(h ? 1 : 0)")
         }
+        bind += whereBind + havingBind
 
         let sql = """
             WITH cand AS (
                 SELECT m.global_message_id AS gid, max(m.date_received) AS d
                 FROM messages m
-                LEFT JOIN subjects s ON s.ROWID = m.subject
-                LEFT JOIN addresses a ON a.ROWID = m.sender
                 WHERE m.deleted = 0 AND m.mailbox IN (\(placeholders(r.allowedMailboxIds.count)))
+                \(wherePre.map { "AND " + $0 }.joined(separator: " "))
                 GROUP BY m.global_message_id
                 \(having.isEmpty ? "" : "HAVING " + having.joined(separator: " AND "))
             )
@@ -158,7 +166,11 @@ extension MailStore {
 
         var result = SearchResult(messages: try loadRows(gids: gids, allowed: r.allowedMailboxIds, maxRecipients: r.maxRecipients),
                                   hasMore: hasMore)
-        if r.countTotal {
+        if r.countTotal, r.after == nil, !hasMore {
+            // Erste Seite ohne Rest: die Zaehlung ist die Seitengroesse.
+            result.totalMatched = result.messages.count
+            result.totalMatchedCapped = false
+        } else if r.countTotal {
             var n = 0
             try db.query(cte.sql + " SELECT count(*) FROM (SELECT gid FROM cand LIMIT \(countCap + 1))", cte.bind) {
                 n = Int($0.int(0))

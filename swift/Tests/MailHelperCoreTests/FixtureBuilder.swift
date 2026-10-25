@@ -344,8 +344,10 @@ enum FixtureBuilder {
         if extraMessages > 0 {
             // Massenzeilen ohne Dateien, alle in INBOX; Datum faellt je Zeile um eine Sekunde.
             let inbox = f.mailboxId(named: "inbox")
-            let subj = try subjectId("Massenmail")
-            let sender = try addressId("bulk@example.com", "Bulk")
+            // Woerterbuecher mit Vielfalt: 500 Betreffs, 300 Absender, 400 Empfaenger, reihum vergeben.
+            let subjects = try (0..<500).map { try subjectId("Massenmail Thema \($0)") }
+            let senders = try (0..<300).map { try addressId("bulk\($0)@example.com", "Bulk Absender \($0)") }
+            let rcpts = try (0..<400).map { try addressId("empfaenger\($0)@example.org", "Empfaenger \($0)") }
             let baseRowid: Int64 = 10_000_000
             let baseGid: Int64 = 5_000_000
             let baseDate: Int64 = 1_600_000_000
@@ -357,8 +359,10 @@ enum FixtureBuilder {
                         date_sent, date_received, mailbox, read, flagged, deleted, conversation_id)
                     VALUES (?, ?, ?, '', ?, ?, ?, ?, 1, 0, 0, 0)
                     """,
-                    [.int(baseRowid + i), .int(baseGid + i), .int(sender), .int(subj),
+                    [.int(baseRowid + i), .int(baseGid + i), .int(senders[Int(i) % 300]), .int(subjects[Int(i) % 500]),
                      .int(baseDate + i), .int(baseDate + i), .int(inbox)])
+                try db.run("INSERT INTO recipients (message, address, type, position) VALUES (?, ?, 0, 0)",
+                           [.int(baseRowid + i), .int(rcpts[Int(i) % 400])])
             }
         }
         try db.exec("COMMIT")
