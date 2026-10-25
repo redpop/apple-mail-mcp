@@ -1,0 +1,18 @@
+From: Anna Beispiel <anna@example.com>
+To: Bob Test <bob@example.org>, carol@example.net
+Cc: Dan <dan@example.test>
+Reply-To: reply@example.com
+Date: Mon, 20 Oct 2025 10:00:00 +0200
+Subject: Test
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset=utf-8
+
+Plain part wins
+--alt
+Content-Type: text/html; charset=utf-8
+
+<p>Html part loses</p>
+--alt--
