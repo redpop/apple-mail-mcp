@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import type { Config } from '../src/config.js'
-import { computePolicy, type ListMailboxesResult } from '../src/policy.js'
+import { computePolicy } from '../src/policy.js'
+import type { ListMailboxesResult } from '../src/schemas.js'
 
 const base: Config = {
   accounts: [], includeJunk: false, includeTrash: false, excludeMailboxes: [], showSecurityMails: false,

@@ -2,14 +2,7 @@ import { createHash } from 'node:crypto'
 import type { Config } from './config.js'
 import { fold } from './fold.js'
 import { parseMailbox, type ParsedMailbox } from './mailboxes.js'
-
-// Vorlaeufig lokal (Spec 7.3 list-mailboxes plus 5.6); Task 12 ersetzt ihn durch den zod-Typ.
-export type ListMailboxesResult = {
-  mailboxes: { id: number; url: string; total: number; unread: number }[]
-  accounts: { uuid: string; description: string | null; username: string | null }[]
-  accountNames: 'available' | 'unavailable'
-  accountNamesReason?: string | null
-}
+import type { ListMailboxesResult } from './schemas.js'
 
 export interface AccountView {
   id: string
