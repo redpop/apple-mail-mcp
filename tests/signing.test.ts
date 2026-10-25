@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { describe, expect, it, test } from 'vitest'
 import { ADHOC_BUNDLE_ID, checkBundle, DEV_BUNDLE_ID, readBundleId, RELEASE_BUNDLE_ID, RELEASE_REQUIREMENT, TEAM_ID, type ExecFn } from '../src/signing.js'
 
 function fakeExec(o: { plutil: string; codesignExit?: number }): ExecFn & { calls: [string, string[]][] } {
@@ -18,6 +19,14 @@ function fakeExec(o: { plutil: string; codesignExit?: number }): ExecFn & { call
 const exists = () => true
 
 describe('signing', () => {
+  test('TEAM_ID and bundle ids match swift/build.sh', () => {
+    const script = readFileSync(new URL('../swift/build.sh', import.meta.url), 'utf8')
+    expect(script).toContain(`TEAM_ID="${TEAM_ID}"`)
+    expect(script).toContain(`RELEASE_BUNDLE_ID="${RELEASE_BUNDLE_ID}"`)
+    expect(script).toContain(`DEV_BUNDLE_ID="${DEV_BUNDLE_ID}"`)
+    expect(script).toContain(`ADHOC_BUNDLE_ID="${ADHOC_BUNDLE_ID}"`)
+  })
+
   it('constants', () => {
     expect(TEAM_ID).toBe('4KTGF63CD2')
     expect(DEV_BUNDLE_ID).toBe(RELEASE_BUNDLE_ID + '.dev')

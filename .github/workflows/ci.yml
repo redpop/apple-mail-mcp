@@ -40,3 +40,15 @@ jobs:
 
       - name: TypeScript build
         run: npm run build
+
+      # Ad hoc, ohne Secrets: prueft, dass das universelle Bundle entsteht.
+      - name: Build helper
+        run: npm run build:helper
+
+      - name: Helper is universal
+        run: |
+          set -euo pipefail
+          INFO="$(/usr/bin/lipo -info "bin/Mail MCP Helper (Ad hoc).app/Contents/MacOS/mail-helper")"
+          echo "$INFO"
+          echo "$INFO" | /usr/bin/grep -q x86_64
+          echo "$INFO" | /usr/bin/grep -q arm64

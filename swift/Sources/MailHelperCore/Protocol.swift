@@ -3,9 +3,6 @@ import Foundation
 /// Version des NDJSON-Protokolls (Spec 7.1). Node vergleicht sie im `hello`.
 public let protocolVersion = 1
 
-/// Wird vom Build-Skript (Task 9) erzeugt; bis dahin ein fester Wert.
-public let helperVersion = "0.0.0"
-
 /// Spec 7.3 `hello`: Ergebnis.
 public struct HelloResult: Codable, Equatable, Sendable {
     public var protocolVersion: Int
