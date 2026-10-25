@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod/v4'
 import type { ToolContext } from '../context.js'
+import { HelperError } from '../errors.js'
 import { threadResult } from '../schemas.js'
 import { MessageSummary, toSummary } from '../summary.js'
 import { respond } from './respond.js'
@@ -23,7 +24,7 @@ export function registerGetThread(server: McpServer, ctx: ToolContext): void {
   server.registerTool(
     'get_thread',
     {
-      description: 'Returns the summaries of all messages in the conversation that contains the given message, oldest first, without bodies. Changes nothing.',
+      description: 'Returns summaries of the messages in the conversation that contains the given message (up to the limit, oldest first), without bodies. Changes nothing.',
       inputSchema: Input,
       outputSchema: Output,
       annotations: { title: 'Get thread', readOnlyHint: true, idempotentHint: true, openWorldHint: false },
@@ -32,6 +33,7 @@ export function registerGetThread(server: McpServer, ctx: ToolContext): void {
       respond(async () => {
         const config = ctx.config()
         const policy = await ctx.policy()
+        if (policy.allowedMailboxIds.length === 0) throw new HelperError('MESSAGE_NOT_FOUND', '')
         const raw = threadResult.parse(
           await ctx.runner.run('thread', {
             allowedMailboxIds: policy.allowedMailboxIds,

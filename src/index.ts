@@ -32,4 +32,10 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   })
 }
 
+// EOF auf stdin schliesst den Transport; dann darf der Helper-Kindprozess nicht ueberleben.
+server.server.onclose = () => {
+  runner.stop()
+  process.exit(0)
+}
+
 await server.connect(new StdioServerTransport())

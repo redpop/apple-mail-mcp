@@ -64,6 +64,16 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
           // Unbekannt, ausgeschlossen und unlesbar sehen gleich aus.
           if (mailboxIds.some((id) => !allowed.has(id))) throw new HelperError('MAILBOX_NOT_FOUND', '')
         }
+        // Ohne sichtbare Mailbox gibt es nichts zu suchen; der Helper verlangt eine nicht leere Menge.
+        if (policy.allowedMailboxIds.length === 0) {
+          return {
+            structured: Output.parse({
+              messages: [],
+              nextCursor: null,
+              note: 'No mailbox is visible with the current configuration, so there is nothing to search. Call list_mailboxes to see what is visible.',
+            }),
+          }
+        }
         const since = input.since !== undefined ? parseDateInput(input.since) : undefined
         const before = input.before !== undefined ? parseDateInput(input.before) : undefined
         const limit = Math.min(input.limit, config.maxResults)

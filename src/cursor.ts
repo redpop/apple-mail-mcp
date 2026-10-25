@@ -20,7 +20,7 @@ export function encodeCursor(k: { d: number; g: number }, hash: string): string 
 }
 
 function bad(): HelperError {
-  return new HelperError('INVALID_CURSOR', 'INVALID_CURSOR: the cursor belongs to a different search or is not valid.')
+  return new HelperError('INVALID_CURSOR', 'The cursor does not belong to this search.')
 }
 
 export function decodeCursor(s: string, hash: string): { d: number; g: number } {

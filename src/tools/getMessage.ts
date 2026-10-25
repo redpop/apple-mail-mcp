@@ -53,6 +53,7 @@ export function registerGetMessage(server: McpServer, ctx: ToolContext): void {
       respond(async () => {
         const config = ctx.config()
         const policy = await ctx.policy()
+        if (policy.allowedMailboxIds.length === 0) throw new HelperError('MESSAGE_NOT_FOUND', '')
         const gid = Number(input.id)
         const raw = getMessagesResult.parse(
           await ctx.runner.run('get-messages', {
