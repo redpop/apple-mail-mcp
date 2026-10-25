@@ -4,8 +4,9 @@ import Foundation
 public final class MailStore {
     let config: MailStoreConfig
     /// Eine Envelope-Index-Verbindung pro Helper-Lebenszeit (Spec 5.2), lazy geoeffnet.
-    private var envelope: (path: String, db: Database)?
-    var accountNamesCache: AccountNamesLookup?
+    private var envelope: (path: String, dev: dev_t, ino: ino_t, db: Database)?
+    /// Nur "available"-Ergebnisse, geschluesselt nach der UUID-Menge der Mail-Konten.
+    var accountNamesCache: (uuids: Set<String>, lookup: AccountNamesLookup)?
 
     public init(config: MailStoreConfig) {
         self.config = config
@@ -16,9 +17,16 @@ public final class MailStore {
     func envelopeDatabase() throws(HelperFailure) -> Database {
         let located = try MailRoot.locate(root: config.mailRoot)
         let path = located.envelopeIndex.path
-        if let e = envelope, e.path == path { return e.db }
+        // Datei bei jeder Anfrage per stat pruefen: wird sie am selben Pfad neu angelegt (andere Inode),
+        // liest die alte Verbindung nur die entlinkte Datei. Dann neu oeffnen und Kontonamen verwerfen.
+        var st = stat()
+        let statted = stat(path, &st) == 0
+        if let e = envelope, e.path == path, statted, e.dev == st.st_dev, e.ino == st.st_ino { return e.db }
+        envelope = nil
+        accountNamesCache = nil
         let db = try Database(readOnlyAt: located.envelopeIndex)
-        envelope = (path, db)
+        // Nach dem Oeffnen erneut stat, damit dev/ino zur geoeffneten Datei passen.
+        if stat(path, &st) == 0 { envelope = (path, st.st_dev, st.st_ino, db) }
         return db
     }
 }

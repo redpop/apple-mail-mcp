@@ -18,6 +18,10 @@ import Testing
 
     @Test func accountNamesOnlyForMailAccounts() throws {
         let f = try FixtureBuilder.build()
+        // C ist in Accounts4, hat aber nur ein Nicht-Mail-Schema: darf nie erscheinen.
+        let h = try SQLiteHandle(path: f.envelopeIndex.path)
+        try h.run("INSERT INTO mailboxes (ROWID, url, total_count, unread_count) VALUES (?, ?, ?, ?)",
+                  [.int(900), .text("caldav://\(f.accountUUID("C"))/x"), .int(0), .int(0)])
         let r = try MailStore(config: f.config).listMailboxes()
         #expect(r.accountNames == .available)
         #expect(r.accountNamesReason == nil)
@@ -93,5 +97,47 @@ import Testing
         try FileManager.default.removeItem(at: f.accountsDB)
         let bad = try JSONSerialization.jsonObject(with: JSONEncoder().encode(MailStore(config: f.config).listMailboxes())) as! [String: Any]
         #expect(bad["accountNamesReason"] as? String == "Accounts database not found")
+    }
+
+    @Test func rebuiltEnvelopeIndexAtSamePathIsReread() throws {
+        let f = try FixtureBuilder.build()
+        let store = MailStore(config: f.config)
+        #expect(try store.listMailboxes().mailboxes.count == f.seed.mailboxes.count)
+        let f2 = try FixtureBuilder.build()
+        let h = try SQLiteHandle(path: f2.envelopeIndex.path)
+        try h.run("INSERT INTO mailboxes (ROWID, url, total_count, unread_count) VALUES (?, ?, ?, ?)",
+                  [.int(901), .text("imap://\(f.accountUUID("A"))/Neu"), .int(7), .int(5)])
+        try FileManager.default.removeItem(at: f.envelopeIndex)
+        try FileManager.default.copyItem(at: f2.envelopeIndex, to: f.envelopeIndex)
+        let r = try store.listMailboxes()
+        #expect(r.mailboxes.count == f.seed.mailboxes.count + 1)
+        #expect(r.mailboxes.last?.total == 7)
+    }
+
+    @Test func unavailableAccountNamesAreNotCached() throws {
+        let f = try FixtureBuilder.build()
+        let saved = f.accountsDB.deletingLastPathComponent().appending(path: "saved.sqlite")
+        try FileManager.default.moveItem(at: f.accountsDB, to: saved)
+        let store = MailStore(config: f.config)
+        #expect(try store.listMailboxes().accountNames == .unavailable)
+        try FileManager.default.moveItem(at: saved, to: f.accountsDB)
+        let r = try store.listMailboxes()
+        #expect(r.accountNames == .available)
+        #expect(r.accounts.count == 1)
+    }
+
+    @Test func accountNamesRecomputedWhenAccountSetChanges() throws {
+        let f = try FixtureBuilder.build()
+        let store = MailStore(config: f.config)
+        #expect(try store.listMailboxes().accounts.count == 1)
+        let newUUID = "D0000000-0000-4000-8000-00000000000E"
+        let acc = try SQLiteHandle(path: f.accountsDB.path)
+        try acc.run("INSERT INTO ZACCOUNT (Z_PK, ZIDENTIFIER, ZACCOUNTDESCRIPTION, ZUSERNAME, ZOWNINGBUNDLEID) VALUES (?, ?, ?, ?, ?)",
+                    [.int(99), .text(newUUID), .text("Neu"), .text("neu@example.org"), .text("com.apple.mail")])
+        let env = try SQLiteHandle(path: f.envelopeIndex.path)
+        try env.run("INSERT INTO mailboxes (ROWID, url, total_count, unread_count) VALUES (?, ?, ?, ?)",
+                    [.int(902), .text("imap://\(newUUID)/INBOX"), .int(0), .int(0)])
+        let r = try store.listMailboxes()
+        #expect(Set(r.accounts.map(\.uuid)) == [f.accountUUID("A"), newUUID])
     }
 }

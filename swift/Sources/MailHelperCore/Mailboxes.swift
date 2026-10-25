@@ -66,14 +66,15 @@ extension MailStore {
 
     /// Einmal pro Helper-Lebenszeit; spaetere Aufrufe nutzen den Cache.
     func accountNames(for mailboxes: [MailboxInfo]) -> AccountNamesLookup {
-        if let cached = accountNamesCache { return cached }
         var seen = Set<String>()
         var uuids: [String] = []
         for m in mailboxes {
             if let u = Self.accountUUID(fromMailboxURL: m.url), seen.insert(u).inserted { uuids.append(u) }
         }
+        // Cache nur fuer "available" und nur solange die UUID-Menge gleich bleibt.
+        if let c = accountNamesCache, c.uuids == seen { return c.lookup }
         let result = Accounts.lookup(at: config.accountsDB, uuids: uuids)
-        accountNamesCache = result
+        accountNamesCache = result.available ? (seen, result) : nil
         return result
     }
 }
