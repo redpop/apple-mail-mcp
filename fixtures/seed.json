@@ -275,7 +275,8 @@
    "file": "full",
    "storeIndex": 0,
    "emlx": null,
-   "body": "Synthetischer Text fuer noHeader.\n"
+   "body": "Synthetischer Text fuer noHeader.\n",
+   "senderStored": "zero"
   },
   {
    "name": "deleted",
@@ -713,7 +714,8 @@
    "file": "full",
    "storeIndex": 0,
    "emlx": null,
-   "body": "Synthetischer Text fuer lokal.\n"
+   "body": "Synthetischer Text fuer lokal.\n",
+   "senderStored": "null"
   },
   {
    "name": "allmail",
@@ -807,6 +809,35 @@
    "storeIndex": 1,
    "emlx": null,
    "body": "Synthetischer Text fuer aerger3.\n"
+  },
+  {
+   "name": "senderDangling",
+   "gid": 1021,
+   "rowid": 38,
+   "mailbox": "inbox",
+   "subjectPrefix": "",
+   "subject": "Absender ohne Adresszeile",
+   "sender": null,
+   "recipients": [
+    {
+     "type": 0,
+     "address": "anna@example.com",
+     "comment": "Anna Tester"
+    }
+   ],
+   "dateReceived": 1700002200,
+   "dateSent": 1700002140,
+   "read": false,
+   "flagged": false,
+   "deleted": false,
+   "conversationId": 0,
+   "messageIdHeader": "<senderDangling-1021@example.com>",
+   "attachments": [],
+   "file": "full",
+   "storeIndex": 0,
+   "emlx": null,
+   "body": "Synthetischer Text fuer senderDangling.\n",
+   "senderStored": "dangling"
   }
  ]
 }

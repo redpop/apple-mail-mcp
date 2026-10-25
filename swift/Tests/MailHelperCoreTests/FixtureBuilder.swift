@@ -49,6 +49,7 @@ struct Seed: Codable, Sendable {
         let attachments: [String]
         let file: String          // "full" | "partial" | "none"
         let storeIndex: Int
+        let senderStored: String?   // nur bei sender == nil: "zero" | "null" | "dangling"
         let emlx: String?
         let body: String
     }
@@ -114,14 +115,18 @@ struct Fixture: Sendable {
               let box = seed.mailboxes.first(where: { $0.name == m.mailbox }) else {
             preconditionFailure("Seed hat keine Mail mit ROWID \(rowid)")
         }
-        let store = box.stores[m.storeIndex]
-        var dir = FixtureBuilder.mboxDirectory(root: mailRoot, url: box.url)
-        dir.append(path: store)
-        dir.append(path: "Data")
-        for digit in FixtureBuilder.digitDirs(rowid: rowid) { dir.append(path: digit) }
-        dir.append(path: "Messages")
-        let file = m.file == "partial" ? "\(rowid).partial.emlx" : "\(rowid).emlx"
-        return dir.appending(path: file)
+        // Unabhaengig vom Builder (andere Zerlegung, andere Ziffernlogik), aus festen Regeln:
+        // V10/<konto>/<seg>.mbox/.../<store>/Data/<ziffern>/Messages/<rowid>[.partial].emlx
+        let comps = URLComponents(string: box.url)!
+        var rel = "V10/" + comps.host!
+        for seg in comps.path.split(separator: "/") {
+            rel += "/" + seg.removingPercentEncoding! + ".mbox"
+        }
+        rel += "/" + box.stores[m.storeIndex] + "/Data"
+        let q = String(rowid / 1000)
+        if q != "0" { for ch in q.reversed() { rel += "/" + String(ch) } }
+        rel += "/Messages/" + String(rowid) + (m.file == "partial" ? ".partial.emlx" : ".emlx")
+        return mailRoot.appending(path: rel)
     }
 
     /// Fuehrt eine Abfrage mit einer Ganzzahl-Ergebnisspalte gegen den Envelope Index aus.
@@ -294,14 +299,20 @@ enum FixtureBuilder {
                            [.int(m.gid), m.messageIdHeader.map { .text($0) } ?? .null])
             }
             let subj = try subjectId(m.subject)
-            let sender = try m.sender.map { try addressId($0.address, $0.comment) } ?? 0
+            var sender: Int64 = 0
+            if let s = m.sender {
+                sender = try addressId(s.address, s.comment)
+            } else if m.senderStored == "dangling" {
+                sender = 9_999_999   // verweist auf keine Zeile in addresses
+            }
+            let senderValue: SQLValue = m.senderStored == "null" ? .null : .int(sender)
             let mailbox = f.mailboxId(named: m.mailbox)
             try db.run("""
                 INSERT INTO messages (ROWID, global_message_id, sender, subject_prefix, subject,
                     date_sent, date_received, mailbox, read, flagged, deleted, conversation_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                [.int(m.rowid), .int(m.gid), .int(sender), .text(m.subjectPrefix), .int(subj),
+                [.int(m.rowid), .int(m.gid), senderValue, .text(m.subjectPrefix), .int(subj),
                  .int(m.dateSent), .int(m.dateReceived), .int(mailbox),
                  .int(m.read ? 1 : 0), .int(m.flagged ? 1 : 0), .int(m.deleted ? 1 : 0), .int(m.conversationId)])
             for (pos, r) in m.recipients.enumerated() {
@@ -376,10 +387,21 @@ enum FixtureBuilder {
             }
         }
         for m in f.seed.messages where m.file != "none" {
-            let path = f.expectedEmlxPath(rowid: m.rowid)
+            let path = writerPath(f, m)
             try fm.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
             try emlxData(for: m).write(to: path)
         }
+    }
+
+    /// Eigene Pfadroutine des Builders (nicht das Orakel `expectedEmlxPath`).
+    private static func writerPath(_ f: Fixture, _ m: Seed.Message) -> URL {
+        let box = f.seed.mailboxes.first { $0.name == m.mailbox }!
+        var dir = mboxDirectory(root: f.mailRoot, url: box.url)
+        dir.append(path: box.stores[m.storeIndex])
+        dir.append(path: "Data")
+        for d in digitDirs(rowid: m.rowid) { dir.append(path: d) }
+        dir.append(path: "Messages")
+        return dir.appending(path: "\(m.rowid)" + (m.file == "partial" ? ".partial.emlx" : ".emlx"))
     }
 
     /// Rahmen: `<laenge>\n<rfc822-bytes><plist>`.

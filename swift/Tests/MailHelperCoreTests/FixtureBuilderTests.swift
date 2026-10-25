@@ -10,17 +10,52 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: f.expectedEmlxPath(rowid: 4711).path))
     }
 
-    @Test func digitRule() throws {
+    // Harte Literale relativ zu mailRoot, ohne Helfer. Prueft Oracle und tatsaechlich geschriebene Dateien.
+    @Test func literalRelativePaths() throws {
         let f = try FixtureBuilder.build()
-        let root = f.mailRoot.path
-        func tail(_ rowid: Int64) -> String {
-            let p = f.expectedEmlxPath(rowid: rowid).path
-            let parts = p.dropFirst(root.count).split(separator: "/")
-            return parts.suffix(from: parts.firstIndex(of: "Data")!).joined(separator: "/")
+        let a = "A0000000-0000-4000-8000-00000000000A"
+        let l = "10CA1000-0000-4000-8000-00000000000C"
+        let cases: [(Int64, String)] = [
+            (4711, "V10/\(a)/INBOX.mbox/5D0E0001-0000-4000-8000-000000000001/Data/4/Messages/4711.emlx"),
+            (123456, "V10/\(a)/Archiv.mbox/2024.mbox/5D0E0002-0000-4000-8000-000000000001/Data/3/2/1/Messages/123456.partial.emlx"),
+            // Erwartung in NFC (U+00C4), wie percent-dekodierte URL.
+            (29, "V10/\(a)/Spezial\u{00C4}rger.mbox/5D0E0007-0000-4000-8000-000000000002/Data/Messages/29.emlx"),
+            (7, "V10/\(a)/INBOX.mbox/5D0E0001-0000-4000-8000-000000000001/Data/Messages/7.emlx"),
+            (33, "V10/\(l)/Lokal.mbox/5D0E0008-0000-4000-8000-000000000001/Data/Messages/33.emlx"),
+        ]
+        for (rowid, rel) in cases {
+            let oracle = f.expectedEmlxPath(rowid: rowid)
+            #expect(oracle.path == f.mailRoot.path + "/" + rel, "oracle rowid \(rowid)")
+            #expect(FileManager.default.fileExists(atPath: f.mailRoot.path + "/" + rel), "file rowid \(rowid)")
         }
-        #expect(tail(7) == "Data/Messages/7.emlx")
-        #expect(tail(4711) == "Data/4/Messages/4711.emlx")
-        #expect(tail(123456) == "Data/3/2/1/Messages/123456.partial.emlx")
+        // Rohbytes des Verzeichniseintrags (readdir): Foundation legt Namen zerlegt (NFD: A + U+0308) an; die
+        // NFC-Schreibweise oben loest trotzdem auf, weil APFS normalisierungsunempfindlich vergleicht.
+        let dir = try #require(opendir(f.mailRoot.path + "/V10/\(a)"))
+        defer { closedir(dir) }
+        var names: [[UInt8]] = []
+        while let e = readdir(dir) {
+            let bytes = withUnsafeBytes(of: e.pointee.d_name) { Array($0.prefix { $0 != 0 }) }
+            names.append(bytes)
+        }
+        let nfc: [UInt8] = Array("Spezial".utf8) + [0x41, 0xCC, 0x88] + Array("rger.mbox".utf8)
+        #expect(names.contains(nfc))
+    }
+
+    @Test func noSenderEncodings() throws {
+        let f = try FixtureBuilder.build()
+        func sender(_ name: String) throws -> (isNull: Bool, value: Int64, rows: Int64) {
+            let rowid = try #require(f.seed.messages.first { $0.name == name }).rowid
+            let isNull = try f.count("SELECT sender IS NULL FROM messages WHERE ROWID = \(rowid)") == 1
+            let v = try f.count("SELECT coalesce(sender, -1) FROM messages WHERE ROWID = \(rowid)")
+            let rows = try f.count("SELECT count(*) FROM addresses WHERE ROWID = \(v)")
+            return (isNull, v, rows)
+        }
+        let zero = try sender("noHeader")
+        #expect(!zero.isNull && zero.value == 0 && zero.rows == 0)
+        let null = try sender("lokal")
+        #expect(null.isNull)
+        let dangling = try sender("senderDangling")
+        #expect(!dangling.isNull && dangling.value > 0 && dangling.rows == 0)
     }
 
     @Test func fileKindsMatchSeed() throws {
