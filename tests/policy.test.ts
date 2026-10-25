@@ -74,3 +74,9 @@ test('fingerprint changes with config, ignores helperPath and debug', () => {
   expect(f(cfg({ excludeMailboxes: ['x'] }))).not.toBe(f(base))
   expect(f(cfg({ helperPath: '/a', debug: true }))).toBe(f(base))
 })
+
+test('junk/trash mailbox with invalid url segment is excluded by default', () => {
+  const r = raw({ mailboxes: [mb(1, `imap://${A}/INBOX`), mb(2, `imap://${A}/%ZZ/Junk`), mb(3, `imap://${A}/a//Trash`)] })
+  expect(computePolicy(base, r).allowedMailboxIds).toEqual([1])
+  expect(computePolicy(cfg({ includeJunk: true, includeTrash: true }), r).allowedMailboxIds).toEqual([1, 2, 3])
+})

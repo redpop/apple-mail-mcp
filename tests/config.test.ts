@@ -50,3 +50,7 @@ test('exclude list and helper path and debug', () => {
   expect(c.helperPath).toBe('/x/helper')
   expect(c.debug).toBe(true)
 })
+
+test.each(['APPLE_MAIL_ACCOUNTS', 'APPLE_MAIL_EXCLUDE_MAILBOXES'])('%s with only separators is invalid', (key) => {
+  for (const v of [',', ' , ', ',,']) expect(loadConfig({ [key]: v })).toMatchObject({ ok: false, key })
+})

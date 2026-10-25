@@ -50,7 +50,10 @@ function int(env: NodeJS.ProcessEnv, key: string, def: number, min: number, max:
 function list(env: NodeJS.ProcessEnv, key: string): string[] {
   const v = raw(env, key)
   if (v === undefined) return []
-  return v.split(',').map((s) => s.trim()).filter((s) => s !== '')
+  const items = v.split(',').map((s) => s.trim()).filter((s) => s !== '')
+  // Nicht leerer Wert ohne Eintraege waere sonst "alle" (fail-open).
+  if (items.length === 0) throw new ConfigError(key, `${key} contains no entries`)
+  return items
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): ConfigResult {

@@ -95,12 +95,32 @@ function roleOf(path: string[]): MailboxRole {
   return 'other'
 }
 
+// Rolle bei unzulaessigem Pfad: letztes nicht leeres Roh-Segment, nach Moeglichkeit
+// dekodiert, sonst roh. Nie inbox. So bleiben Junk/Trash trotzdem ausgeschlossen.
+function bestEffortRole(tail: string): MailboxRole {
+  const segs = tail.split('/')
+  for (let i = segs.length - 1; i >= 0; i--) {
+    let t = segs[i]!
+    try {
+      t = decodeURIComponent(t)
+    } catch {
+      // roher Text
+    }
+    const last = t.split('/').filter((x) => x !== '').pop()
+    if (last === undefined) continue
+    const r = roleOf([last, last])
+    return r === 'inbox' ? 'other' : r
+  }
+  return 'other'
+}
+
 export function parseMailbox(raw: { id: number; url: string; total: number; unread: number }): ParsedMailbox {
   const m = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/]*)(?:\/(.*))?$/s.exec(raw.url)
   const scheme = m?.[1] ?? ''
   const accountId = m?.[2] ?? ''
   const tail = m ? (m[3] ?? '') : raw.url
-  const path = m ? (decodePath(tail) ?? []) : []
+  const decoded = m ? decodePath(tail) : null
+  const path = decoded ?? []
   return {
     id: raw.id,
     url: raw.url,
@@ -108,7 +128,7 @@ export function parseMailbox(raw: { id: number; url: string; total: number; unre
     type: m ? typeOf(scheme) : 'other',
     path,
     name: path.length > 0 ? path[path.length - 1]! : tail,
-    role: roleOf(path),
+    role: decoded ? roleOf(path) : m ? bestEffortRole(tail) : 'other',
     total: raw.total,
     unread: raw.unread,
   }

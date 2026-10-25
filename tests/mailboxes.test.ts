@@ -33,3 +33,11 @@ test.each(['imap://U/a//b', 'imap://U/a/.', 'imap://U/..', 'imap://U/a%2Fb', 'im
 test('name falls back to raw url tail when path is empty', () =>
   expect(p('imap://U/%ZZ').name).toBe('%ZZ'))
 test('garbage url does not throw', () => expect(p('not a url')).toMatchObject({ role: 'other', path: [], type: 'other' }))
+
+test.each([
+  ['imap://U/INBOX/Sent', 'sent'], ['imap://U/INBOX/Junk', 'junk'], ['imap://U/%5BGmail%5D/Spam', 'junk'],
+  ['imap://U/%ZZ/Junk', 'junk'], ['imap://U/a//Trash', 'trash'], ['imap://U/../Papierkorb', 'trash'],
+  ['imap://U/a%2FJunk', 'junk'], ['imap://U/%ZZ/INBOX', 'other'],
+])('role of %s is %s', (url, role) => expect(p(url).role).toBe(role))
+test('invalid url keeps empty path but classifies junk', () =>
+  expect(p('imap://U/%ZZ/Junk')).toMatchObject({ path: [], role: 'junk' }))
