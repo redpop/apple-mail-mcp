@@ -59,7 +59,7 @@ export function createStdioRunner(
   let live: Live | undefined
   let buffer = ''
   let nextId = 1
-  /** Hat der aktuelle Prozess schon eine echte (nicht-hello) Anfrage beantwortet? Steuert die Frist. */
+  /** Hat der aktuelle Prozess schon geantwortet (hello zaehlt)? Steuert die Frist. */
   let isWarm = false
   /** Timeouts in Folge auf einem warmen Helper; zwei davon heissen: haengt, neu starten. */
   let consecutiveTimeouts = 0
@@ -107,10 +107,9 @@ export function createStdioRunner(
     const entry = pending.splice(index, 1)[0]
     if (entry === undefined) return
     clearTimeout(entry.timer)
-    if (!entry.isHello) {
-      isWarm = true
-      consecutiveTimeouts = 0
-    }
+    // Auch hello macht den Helper warm: nur die allererste Anfrage nach dem Start bekommt die lange Frist (Spec 7.2).
+    isWarm = true
+    consecutiveTimeouts = 0
 
     if (parsed.ok === true) {
       entry.resolve(parsed.result)
@@ -156,6 +155,7 @@ export function createStdioRunner(
           const timeout = new HelperError('HELPER_TIMEOUT', `No response from the helper within ${String(timeoutMs)}ms.`)
           if (isHello) {
             discardChild(timeout)
+            reject(timeout) // Der Eintrag ist schon aus pending entfernt; ohne dies bliebe ready offen.
             return
           }
           if (isWarm) {

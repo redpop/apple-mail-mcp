@@ -10,20 +10,24 @@ export class HelperError extends Error {
 }
 
 /** Meldung fuer FULL_DISK_ACCESS_REQUIRED (Spec 10), mit eingesetztem Bundle-Pfad. */
-export function fdaMessage(bundlePath: string): string {
+function fdaText(pathSentence: string): string {
   return (
     'Apple Mail data is protected by macOS. Full Disk Access has to be granted to the small helper app "Mail MCP Helper", not to the MCP client. ' +
     'A Finder window showing it has been opened. The user needs to open System Settings > Privacy & Security > Full Disk Access, ' +
     'drag "Mail MCP Helper" from that Finder window into the list, and switch it on. ' +
-    `Alternatively click +, press Cmd-Shift-G and paste \`${bundlePath}\`. ` +
+    pathSentence +
     'If "Mail MCP Helper" is already listed and switched on, the entry is stale: remove it with −, then add it again. ' +
     'Retry afterwards; no restart is needed. In Terminal, `npx -y @redpop/apple-mail-mcp setup` walks through the same steps.'
   )
 }
 
 // Texte gehen an das Modell, das den Tool-Aufruf gemacht hat: auf Englisch, mit Klickpfad, wo nur ein Mensch handeln kann.
+export function fdaMessage(bundlePath: string): string {
+  return fdaText(`Alternatively click +, press Cmd-Shift-G and paste \`${bundlePath}\`. `)
+}
+
 const MESSAGES: Record<string, string> = {
-  FULL_DISK_ACCESS_REQUIRED: fdaMessage('the "Mail MCP Helper.app" bundle in the package'),
+  FULL_DISK_ACCESS_REQUIRED: fdaText('Alternatively click + and add the "Mail MCP Helper" app from the installed package. '),
   MAIL_DATA_NOT_FOUND:
     'Apple Mail does not appear to be set up on this Mac. The user needs to open the Mail app and add an account, then retry.',
   SCHEMA_UNSUPPORTED:

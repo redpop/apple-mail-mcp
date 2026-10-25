@@ -27,3 +27,15 @@ describe('errors', () => {
     expect(e.message).toBe('m')
   })
 })
+
+describe('generic FDA text', () => {
+  it('has no concrete path but the same stale-entry fix', async () => {
+    const { describeError: d, fdaMessage: f } = await import('../src/errors.js')
+    const g = d('FULL_DISK_ACCESS_REQUIRED')
+    expect(g).not.toContain('Cmd-Shift-G')
+    expect(g).not.toContain('`/')
+    expect(g).toContain('click + and add the "Mail MCP Helper" app')
+    expect(g).toContain('remove it with −')
+    expect(f('/x/Mail MCP Helper.app')).toContain('paste `/x/Mail MCP Helper.app`')
+  })
+})

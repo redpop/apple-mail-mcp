@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import type { Config } from './config.js'
 import { checkBundle } from './signing.js'
-import { createStdioRunner } from './stdioRunner.js'
+import { createStdioRunner, type StdioHelperRunner } from './stdioRunner.js'
 
 export interface HelperRunner {
   run(command: string, payload: Record<string, unknown>): Promise<unknown>
@@ -21,16 +21,23 @@ export function helperExecutable(bundle: string): string {
 }
 
 /** Ein Runner pro Serverprozess; das Signaturgatter laeuft einmal vor dem ersten Start, das Ergebnis ist gecacht. */
-export function createHelperRunner(config: Config): HelperRunner & { stop(): void; bundlePath: string } {
+export function createHelperRunner(
+  config: Config,
+  deps: {
+    check?: (bundle: string, opts: { override: boolean }) => void
+    makeRunner?: (executable: string) => StdioHelperRunner
+  } = {},
+): HelperRunner & { stop(): void; bundlePath: string } {
   const bundlePath = resolveHelperBundle(config)
-  const inner = createStdioRunner(helperExecutable(bundlePath))
+  const inner = (deps.makeRunner ?? ((exe) => createStdioRunner(exe)))(helperExecutable(bundlePath))
+  const check = deps.check ?? checkBundle
   let gate: unknown
   return {
     bundlePath,
     run(command, payload) {
       if (gate === undefined) {
         try {
-          checkBundle(bundlePath, { override: config.helperPath !== null })
+          check(bundlePath, { override: config.helperPath !== null })
           gate = true
         } catch (e) {
           gate = e

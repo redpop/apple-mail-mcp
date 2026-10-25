@@ -10,8 +10,10 @@ const fast = { firstRequestMs: 3_000, requestMs: 1_000 }
 const runners: { stop: () => void }[] = []
 const dirs: string[] = []
 const saved = { v: process.env.FAKE_PROTOCOL_VERSION, l: process.env.FAKE_LOG }
+const flags = ['FAKE_HELLO_HANG', 'FAKE_HANG_AFTER_HELLO']
 
 afterEach(() => {
+  for (const f of flags) delete process.env[f]
   while (runners.length) runners.pop()?.stop()
   while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true })
   if (saved.v === undefined) delete process.env.FAKE_PROTOCOL_VERSION; else process.env.FAKE_PROTOCOL_VERSION = saved.v
@@ -61,7 +63,8 @@ describe('createStdioRunner', () => {
   })
 
   it('oversized line discards the helper', async () => {
-    const r = make()
+    const r = createStdioRunner(FAKE, { firstRequestMs: 10_000, requestMs: 10_000 })
+    runners.push(r)
     await expect(r.run('huge', {})).rejects.toMatchObject({ code: 'HELPER_CRASHED', message: expect.stringContaining('response too large') })
     // naechster Aufruf startet frisch
     await expect(r.run('echo-pid', {})).resolves.toHaveProperty('pid')
@@ -99,4 +102,26 @@ describe('createStdioRunner', () => {
     await new Promise((res) => setTimeout(res, 200))
     expect(() => process.kill(pid, 0)).toThrow()
   })
+
+  it('hello timeout rejects waiting calls and the next call spawns fresh', async () => {
+    process.env.FAKE_HELLO_HANG = '1'
+    const r = createStdioRunner(FAKE, { firstRequestMs: 400, requestMs: 400 })
+    runners.push(r)
+    const results = await Promise.allSettled([r.run('echo-pid', {}), r.run('echo-pid', {})])
+    for (const x of results) expect(x).toMatchObject({ status: 'rejected', reason: { code: 'HELPER_TIMEOUT' } })
+    delete process.env.FAKE_HELLO_HANG
+    await expect(r.run('echo-pid', {})).resolves.toHaveProperty('pid')
+  }, 10_000)
+
+  it('after hello the short deadline applies and two timeouts restart', async () => {
+    process.env.FAKE_HANG_AFTER_HELLO = '1'
+    const r = createStdioRunner(FAKE, { firstRequestMs: 5_000, requestMs: 300 })
+    runners.push(r)
+    const t0 = Date.now()
+    await expect(r.run('echo-pid', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
+    expect(Date.now() - t0).toBeLessThan(2_000)
+    await expect(r.run('echo-pid', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
+    delete process.env.FAKE_HANG_AFTER_HELLO
+    await expect(r.run('echo-pid', {})).resolves.toHaveProperty('pid')
+  }, 10_000)
 })
