@@ -152,6 +152,26 @@ To keep this fast, search is **dictionary-first**: subject and address text live
 tables with far fewer rows than `messages`. The helper folds and matches each distinct string
 once, then selects messages by the matching ids.
 
+Folding is the expensive part (about 240 ms for one pass over a real store's 76,000 subjects), so
+the helper folds each dictionary row only once per connection. On the first search with a text
+filter it copies the folded text into two TEMP tables, `temp.fold_subjects(id, f)` and
+`temp.fold_addresses(id, a, c)`; before each later text search it appends only rows whose ROWID is
+above the highest one already folded. Text filters then run `instr(f, ?) > 0` on these tables.
+
+This writes nothing to Mail's files. The connection stays `SQLITE_OPEN_READONLY`; TEMP tables
+belong to the connection, not to the database file, and `PRAGMA temp_store = MEMORY` keeps them in
+the helper's memory (a few MB on a large store). A read-only connection may create and fill TEMP
+tables (checked with SQLite 3.54); `ATTACH ':memory:'` inherits the read-only flag and fails, which
+is why TEMP is used. Both dictionaries are `AUTOINCREMENT` and append-mostly: ROWIDs are not
+reused, and rows that disappear are harmless because matches only take effect through `messages`
+and `recipients`. A text changed in place under the same ROWID would only be refolded after the
+connection reopens, which happens when Mail recreates the index file (new inode).
+
+`totalMatched` comes from the same statement as the page, as `count(*) OVER ()` over the grouped
+candidates, and only on the first page; later pages omit it. It is exact, without the former cap
+at 10,000, so `totalMatchedCapped` is always `false`. `hasAttachment` is a prefilter on the set of
+messages with an attachment instead of an `EXISTS` per row.
+
 Timings from a reviewer's synthetic store of 238,000 message rows, run in Python as an upper
 bound for the Swift code:
 

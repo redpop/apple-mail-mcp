@@ -67,11 +67,16 @@ public struct SearchResult: Codable, Equatable, Sendable {
     }
 }
 
-private let countCap = 10_000
-
 extension MailStore {
     private static func invalid(_ field: String) -> HelperFailure {
         HelperFailure(code: .invalidInput, message: "Invalid value for \(field).")
+    }
+
+    /// Gefalteter Suchbegriff; leer zaehlt als nicht gesetzt.
+    private static func term(_ s: String?) -> String? {
+        guard let s else { return nil }
+        let f = fold(s)
+        return f.isEmpty ? nil : f
     }
 
     /// Gruppierte Kandidatenabfrage (Spec 5.4) ohne Keyset. Filter wirken auf irgendeine Kopie in
@@ -86,24 +91,27 @@ extension MailStore {
         let allowedIn = "m2.mailbox IN (\(placeholders(r.allowedMailboxIds.count)))"
         let allowedBind: [SQLValue] = r.allowedMailboxIds.map { .int($0) }
 
-        func term(_ s: String?) -> String? {
-            guard let s else { return nil }
-            let f = fold(s)
-            return f.isEmpty ? nil : f
-        }
-        // Textfilter: die kleinen Woerterbuchtabellen (subjects, addresses) werden gefaltet, nicht die
-        // Nachrichten- oder Empfaengerzeilen. Ein IN je Filter, damit "irgendeine erlaubte Kopie" je Filter gilt.
-        let subjectDict = "m2.subject IN (SELECT ROWID FROM subjects WHERE instr(mcp_fold(subject), ?) > 0)"
-        let senderDict = "m2.sender IN (SELECT ROWID FROM addresses WHERE instr(mcp_fold(address), ?) > 0 OR instr(mcp_fold(comment), ?) > 0)"
+        let term = Self.term
+        // Textfilter: die kleinen Woerterbuchtabellen (subjects, addresses) werden verglichen, nicht die
+        // Nachrichten- oder Empfaengerzeilen, und zwar in ihrer gefalteten Kopie in TEMP (FoldCache.swift).
+        // Ein IN je Filter, damit "irgendeine erlaubte Kopie" je Filter gilt.
+        let subjectDict = "m2.subject IN (SELECT id FROM temp.fold_subjects WHERE instr(f, ?) > 0)"
+        let senderDict = "m2.sender IN (SELECT id FROM temp.fold_addresses WHERE instr(a, ?) > 0 OR instr(c, ?) > 0)"
         let recipientDict = """
             m2.ROWID IN (SELECT r.message FROM recipients r WHERE r.address IN
-                (SELECT ROWID FROM addresses WHERE instr(mcp_fold(address), ?) > 0 OR instr(mcp_fold(comment), ?) > 0))
+                (SELECT id FROM temp.fold_addresses WHERE instr(a, ?) > 0 OR instr(c, ?) > 0))
             """
+        // Vorfilter auf Gruppen: irgendeine nicht geloeschte Kopie in einer erlaubten Mailbox erfuellt cond.
+        // IS NOT NULL nur zur Sicherheit fuer NOT IN (eine NULL in der Menge machte NOT IN fuer alle NULL);
+        // die Spalte ist im Schema NOT NULL.
+        func anyAllowedCopy(_ cond: String) -> String {
+            """
+            SELECT m2.global_message_id FROM messages m2
+                WHERE m2.deleted = 0 AND \(allowedIn) AND m2.global_message_id IS NOT NULL AND (\(cond))
+            """
+        }
         func textFilter(_ cond: String, _ binds: [SQLValue]) {
-            wherePre.append("""
-                m.global_message_id IN (SELECT m2.global_message_id FROM messages m2
-                    WHERE m2.deleted = 0 AND \(allowedIn) AND (\(cond)))
-                """)
+            wherePre.append("m.global_message_id IN (\(anyAllowedCopy(cond)))")
             whereBind += allowedBind + binds
         }
         if let t = term(r.from) { textFilter(senderDict, [.text(t), .text(t)]) }
@@ -122,7 +130,10 @@ extension MailStore {
         if let u = r.unread { having.append("max(m.read) = \(u ? 0 : 1)") }
         if let f = r.flagged { having.append("max(m.flagged) = \(f ? 1 : 0)") }
         if let h = r.hasAttachment {
-            having.append("max(EXISTS (SELECT 1 FROM attachments t WHERE t.message = m.ROWID)) = \(h ? 1 : 0)")
+            // Als Vorfilter statt EXISTS je Zeile im HAVING: die Menge der Nachrichten mit Anhang wird einmal
+            // gebildet. Gleiche Bedeutung: irgendeine erlaubte Kopie hat einen Anhang (bzw. keine).
+            wherePre.append("m.global_message_id \(h ? "IN" : "NOT IN") (\(anyAllowedCopy("m2.ROWID IN (SELECT message FROM attachments)")))")
+            whereBind += allowedBind
         }
         bind += whereBind + havingBind
 
@@ -148,9 +159,15 @@ extension MailStore {
         }
 
         let db = try envelopeDatabase()
+        if [r.from, r.to, r.subject, r.query].contains(where: { Self.term($0) != nil }) {
+            try db.refreshFoldedDictionaries()
+        }
         let cte = candidateCTE(r)
 
-        var sql = cte.sql + " SELECT gid, d FROM cand"
+        // Gesamtzahl nur auf der ersten Seite, per Fensterfunktion in derselben Abfrage: die Kandidaten
+        // werden ohnehin vollstaendig gruppiert, eine zweite Abfrage wiederholte alles. Exakt, ohne Obergrenze.
+        let counting = r.countTotal && r.after == nil
+        var sql = cte.sql + " SELECT gid, d\(counting ? ", count(*) OVER ()" : "") FROM cand"
         var bind = cte.bind
         if let a = r.after {
             sql += " WHERE (d, gid) < (?, ?)"
@@ -160,23 +177,21 @@ extension MailStore {
         bind.append(.int(Int64(r.limit + 1)))
 
         var gids: [Int64] = []
-        try db.query(sql, bind) { gids.append($0.int(0)) }
+        var total = 0
+        try db.query(sql, bind) {
+            gids.append($0.int(0))
+            if counting { total = Int($0.int(2)) }
+        }
         let hasMore = gids.count > r.limit
         if hasMore { gids.removeLast() }
 
         var result = SearchResult(messages: try loadRows(gids: gids, allowed: r.allowedMailboxIds, maxRecipients: r.maxRecipients),
                                   hasMore: hasMore)
-        if r.countTotal, r.after == nil, !hasMore {
-            // Erste Seite ohne Rest: die Zaehlung ist die Seitengroesse.
-            result.totalMatched = result.messages.count
+        if counting {
+            // Folgeseiten zaehlen nicht; dort fehlen beide Felder. totalMatchedCapped bleibt fuer den Vertrag
+            // mit Node erhalten und ist immer false.
+            result.totalMatched = total
             result.totalMatchedCapped = false
-        } else if r.countTotal {
-            var n = 0
-            try db.query(cte.sql + " SELECT count(*) FROM (SELECT gid FROM cand LIMIT \(countCap + 1))", cte.bind) {
-                n = Int($0.int(0))
-            }
-            result.totalMatched = min(n, countCap)
-            result.totalMatchedCapped = n > countCap
         }
         return result
     }

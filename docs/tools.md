@@ -65,8 +65,8 @@ Searches, newest first. With no filter it returns the newest messages.
 Unknown parameters are rejected.
 
 Result: `messages` (summaries), `nextCursor` (`null` on the last page), `note`, and for
-searches without `bodyContains` `totalMatched`, counted up to 10,000, with `totalMatchedCapped`
-when the true number is higher.
+searches without `bodyContains` on the first page `totalMatched`, the exact number of matches,
+with `totalMatchedCapped: false`. Later pages (with `cursor`) omit both.
 
 **Body search.** `bodyContains` decodes messages, so it is bounded: it examines up to 2,000 of
 the newest candidates for the other filters, or until 3 seconds have passed, or until `limit`

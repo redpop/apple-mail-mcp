@@ -187,15 +187,60 @@ import Testing
         #expect(m.attachmentNames.count == 20 && m.attachmentCount == 25)
     }
 
-    @Test func totalMatchedCountsAndCaps() throws {
+    @Test func totalMatchedIsExactOnTheFirstPageOnly() throws {
         let small = try store.search(.init(allowedMailboxIds: all, limit: 1, countTotal: true))
         #expect(small.totalMatched == f.visibleGids.count && small.totalMatchedCapped == false)
         let off = try store.search(.init(allowedMailboxIds: all, limit: 1))
         #expect(off.totalMatched == nil && off.totalMatchedCapped == nil)
+        let filtered = try store.search(.init(allowedMailboxIds: all, subject: "projektplan", limit: 1, countTotal: true))
+        #expect(filtered.totalMatched == 3 && filtered.hasMore)
+        let none = try store.search(.init(allowedMailboxIds: all, subject: "nirgendwo-vorhanden", limit: 5, countTotal: true))
+        #expect(none.messages.isEmpty && none.totalMatched == 0 && none.totalMatchedCapped == false)
+        // Folgeseiten zaehlen nicht: beide Felder fehlen.
+        let m = try #require(small.messages.first)
+        let next = try store.search(.init(allowedMailboxIds: all, after: .init(date: m.dateReceived, gid: m.gid), limit: 1, countTotal: true))
+        #expect(next.totalMatched == nil && next.totalMatchedCapped == nil && !next.messages.isEmpty)
 
+        // Keine Obergrenze mehr: ueber 10000 wird exakt gezaehlt.
         let big = try FixtureBuilder.build(extraMessages: 10_005)
         let r = try MailStore(config: big.config).search(.init(allowedMailboxIds: big.allMailboxIds, limit: 1, countTotal: true))
-        #expect(r.totalMatched == 10_000 && r.totalMatchedCapped == true)
+        #expect(r.totalMatched == big.visibleGids.count + 10_005 && r.totalMatchedCapped == false)
+    }
+
+    @Test func foldCacheSeesDictionaryRowsAddedLater() throws {
+        let f2 = try FixtureBuilder.build()
+        let s = MailStore(config: f2.config)
+        let ids = f2.allMailboxIds
+        // Erste Textsuche fuellt den Cache.
+        #expect(try s.search(.init(allowedMailboxIds: ids, subject: "nachzuegler", limit: 10)).messages.isEmpty)
+        #expect(try s.search(.init(allowedMailboxIds: ids, from: "spaet@example.net", limit: 10)).messages.isEmpty)
+        // Mail haengt neue Woerterbuchzeilen an und verweist eine bestehende Nachricht darauf.
+        let h = try SQLiteHandle(path: f2.envelopeIndex.path)
+        let rowid = try #require(f2.seed.messages.first { $0.name == "small" }?.rowid)
+        try h.run("INSERT INTO subjects (subject) VALUES (?)", [.text("Später Nachzügler")])
+        let subj = h.lastInsertRowid()
+        try h.run("INSERT INTO addresses (address, comment) VALUES (?, ?)", [.text("spaet@example.net"), .text("Spät Sender")])
+        let addr = h.lastInsertRowid()
+        try h.run("UPDATE messages SET subject = ?, sender = ? WHERE ROWID = ?", [.int(subj), .int(addr), .int(rowid)])
+        try h.run("INSERT INTO recipients (message, address, type, position) VALUES (?, ?, 0, 9)", [.int(rowid), .int(addr)])
+        let small = f2.gid(named: "small")
+        #expect(gids(try s.search(.init(allowedMailboxIds: ids, subject: "NACHZÜGLER", limit: 10))) == [small])
+        #expect(gids(try s.search(.init(allowedMailboxIds: ids, from: "spät sender", limit: 10))) == [small])
+        #expect(gids(try s.search(.init(allowedMailboxIds: ids, to: "spaet@example.net", limit: 10))) == [small])
+        #expect(gids(try s.search(.init(allowedMailboxIds: ids, query: "später", limit: 10))) == [small])
+    }
+
+    @Test func searchWritesNothingToTheEnvelopeIndex() throws {
+        let f2 = try FixtureBuilder.build()
+        let path = f2.envelopeIndex.path
+        let before = try Data(contentsOf: f2.envelopeIndex)
+        let s = MailStore(config: f2.config)
+        _ = try s.search(.init(allowedMailboxIds: f2.allMailboxIds, subject: "projektplan", limit: 10, countTotal: true))
+        _ = try s.search(.init(allowedMailboxIds: f2.allMailboxIds, query: "bob", limit: 10, countTotal: true))
+        #expect(try Data(contentsOf: f2.envelopeIndex) == before)
+        let dir = f2.envelopeIndex.deletingLastPathComponent()
+        let siblings = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasPrefix(f2.envelopeIndex.lastPathComponent) }
+        #expect(siblings == [f2.envelopeIndex.lastPathComponent], "\(path)")
     }
 
     @Test func pageOnTenThousandRowsIsFast() throws {
@@ -233,6 +278,43 @@ import Testing
         // Zahlen stimmen: "thema 17" trifft Thema 17 und 170-179 (11 Betreffs) mit je 20 Zeilen.
         let r = try s.search(.init(allowedMailboxIds: ids, subject: "thema 17", limit: 1000, countTotal: true))
         #expect(r.totalMatched == 220 && r.messages.count == 220)
+    }
+
+    /// Warme Seiten (Spec 18: unter 200 ms je Seite bei warmem Helper) auf 50000 Nachrichten mit
+    /// vielfaeltigen Woerterbuechern. Debug-Build, daher die engere Grenze 150 ms als Puffer fuer Release.
+    @Test func warmPagesOnFiftyThousandVariedRowsAreFast() throws {
+        let big = try FixtureBuilder.build(extraMessages: 50_000, bulk: .varied)
+        let s = MailStore(config: big.config)
+        let ids = big.allMailboxIds
+        func page(_ r: SearchRequest) -> SearchRequest {
+            var r = r
+            r.limit = 20
+            r.countTotal = true
+            return r
+        }
+        let cases: [(name: String, req: SearchRequest, asserted: Bool)] = [
+            ("no filter", page(.init(allowedMailboxIds: ids, limit: 20)), true),
+            ("subject", page(.init(allowedMailboxIds: ids, subject: "straße nr. 12", limit: 20)), true),
+            ("from", page(.init(allowedMailboxIds: ids, from: "GRÖSSE 4", limit: 20)), true),
+            ("to", page(.init(allowedMailboxIds: ids, to: "jürgen 3", limit: 20)), true),
+            ("query", page(.init(allowedMailboxIds: ids, query: "thema 42", limit: 20)), true),
+            ("unread", page(.init(allowedMailboxIds: ids, unread: true, limit: 20)), false),
+            ("hasAttachment", page(.init(allowedMailboxIds: ids, hasAttachment: true, limit: 20)), false),
+        ]
+        for c in cases {
+            let first = try s.search(c.req)   // warm: Verbindung und gefaltete Woerterbuecher
+            var durations: [Duration] = []
+            for _ in 0..<5 {
+                let t0 = ContinuousClock.now
+                let r = try s.search(c.req)
+                durations.append(ContinuousClock.now - t0)
+                #expect(r == first, "\(c.name)")
+            }
+            let median = durations.sorted()[2]
+            print("warm search on 50000 varied rows, \(c.name): median \(median), total \(first.totalMatched ?? -1)")
+            #expect(first.messages.count == 20 && first.hasMore, "\(c.name)")
+            if c.asserted { #expect(median < .milliseconds(150), "\(c.name)") }
+        }
     }
 
     @Test func foldAsciiFastPathEqualsGeneralPath() {

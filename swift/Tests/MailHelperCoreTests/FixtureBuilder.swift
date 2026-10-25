@@ -256,7 +256,13 @@ enum FixtureBuilder {
         return try JSONDecoder().decode(Seed.self, from: Data(contentsOf: url))
     }
 
-    static func build(extraMessages: Int = 0, dropping: (table: String, column: String)? = nil) throws -> Fixture {
+    /// Form der Massenzeilen: `uniform` ist die kleine, gleichfoermige Variante (500 Betreffs, 300 Absender,
+    /// 400 Empfaenger); `varied` naehert die Verhaeltnisse einer echten Ablage an (30000 Betreffs,
+    /// 6000 Adressen, Umlaute, zweite Kopien, mehrere Empfaenger, einige Anhaenge).
+    enum BulkShape { case uniform, varied }
+
+    static func build(extraMessages: Int = 0, bulk: BulkShape = .uniform,
+                      dropping: (table: String, column: String)? = nil) throws -> Fixture {
         let root = try repoRoot()
         let seed = try loadSeed()
         let fm = FileManager.default
@@ -270,14 +276,14 @@ enum FixtureBuilder {
                               accountsDB: accountsDir.appending(path: "Accounts4.sqlite"),
                               seed: seed)
 
-        try buildEnvelopeIndex(fixture, root: root, extraMessages: extraMessages)
+        try buildEnvelopeIndex(fixture, root: root, extraMessages: extraMessages, bulk: bulk)
         if let d = dropping { try dropColumn(fixture, table: d.table, column: d.column) }
         try buildAccounts(fixture, root: root)
         try writeMailTree(fixture)
         return fixture
     }
 
-    private static func buildEnvelopeIndex(_ f: Fixture, root: URL, extraMessages: Int) throws {
+    private static func buildEnvelopeIndex(_ f: Fixture, root: URL, extraMessages: Int, bulk: BulkShape) throws {
         let db = try SQLiteHandle(path: f.envelopeIndex.path)
         let ddl = try String(contentsOf: root.appending(path: "fixtures/schema/envelope-index-macos27.sql"), encoding: .utf8)
         try db.exec(ddl)
@@ -341,7 +347,9 @@ enum FixtureBuilder {
             }
         }
 
-        if extraMessages > 0 {
+        if extraMessages > 0, bulk == .varied {
+            try insertVariedBulk(db, f, count: extraMessages)
+        } else if extraMessages > 0 {
             // Massenzeilen ohne Dateien, alle in INBOX; Datum faellt je Zeile um eine Sekunde.
             let inbox = f.mailboxId(named: "inbox")
             // Woerterbuecher mit Vielfalt: 500 Betreffs, 300 Absender, 400 Empfaenger, reihum vergeben.
@@ -366,6 +374,63 @@ enum FixtureBuilder {
             }
         }
         try db.exec("COMMIT")
+    }
+
+    /// Massenzeilen ohne Dateien in SQL erzeugt (rekursive CTE statt einzelner INSERTs, damit 50000 Zeilen
+    /// schnell entstehen). Jede zweite Nachricht hat eine zweite Kopie in archiv2024, jede Zeile zwei
+    /// Empfaenger (an, Kopie), jede zehnte einen Anhang, jede dritte ist ungelesen.
+    private static func insertVariedBulk(_ db: SQLiteHandle, _ f: Fixture, count n: Int) throws {
+        let subjectCount: Int64 = 30_000, senderCount: Int64 = 2_500, recipientCount: Int64 = 3_500
+        let s0 = try db.scalarInt("SELECT coalesce(max(ROWID), 0) FROM subjects")
+        let a0 = try db.scalarInt("SELECT coalesce(max(ROWID), 0) FROM addresses")
+        let r0 = a0 + senderCount   // erste Empfaengeradresse ist r0 + 1
+        let inbox = f.mailboxId(named: "inbox"), archive = f.mailboxId(named: "archiv2024")
+        let baseRowid: Int64 = 10_000_000, copyRowid: Int64 = 11_000_000
+        let baseGid: Int64 = 5_000_000, baseDate: Int64 = 1_600_000_000
+        func seq(_ count: Int64) -> String {
+            "WITH RECURSIVE seq(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM seq WHERE i + 1 < \(count)) "
+        }
+        try db.exec(seq(subjectCount) + """
+            INSERT INTO subjects (ROWID, subject) SELECT \(s0) + 1 + i,
+                CASE i % 5 WHEN 0 THEN 'Ihre Überweisung an die Hausverwaltung Straße Nr. ' || i
+                WHEN 1 THEN 'Ärger mit der Lieferung vom Versandhändler, Vorgang ' || i
+                ELSE 'Massenmail Thema ' || i || ': Neuigkeiten aus dem Verein und Termine' END FROM seq
+            """)
+        try db.exec(seq(senderCount) + """
+            INSERT INTO addresses (ROWID, address, comment) SELECT \(a0) + 1 + i,
+                CASE WHEN i % 4 = 0 THEN 'buelent' || i || '@example.com' ELSE 'bulk' || i || '@example.com' END,
+                CASE WHEN i % 4 = 0 THEN 'Bülent Größe ' || i ELSE 'Bulk Absender ' || i END FROM seq
+            """)
+        try db.exec(seq(recipientCount) + """
+            INSERT INTO addresses (ROWID, address, comment) SELECT \(r0) + 1 + i, 'empfaenger' || i || '@example.org',
+                CASE WHEN i % 3 = 0 THEN 'Empfänger Jürgen ' || i ELSE 'Empfaenger ' || i END FROM seq
+            """)
+        let count = Int64(n)
+        try db.exec(seq(count) + """
+            INSERT INTO message_global_data (ROWID, message_id_header) SELECT \(baseGid) + i, '<bulk-' || i || '@example.com>' FROM seq
+            """)
+        try db.exec(seq(count) + """
+            INSERT INTO messages (ROWID, global_message_id, sender, subject_prefix, subject,
+                date_sent, date_received, mailbox, read, flagged, deleted, conversation_id)
+            SELECT \(baseRowid) + i, \(baseGid) + i, \(a0) + 1 + i % \(senderCount), '', \(s0) + 1 + i % \(subjectCount),
+                \(baseDate) + i, \(baseDate) + i, \(inbox), i % 3 <> 0, i % 50 = 0, 0, 0 FROM seq
+            """)
+        try db.exec(seq(count) + """
+            INSERT INTO messages (ROWID, global_message_id, sender, subject_prefix, subject,
+                date_sent, date_received, mailbox, read, flagged, deleted, conversation_id)
+            SELECT \(copyRowid) + i, \(baseGid) + i, \(a0) + 1 + i % \(senderCount), '', \(s0) + 1 + i % \(subjectCount),
+                \(baseDate) + i, \(baseDate) + i, \(archive), 1, 0, 0, 0 FROM seq WHERE i % 2 = 0
+            """)
+        try db.exec("""
+            INSERT INTO recipients (message, address, type, position)
+            SELECT ROWID, \(r0) + 1 + (ROWID % \(baseRowid)) % \(recipientCount), 0, 0 FROM messages WHERE ROWID >= \(baseRowid)
+            UNION ALL
+            SELECT ROWID, \(r0) + 1 + ((ROWID % \(baseRowid)) * 7 + 1) % \(recipientCount), 1, 1 FROM messages WHERE ROWID >= \(baseRowid)
+            """)
+        try db.exec(seq(count) + """
+            INSERT INTO attachments (message, attachment_id, name) SELECT \(baseRowid) + i, '1', 'anhang-' || i || '.pdf'
+            FROM seq WHERE i % 10 = 0
+            """)
     }
 
     /// Entfernt eine Spalte nachtraeglich (fuer Schema-Kompatibilitaetstests).

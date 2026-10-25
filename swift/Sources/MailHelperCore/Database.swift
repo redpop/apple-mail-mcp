@@ -35,6 +35,9 @@ enum FileProbe {
 /// Schreibgeschuetzte SQLite-Verbindung mit der Funktion `mcp_fold`.
 final class Database {
     private var db: OpaquePointer?
+    /// Hoechste bereits gefaltete ROWID je Woerterbuchtabelle (FoldCache.swift); nil, solange die
+    /// TEMP-Tabellen dieser Verbindung noch nicht angelegt sind.
+    var foldedMax: (subjects: Int64, addresses: Int64)?
 
     init(readOnlyAt url: URL) throws(HelperFailure) {
         let path = url.path
@@ -87,6 +90,11 @@ final class Database {
         default:
             return HelperFailure(code: .databaseError, message: text)
         }
+    }
+
+    /// Anweisung ohne Ergebniszeilen (TEMP-Tabellen, Pragmas der Verbindung).
+    func execute(_ sql: String, _ bind: [SQLValue] = []) throws(HelperFailure) {
+        try query(sql, bind) { _ in }
     }
 
     func query(_ sql: String, _ bind: [SQLValue] = [], row: (Row) -> Void) throws(HelperFailure) {
