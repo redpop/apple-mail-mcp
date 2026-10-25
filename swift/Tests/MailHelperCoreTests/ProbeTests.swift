@@ -65,6 +65,36 @@ import Testing
         #expect(dropped.schema?.fingerprint != fp)
     }
 
+    @Test func damagedDatabaseStaysGrantedWithoutSchema() throws {
+        let f = try FixtureBuilder.build()
+        try Data(repeating: 0x41, count: 4096).write(to: f.envelopeIndex)
+        let p = MailStore(config: f.config).probe()
+        #expect(p.access == .granted)
+        #expect(p.mailDir == "V10")
+        #expect(p.schema == nil)
+        #expect(p.counts == nil)
+    }
+
+    @Test func fingerprintIgnoresSqliteInternalTables() throws {
+        let a = try #require(MailStore(config: try FixtureBuilder.build().config).probe().schema?.fingerprint)
+        let f = try FixtureBuilder.build()
+        let h = try SQLiteHandle(path: f.envelopeIndex.path)
+        try h.exec("ANALYZE")
+        #expect(MailStore(config: f.config).probe().schema?.fingerprint == a)
+    }
+
+    @Test func sqliteFailureAfterReadableFileIsNotFullDiskAccess() throws {
+        let f = try FixtureBuilder.build()
+        try Data(repeating: 0x41, count: 4096).write(to: f.envelopeIndex)
+        let db = try Database(readOnlyAt: f.envelopeIndex)
+        do {
+            try db.query("SELECT 1 FROM sqlite_master") { _ in }
+            Issue.record("expected failure")
+        } catch {
+            #expect(error.code == .databaseError)
+        }
+    }
+
     @Test func probeJSONMatchesNodeSchema() throws {
         let f = try FixtureBuilder.build()
         let data = try JSONEncoder().encode(MailStore(config: f.config).probe())

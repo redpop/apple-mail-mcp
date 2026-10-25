@@ -34,10 +34,11 @@ enum Schema {
         return SchemaReport(compatible: missing.isEmpty, missing: missing, fingerprint: try fingerprint(db))
     }
 
+    /// sqlite_*-Tabellen (sqlite_sequence, ANALYZE) sind ausgenommen, damit sie den Wert nie aendern.
     /// SHA-256 ueber die nach Tabellenname sortierten CREATE-TABLE-Anweisungen.
     static func fingerprint(_ db: Database) throws(HelperFailure) -> String {
         var statements: [String] = []
-        try db.query("SELECT sql FROM sqlite_master WHERE type = 'table' ORDER BY name") { row in
+        try db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name") { row in
             if let s = row.text(0) { statements.append(s) }
         }
         let digest = SHA256.hash(data: Data(statements.joined(separator: "\n").utf8))

@@ -36,6 +36,11 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
   const probe = async (): Promise<ProbeResult> => probeResult.parse(await deps.runner.run('probe', {}))
 
   const success = (p: ProbeResult): number => {
+    if (!p.schema) {
+      // Datei per open(2) lesbar, SQLite scheitert: weder "readable" noch Zugriff vermerken.
+      say('Mail database could not be read (busy or damaged); try again.')
+      return 1
+    }
     recordAccessOk({ helperSha256: null, helperVersion: null }, deps.stateDir)
     const c = p.counts
     say('Full Disk Access is granted. Apple Mail is readable.')

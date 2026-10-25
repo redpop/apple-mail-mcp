@@ -156,6 +156,8 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
           ? 'Access: no_mail_data. Apple Mail does not appear to be set up on this Mac.'
           : 'Access: untrusted_signature. The helper refused to read mail because its signature is not trusted.'
     add('probe', 'fail', msg)
+  } else if (!probe.schema) {
+    add('probe', 'fail', 'Mail database could not be read (busy or damaged); try again.')
   } else {
     const s = probe.schema
     const c = probe.counts
@@ -190,7 +192,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
   }
 
   // Mailbox-Rollen, Abdeckung, Konfiguration
-  if (probe?.access === 'granted') {
+  if (probe?.access === 'granted' && probe.schema) {
     try {
       const list = listMailboxesResult.parse(await runner.run('list-mailboxes', {}))
       const parsed = list.mailboxes.map(parseMailbox)

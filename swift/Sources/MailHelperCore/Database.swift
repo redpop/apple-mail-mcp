@@ -84,8 +84,6 @@ final class Database {
         switch rc & 0xff {
         case SQLITE_BUSY, SQLITE_LOCKED:
             return HelperFailure(code: .databaseBusy, message: "The Mail database is busy.")
-        case SQLITE_CANTOPEN, SQLITE_PERM, SQLITE_AUTH:
-            return HelperFailure(code: .fullDiskAccessRequired, message: "Full Disk Access is required to read the Mail database.")
         default:
             return HelperFailure(code: .databaseError, message: text)
         }

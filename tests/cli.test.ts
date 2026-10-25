@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
@@ -64,6 +64,16 @@ describe('setup', () => {
     expect(code).toBe(0)
     expect(s.text()).toContain('claude mcp add apple-mail -- npx -y @redpop/apple-mail-mcp')
     expect(s.text()).toContain('80')
+  })
+
+  it('setup with granted but unreadable database fails without recording access', async () => {
+    const s = sink()
+    const stateDir = mkdtempSync(join(tmpdir(), 'state-'))
+    const code = await runSetup({ ...base(fakeRunner({ probe: () => probe('granted', { schema: undefined, counts: undefined }) }), s), stateDir })
+    expect(code).toBe(1)
+    expect(s.text()).toContain('Mail database could not be read (busy or damaged); try again.')
+    expect(s.text()).not.toContain('readable')
+    expect(existsSync(join(stateDir, 'state.json'))).toBe(false)
   })
 
   it('setup denied opens settings and finder, polls every 2 s until granted', async () => {
@@ -205,6 +215,17 @@ describe('doctor', () => {
     expect(s.text().split('\n')[0]).toMatch(/^Warning/)
     expect(s.text()).toContain('Private Folder')
     expect(s.text()).toContain(UUID)
+  })
+
+  it('doctor reports granted probe without schema as fail with no schema or counts rows', async () => {
+    const s = sink()
+    const code = await runDoctor(doctorDeps(s, goodRunner({ probe: () => probe('granted', { schema: undefined, counts: undefined }) }), { json: true }))
+    expect(code).toBe(1)
+    const checks = JSON.parse(s.text()).checks as { id: string; status: string; message: string }[]
+    const p = checks.find((c) => c.id === 'probe')!
+    expect(p.status).toBe('fail')
+    expect(p.message).toBe('Mail database could not be read (busy or damaged); try again.')
+    expect(checks.some((c) => c.id === 'schema' || c.id === 'counts')).toBe(false)
   })
 
   it('doctor flags stale FDA entry when state shows earlier success', async () => {
