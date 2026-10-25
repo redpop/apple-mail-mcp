@@ -40,7 +40,10 @@ public struct Dispatcher {
         guard let payload = object["payload"] as? [String: Any] else {
             return respond(id: id, failure: Self.invalid("Payload must be a JSON object."))
         }
-        do {
+        // Typed throws: Alles im Block wirft nur HelperFailure. Kommt spaeter ein
+        // ungetypter Fehler dazu, bricht der Build hier ab, statt ihn still zu
+        // einem generischen Fehler zu machen.
+        do throws(HelperFailure) {
             switch command {
             case "hello":
                 try Self.checkKeys(payload, EmptyPayload.self)
@@ -68,10 +71,8 @@ public struct Dispatcher {
             default:
                 return respond(id: id, failure: Self.invalid("Unknown command."))
             }
-        } catch let failure as HelperFailure {
-            return respond(id: id, failure: failure)
         } catch {
-            return respond(id: id, failure: HelperFailure(code: .databaseError, message: "Internal error."))
+            return respond(id: id, failure: error)
         }
     }
 
