@@ -1,8 +1,8 @@
 import Foundation
 
-/// Obergrenze fuer `maxBytesTotal`, einzige Stelle (Task 8: eine Zeile darf 32 MiB nicht ueberschreiten,
-/// Base64 blaeht 24 MiB auf 32 MiB auf).
-public let getMessagesTotalByteCap = 24 * 1024 * 1024
+/// Obergrenze fuer `maxBytesTotal`, einzige Stelle. Eine Antwortzeile darf 32 MiB nicht ueberschreiten:
+/// Base64 blaeht 20 MiB auf rund 26,7 MiB auf, der Rest ist Spielraum fuer die Metadaten von bis zu 50 Zeilen.
+public let getMessagesTotalByteCap = 20 * 1024 * 1024
 private let maxGids = 50
 private let getMessagesMaxRecipients = 100
 
@@ -85,13 +85,20 @@ extension MailStore {
         var exhausted = false
         var out: [RawMessage] = []
         for (row, located) in detailed {
-            guard !exhausted, let located, let content = locator.read(located, maxBytes: perMessage) else {
+            guard let located else {
                 out.append(RawMessage(row: row, raw: nil, rawSize: 0, rawTruncated: false))
                 continue
             }
-            if used + content.data.count > total {
-                exhausted = true
+            // Vor dem Lesen pruefen, ob die Menge ins Restbudget passt; sonst wird nicht gelesen.
+            let content = locator.read(located, maxBytes: perMessage) { n in !exhausted && used + n <= total }
+            guard let content else {
                 out.append(RawMessage(row: row, raw: nil, rawSize: 0, rawTruncated: false))
+                continue
+            }
+            guard content.read else {
+                // Nichts gelesen: rawSize ist die echte Groesse, rawTruncated bleibt false (es gibt keinen Rohtext).
+                exhausted = true
+                out.append(RawMessage(row: row, raw: nil, rawSize: content.size, rawTruncated: false))
                 continue
             }
             used += content.data.count

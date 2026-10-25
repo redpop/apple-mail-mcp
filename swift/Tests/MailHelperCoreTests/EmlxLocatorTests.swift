@@ -81,6 +81,22 @@ import Testing
         #expect(locator.locate(rowid: 98, mailboxURL: url) == nil)
     }
 
+    @Test func listsAMailboxOncePerRequest() throws {
+        let url = f.urlOfMessage(rowid: 29)
+        locator.beginRequest()
+        // Kaltstart mit Treffern und Fehlschlaegen in einer Mailbox: genau ein Listing.
+        #expect(locator.locate(rowid: 29, mailboxURL: url) != nil)
+        #expect(locator.locate(rowid: 77, mailboxURL: url) == nil)
+        #expect(locator.locate(rowid: 78, mailboxURL: url) == nil)
+        #expect(locator.locate(rowid: 37, mailboxURL: url) != nil)
+        #expect(locator.listingCount == 1)
+        // Warmer Cache, naechste Anfrage: Fehlschlaege listen hoechstens einmal neu.
+        locator.beginRequest()
+        #expect(locator.locate(rowid: 77, mailboxURL: url) == nil)
+        #expect(locator.locate(rowid: 78, mailboxURL: url) == nil)
+        #expect(locator.listingCount == 2)
+    }
+
     @Test func percentEncodedAndUmlautSegments() throws {
         // Spezial%C3%84rger, %5BGmail%5D/All%20Mail, Gesendete%20Objekte, local://
         for rowid: Int64 in [29, 34, 25, 33] {

@@ -12,6 +12,7 @@ public struct Located: Equatable, Sendable {
 struct EmlxContent {
     let data: Data
     let size: Int64
+    var read: Bool = true
 }
 
 /// Findet .emlx-Dateien aus ROWID und Mailbox-URL (Spec 6). Nicht thread-sicher: der Helper arbeitet seriell.
@@ -21,6 +22,10 @@ public final class EmlxLocator {
     private var storeCache: [String: [String]] = [:]
     /// .mbox-Verzeichnisse, die in dieser Anfrage schon neu gelistet wurden.
     private var relisted: Set<String> = []
+    /// realpath(versionDir), einmal je Anfrage berechnet.
+    private var realRoot: String?
+    /// Anzahl der Verzeichnislistings (Testhaken).
+    private(set) var listingCount = 0
 
     public init(versionDir: URL) {
         self.versionDir = versionDir
@@ -29,6 +34,7 @@ public final class EmlxLocator {
     /// Eine neue Anfrage beginnt: Cache-Fehlschlaege duerfen ihr .mbox-Verzeichnis wieder einmal neu listen.
     public func beginRequest() {
         relisted.removeAll()
+        realRoot = nil
     }
 
     public func fileState(rowid: Int64, mailboxURL: String) -> FileState {
@@ -37,7 +43,8 @@ public final class EmlxLocator {
 
     public func locate(rowid: Int64, mailboxURL: String) -> Located? {
         guard rowid > 0, let mbox = Self.mboxPath(versionDir: versionDir.path, mailboxURL: mailboxURL) else { return nil }
-        guard let root = Self.realpathString(versionDir.path) else { return nil }
+        if realRoot == nil { realRoot = Self.realpathString(versionDir.path) }
+        guard let root = realRoot else { return nil }
         let prefix = root.hasSuffix("/") ? root : root + "/"
 
         let digits = Self.digitDirs(rowid: rowid)
@@ -59,7 +66,14 @@ public final class EmlxLocator {
             return nil
         }
 
-        let cached = storeCache[mbox] ?? listStores(mbox)
+        // Kaltstart: das erste Listing zaehlt als das eine Listing dieser Anfrage.
+        let cached: [String]
+        if let c = storeCache[mbox] {
+            cached = c
+        } else {
+            relisted.insert(mbox)
+            cached = listStores(mbox)
+        }
         if let hit = search(cached) { return hit }
         // Fehlschlag: ein spaeter angelegter Store wird gefunden, wenn das Verzeichnis neu gelistet wird.
         guard relisted.insert(mbox).inserted else { return nil }
@@ -68,15 +82,19 @@ public final class EmlxLocator {
         return search(fresh)
     }
 
-    /// Liest hoechstens `maxBytes` Bytes. `nil`, wenn die Datei nicht zu oeffnen oder zu lesen ist.
-    func read(_ located: Located, maxBytes: Int) -> EmlxContent? {
-        let fd = open(located.resolvedPath, O_RDONLY | O_NOFOLLOW)
+    /// Oeffnet, ermittelt die Groesse und liest hoechstens `maxBytes` Bytes, aber nur wenn `admit` die
+    /// Menge `min(Groesse, maxBytes)` zulaesst. `nil`, wenn die Datei nicht zu oeffnen oder zu lesen ist.
+    /// `data` ist leer und `read` false, wenn `admit` ablehnt; `size` ist immer die wahre Dateigroesse.
+    func read(_ located: Located, maxBytes: Int, admit: (Int) -> Bool = { _ in true }) -> EmlxContent? {
+        // O_NOFOLLOW_ANY: auch ein zwischen realpath und open ausgetauschtes Verzeichnis wird nicht verfolgt.
+        let fd = open(located.resolvedPath, O_RDONLY | O_NOFOLLOW_ANY)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
         var st = stat()
         guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { return nil }
         let size = Int64(st.st_size)
         let want = Int(min(size, Int64(max(maxBytes, 0))))
+        guard admit(want) else { return EmlxContent(data: Data(), size: size, read: false) }
         var data = Data(count: want)
         var got = 0
         let ok: Bool = data.withUnsafeMutableBytes { buf in
@@ -90,7 +108,7 @@ public final class EmlxLocator {
         }
         guard ok else { return nil }
         if got < want { data.removeSubrange(got...) }
-        return EmlxContent(data: data, size: size)
+        return EmlxContent(data: data, size: size, read: true)
     }
 
     // MARK: - Pfadbau
@@ -122,6 +140,7 @@ public final class EmlxLocator {
 
     /// Unterverzeichnisse mit UUID-Namen, die ein Data-Verzeichnis enthalten, in fester Reihenfolge; Ergebnis wird gecacht.
     private func listStores(_ mbox: String) -> [String] {
+        listingCount += 1
         let names = (try? FileManager.default.contentsOfDirectory(atPath: mbox)) ?? []
         var out: [String] = []
         for name in names.sorted() {

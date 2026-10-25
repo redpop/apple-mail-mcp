@@ -45,8 +45,8 @@ import Testing
         #expect(Data(base64Encoded: try #require(exact.messages[0].raw))!.count == 5000)
     }
 
-    @Test func totalIsClampedTo24MiB() throws {
-        #expect(getMessagesTotalByteCap == 24 * 1024 * 1024)
+    @Test func totalIsClampedTo20MiB() throws {
+        #expect(getMessagesTotalByteCap == 20 * 1024 * 1024)
         let fh = try FileHandle(forWritingTo: f.expectedEmlxPath(rowid: 7))
         try fh.truncate(atOffset: UInt64(25 * 1024 * 1024))
         try fh.close()
@@ -55,6 +55,17 @@ import Testing
         #expect(Data(base64Encoded: try #require(m.raw))!.count == getMessagesTotalByteCap)
         #expect(m.rawTruncated)
         #expect(m.rawSize == 25 * 1024 * 1024)
+
+        // 50 gids (alle sichtbaren, aufgefuellt), die grosse Datei darunter: die Zeile bleibt unter 32 MiB.
+        var gids = Array(f.visibleGids).sorted()
+        var filler: Int64 = 900_000
+        while gids.count < 50 { gids.append(filler); filler += 1 }
+        let big = try store.getMessages(.init(allowedMailboxIds: all, gids: gids, maxBytesPerMessage: Int.max, maxBytesTotal: Int.max))
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.withoutEscapingSlashes]
+        let line = try enc.encode(big)
+        #expect(line.count < 32 * 1024 * 1024)
+        #expect(big.messages.count + big.missing.count == 50)
     }
 
     @Test func totalBudgetStopsFurtherReads() throws {
@@ -63,6 +74,7 @@ import Testing
         #expect(r.messages.map(\.row.gid) == [f.gid(named: "small"), f.gid(named: "noHeader"), f.gid(named: "tie1")])
         #expect(r.messages[0].raw != nil && r.messages[1].raw != nil)
         #expect(r.messages[2].raw == nil)
+        #expect(r.messages[2].rawSize == 1000 && !r.messages[2].rawTruncated)   // echte Groesse, nichts gelesen
         #expect(r.budgetExhausted)
         // Passt alles genau, ist nichts erschoepft.
         let fits = try store.getMessages(request(["small", "noHeader", "tie1"], total: 3000))
@@ -75,6 +87,7 @@ import Testing
         #expect(Data(base64Encoded: try #require(r.messages[0].raw))!.count == 100)
         #expect(r.messages[0].rawTruncated)
         #expect(r.messages[1].raw == nil)
+        #expect(r.messages[1].rawSize > 0)
         #expect(r.budgetExhausted)
     }
 
@@ -133,7 +146,8 @@ import Testing
         let r = try store.search(.init(allowedMailboxIds: all, limit: 50))
         let dup = try #require(r.messages.first { $0.gid == f.gid(named: "dup3") })
         #expect(dup.file == .full)
-        // Ohne die volle Datei gewinnt die partielle (123456) vor der ohne Datei (4712, hoechste ROWID unter den beiden anderen ist 4712).
+        // Ohne die volle Datei gewinnt die partielle (123456), obwohl 4712 (ohne Datei) eine hoehere ROWID als 4711 hat
+        // und 123456 die hoechste ROWID ist: der Dateizustand geht vor der ROWID.
         try FileManager.default.removeItem(at: f.expectedEmlxPath(rowid: 4711))
         let r2 = try store.search(.init(allowedMailboxIds: all, limit: 50))
         #expect(r2.messages.first { $0.gid == f.gid(named: "dup3") }?.file == .partial)
