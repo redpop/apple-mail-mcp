@@ -7,17 +7,17 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v5
 
-      # Swift 6 braucht Xcode >= 16: die neueste installierte Version waehlen.
+      # Swift 6 braucht Xcode >= 16: die neueste installierte Nicht-Beta-Version waehlen.
       - name: Select Xcode
         run: |
           set -euo pipefail
-          XCODE="$(ls -d /Applications/Xcode_*.app | sort -V | tail -n 1)"
+          XCODE="$(/bin/ls -d /Applications/Xcode_16*.app | /usr/bin/grep -vi beta | /usr/bin/sort -V | /usr/bin/tail -n 1)"
           echo "Using $XCODE"
-          sudo xcode-select -s "$XCODE"
+          /usr/bin/sudo /usr/bin/xcode-select -s "$XCODE"
           swift --version
 
       - uses: actions/setup-node@v5
