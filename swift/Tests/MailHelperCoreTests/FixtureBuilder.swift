@@ -190,6 +190,20 @@ final class SQLiteHandle {
         }
     }
 
+    /// Erste Spalte aller Ergebniszeilen als Text.
+    func texts(_ sql: String) throws -> [String] {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw FixtureError(description: "sqlite prepare: \(lastError) in \(sql)")
+        }
+        defer { sqlite3_finalize(stmt) }
+        var out: [String] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let p = sqlite3_column_text(stmt, 0) { out.append(String(cString: p)) }
+        }
+        return out
+    }
+
     func lastInsertRowid() -> Int64 { sqlite3_last_insert_rowid(db) }
 
     func scalarInt(_ sql: String) throws -> Int64 {
@@ -242,7 +256,7 @@ enum FixtureBuilder {
         return try JSONDecoder().decode(Seed.self, from: Data(contentsOf: url))
     }
 
-    static func build(extraMessages: Int = 0) throws -> Fixture {
+    static func build(extraMessages: Int = 0, dropping: (table: String, column: String)? = nil) throws -> Fixture {
         let root = try repoRoot()
         let seed = try loadSeed()
         let fm = FileManager.default
@@ -257,6 +271,7 @@ enum FixtureBuilder {
                               seed: seed)
 
         try buildEnvelopeIndex(fixture, root: root, extraMessages: extraMessages)
+        if let d = dropping { try dropColumn(fixture, table: d.table, column: d.column) }
         try buildAccounts(fixture, root: root)
         try writeMailTree(fixture)
         return fixture
@@ -347,6 +362,15 @@ enum FixtureBuilder {
             }
         }
         try db.exec("COMMIT")
+    }
+
+    /// Entfernt eine Spalte nachtraeglich (fuer Schema-Kompatibilitaetstests).
+    private static func dropColumn(_ f: Fixture, table: String, column: String) throws {
+        let db = try SQLiteHandle(path: f.envelopeIndex.path)
+        // SQLite verweigert DROP COLUMN, solange ein Index die Spalte nennt: diese Indizes vorher entfernen.
+        let indexes = try db.texts("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = '\(table)' AND sql LIKE '%\(column)%'")
+        for name in indexes { try db.exec("DROP INDEX \"\(name)\"") }
+        try db.exec("ALTER TABLE \(table) DROP COLUMN \(column)")
     }
 
     private static func buildAccounts(_ f: Fixture, root: URL) throws {

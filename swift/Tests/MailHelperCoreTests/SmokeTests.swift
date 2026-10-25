@@ -1,6 +1,8 @@
+import Foundation
 import Testing
-@testable import MailHelperCore
+import MailHelperCore
 
 @Test func storeExists() {
-    _ = MailStore()
+    let tmp = URL(fileURLWithPath: "/nonexistent")
+    _ = MailStore(config: MailStoreConfig(mailRoot: tmp, accountsDB: tmp))
 }

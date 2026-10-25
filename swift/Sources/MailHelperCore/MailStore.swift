@@ -1,3 +1,9 @@
+import Foundation
+
 public final class MailStore {
-    public init() {}
+    let config: MailStoreConfig
+
+    public init(config: MailStoreConfig) {
+        self.config = config
+    }
 }
