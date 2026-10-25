@@ -23,8 +23,8 @@ import Testing
         #expect(m.mailboxIds == m.mailboxIds.sorted())
         #expect(m.read && m.flagged)
         #expect(m.dateReceived == 1700000300)
-        #expect(m.dateSent == 1700000140)   // beste Zeile: hoechste ROWID (123456, Archiv)
-        #expect(m.file == .none)
+        #expect(m.dateSent == 1700000240)   // beste Zeile: volle Datei vor partial (4711, Posteingang)
+        #expect(m.file == .full)
     }
 
     @Test func excludedMailboxCopiesAreInvisible() throws {

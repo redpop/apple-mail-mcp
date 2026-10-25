@@ -8,6 +8,17 @@ public final class MailStore {
     /// Nur "available"-Ergebnisse, geschluesselt nach der UUID-Menge der Mail-Konten.
     var accountNamesCache: (uuids: Set<String>, lookup: AccountNamesLookup)?
 
+    private var locator: (name: String, locator: EmlxLocator)?
+
+    /// Ein Locator je Mail-Verzeichnis `V<n>`; sein Store-UUID-Cache lebt so lange wie der Helper.
+    func emlxLocator() throws(HelperFailure) -> EmlxLocator {
+        let located = try MailRoot.locate(root: config.mailRoot)
+        if let l = locator, l.name == located.name { return l.locator }
+        let l = EmlxLocator(versionDir: config.mailRoot.appending(path: located.name))
+        locator = (located.name, l)
+        return l
+    }
+
     public init(config: MailStoreConfig) {
         self.config = config
     }

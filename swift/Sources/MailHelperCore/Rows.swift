@@ -98,16 +98,18 @@ struct MessageCopy {
     let messageIdHeader: String?
 }
 
-/// Platzhalter bis Task 7: Dateizustand der Kopie.
-enum EmlxLocator {
-    static func fileState(rowid: Int64, mailboxURL: String) -> FileState { .none }
-}
-
-/// Auswahl der besten Kopie. Task 7 tauscht nur diese Funktion (voll vor partial vor keine, dann hoechste ROWID).
-func chooseBest(_ copies: [MessageCopy], mailboxURLs: [Int64: String]) -> (copy: MessageCopy, file: FileState) {
-    // Platzhalter: hoechste ROWID, Dateizustand der gewaehlten Kopie.
-    let best = copies.max { $0.rowid < $1.rowid }!
-    return (best, EmlxLocator.fileState(rowid: best.rowid, mailboxURL: mailboxURLs[best.mailbox] ?? ""))
+/// Auswahl der besten Kopie (Spec 5.4): vollstaendige Datei vor .partial vor keiner, dann hoechste ROWID.
+func chooseBest(_ copies: [MessageCopy], mailboxURLs: [Int64: String], locator: EmlxLocator)
+    -> (copy: MessageCopy, file: FileState, located: Located?) {
+    func rank(_ s: FileState) -> Int { switch s { case .full: 2; case .partial: 1; case .none: 0 } }
+    var best: (copy: MessageCopy, file: FileState, located: Located?)?
+    for c in copies {
+        let located = mailboxURLs[c.mailbox].flatMap { locator.locate(rowid: c.rowid, mailboxURL: $0) }
+        let cand = (copy: c, file: located?.state ?? FileState.none, located: located)
+        if let b = best, (rank(b.file), b.copy.rowid) >= (rank(cand.file), c.rowid) { continue }
+        best = cand
+    }
+    return best!
 }
 
 func placeholders(_ n: Int) -> String {
@@ -121,8 +123,16 @@ private let attachmentNameCap = 20
 extension MailStore {
     /// Laedt vollstaendige Zeilen fuer die gids; Reihenfolge wie `gids`. gids ohne Kopie in `allowed` fehlen.
     func loadRows(gids: [Int64], allowed: [Int64], maxRecipients: Int) throws(HelperFailure) -> [MessageRow] {
+        try loadDetailed(gids: gids, allowed: allowed, maxRecipients: maxRecipients).map(\.row)
+    }
+
+    /// Wie `loadRows`, dazu die gefundene Datei der besten Kopie.
+    func loadDetailed(gids: [Int64], allowed: [Int64], maxRecipients: Int) throws(HelperFailure)
+        -> [(row: MessageRow, located: Located?)] {
         guard !gids.isEmpty, !allowed.isEmpty else { return [] }
         let db = try envelopeDatabase()
+        let locator = try emlxLocator()
+        locator.beginRequest()
 
         // 1. Kopien in erlaubten Mailboxen.
         var copiesByGid: [Int64: [MessageCopy]] = [:]
@@ -156,8 +166,8 @@ extension MailStore {
 
         // 2. Beste Kopie je gid.
         let urls = Dictionary(uniqueKeysWithValues: try readMailboxes().map { ($0.id, $0.url) })
-        var best: [Int64: (copy: MessageCopy, file: FileState)] = [:]
-        for (gid, copies) in copiesByGid { best[gid] = chooseBest(copies, mailboxURLs: urls) }
+        var best: [Int64: (copy: MessageCopy, file: FileState, located: Located?)] = [:]
+        for (gid, copies) in copiesByGid { best[gid] = chooseBest(copies, mailboxURLs: urls, locator: locator) }
 
         // 3. Empfaenger und Anhaenge der besten Zeilen.
         let bestRowids = best.values.map(\.copy.rowid)
@@ -205,12 +215,12 @@ extension MailStore {
         }
 
         // 4. Zusammensetzen.
-        var out: [MessageRow] = []
+        var out: [(row: MessageRow, located: Located?)] = []
         for gid in gids {
             guard let copies = copiesByGid[gid], let b = best[gid] else { continue }
             let c = b.copy
             let sender: Person? = c.senderAddress.map { Person(address: $0, name: (c.senderComment ?? "").isEmpty ? nil : c.senderComment) }
-            out.append(MessageRow(
+            out.append((MessageRow(
                 gid: gid, messageIdHeader: c.messageIdHeader,
                 subject: c.subjectPrefix + c.subject, sender: sender,
                 recipients: recipients[c.rowid] ?? [], recipientCount: recipientCounts[c.rowid] ?? 0,
@@ -218,7 +228,7 @@ extension MailStore {
                 mailboxIds: Set(copies.map(\.mailbox)).sorted(),
                 read: copies.contains { $0.read }, flagged: copies.contains { $0.flagged },
                 attachmentNames: attachments[c.rowid] ?? [], attachmentCount: attachmentCounts[c.rowid] ?? 0,
-                conversationId: c.conversationId, file: b.file))
+                conversationId: c.conversationId, file: b.file), b.located))
         }
         return out
     }
