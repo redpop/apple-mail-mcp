@@ -127,19 +127,27 @@ describe('createStdioRunner', () => {
     expect(Date.now() - t0).toBeLessThan(600)
   }, 10_000)
 
-  it('timeouts on a helper that never answered a real request do not count toward a restart', async () => {
+  it('two timeouts after hello restart the helper even before any real request was answered', async () => {
+    const log = logFile()
+    const r = createStdioRunner(FAKE, { firstRequestMs: 200, requestMs: 100 })
+    runners.push(r)
+    // hello ok, danach haengen zwei echte Anfragen: der Helper wird verworfen, der naechste Aufruf startet frisch.
+    await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
+    await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
+    await expect(r.run('echo-pid', {})).resolves.toHaveProperty('pid')
+    expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual(['hello', 'hang', 'hang', 'hello', 'echo-pid'])
+  }, 10_000)
+
+  it('a successful answer resets the timeout counter', async () => {
     const log = logFile()
     const r = createStdioRunner(FAKE, { firstRequestMs: 200, requestMs: 100 })
     runners.push(r)
     await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
+    await r.run('echo-pid', {})
     await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
-    const a = (await r.run('echo-pid', {})) as { pid: number }
-    // Nur ein hello im Protokoll: nicht neu gestartet. Jetzt warm, also zaehlen die naechsten zwei.
-    expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual(['hello', 'hang', 'hang', 'echo-pid'])
-    await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
-    await expect(r.run('hang', {})).rejects.toMatchObject({ code: 'HELPER_TIMEOUT' })
-    const b = (await r.run('echo-pid', {})) as { pid: number }
-    expect(b.pid).not.toBe(a.pid)
+    await r.run('echo-pid', {})
+    // Nie zwei Timeouts in Folge: kein zweites hello.
+    expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual(['hello', 'hang', 'echo-pid', 'hang', 'echo-pid'])
   }, 10_000)
 
   it('parses a 22 MB response line in well under the deadline', async () => {

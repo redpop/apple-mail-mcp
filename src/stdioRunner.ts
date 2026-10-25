@@ -76,7 +76,10 @@ export function createStdioRunner(
   let helperVersion: string | null = null
   /** Hat der aktuelle Prozess schon eine echte Anfrage beantwortet (hello zaehlt nicht)? Steuert die Frist. */
   let isWarm = false
-  /** Timeouts in Folge auf einem warmen Helper; zwei davon heissen: haengt, neu starten. */
+  /**
+   * Timeouts in Folge auf echten Anfragen (nach erfolgreichem hello), unabhaengig von isWarm; zwei davon
+   * heissen: haengt, neu starten. Sonst bliebe ein Helper, der hello beantwortet und danach haengt, fuer immer.
+   */
   let consecutiveTimeouts = 0
   const MAX_CONSECUTIVE_TIMEOUTS = 2
   const pending: PendingRequest[] = []
@@ -181,11 +184,9 @@ export function createStdioRunner(
             reject(timeout) // Der Eintrag ist schon aus pending entfernt; ohne dies bliebe ready offen.
             return
           }
-          if (isWarm) {
-            consecutiveTimeouts += 1
-            if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
-              discardChild(new HelperError('HELPER_TIMEOUT', 'The helper stopped responding and was restarted.'))
-            }
+          consecutiveTimeouts += 1
+          if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+            discardChild(new HelperError('HELPER_TIMEOUT', 'The helper stopped responding and was restarted.'))
           }
           reject(timeout)
         }, timeoutMs),

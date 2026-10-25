@@ -106,8 +106,8 @@ what remains.
 - Requests are queued first in, first out; each carries an id that the helper mirrors.
 - The handshake (`hello`) and the first real request after it get a longer deadline (15 s)
   than later ones (10 s): the handshake covers process start and the disclaim re-exec, the first
-  real request the database open. Two timeouts in a row on a helper that has already answered a
-  real request restart it.
+  real request the database open. Two timeouts in a row on real requests restart it, also before it
+  has answered one.
 - If the helper crashes, the next request restarts it. End of input on stdin ends the helper;
   SIGINT and SIGTERM stop it before the server exits.
 - **stdout carries protocol only, on both legs.** Logs go to stderr.
