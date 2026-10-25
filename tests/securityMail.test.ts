@@ -45,3 +45,11 @@ test('redaction masks grouped digit codes', () => {
   expect(redactSubject('Code 482-913')).toBe('Code ••••')
   expect(redactSubject('Code 1 2 3')).toBe('Code 1 2 3')
 })
+
+test('solid code inside a longer digit chain still counts and is masked', () => {
+  expect(classify({ subject: 'Your code 123456 10 minutes', fromAddress: null }).security).toBe(true)
+  expect(redactSubject('Your code 123456 10 minutes')).toBe('Your code •••• 10 minutes')
+  expect(redactSubject('Your verification code is 123456-2024')).toBe('Your verification code is ••••-••••')
+  expect(redactSubject('Your code is 482 913')).toBe('Your code is ••••')
+  expect(redactSubject('Code 48-29-13 and 55512')).toBe('Code •••• and ••••')
+})

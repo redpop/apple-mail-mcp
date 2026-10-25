@@ -27,8 +27,7 @@ const CODE_WORD_RE = wordsRe(SUBJECT_CODE_WORDS)
 const DIGITS_RE = /(?<![\p{L}\p{N}])\d+(?:[ -]\d+)*(?![\p{L}\p{N}])/gu
 const NEAR = 80
 
-function isCode(run: string): boolean {
-  const groups = run.split(/[ -]/)
+function isCode(groups: string[]): boolean {
   const total = groups.reduce((n, g) => n + g.length, 0)
   if (total < 4 || total > 8) return false
   return groups.length === 1 || groups.every((g) => g.length >= 2 && g.length <= 4)
@@ -38,8 +37,23 @@ function spans(re: RegExp, s: string): Array<[number, number]> {
   return [...s.matchAll(re)].map((m) => [m.index, m.index + m[0].length])
 }
 
+// Codes innerhalb jeder Ziffern-/Leer-/Bindestrich-Kette: von links die laengste gueltige Gruppenfolge,
+// sonst weiter; so bleibt "123456 10" ein Code (123456) und "123456-2024" ebenfalls.
 function codeSpans(s: string): Array<[number, number]> {
-  return [...s.matchAll(DIGITS_RE)].filter((m) => isCode(m[0])).map((m) => [m.index, m.index + m[0].length])
+  const out: Array<[number, number]> = []
+  for (const run of s.matchAll(DIGITS_RE)) {
+    const groups = [...run[0].matchAll(/\d+/g)].map((g) => ({ text: g[0], start: run.index + g.index, end: run.index + g.index + g[0].length }))
+    let i = 0
+    while (i < groups.length) {
+      let j = groups.length
+      while (j > i && !isCode(groups.slice(i, j).map((g) => g.text))) j--
+      if (j > i) {
+        out.push([groups[i]!.start, groups[j - 1]!.end])
+        i = j
+      } else i++
+    }
+  }
+  return out
 }
 
 /** Erkennt Sicherheitsmails (Spec 8.3) an Betreff und optional Text. */
@@ -64,5 +78,7 @@ export function classify(i: { subject: string; fromAddress: string | null; text?
 
 /** Ersetzt alleinstehende Ziffernfolgen von 4-8 Stellen durch vier Punkte. */
 export function redactSubject(subject: string): string {
-  return subject.replace(DIGITS_RE, (run) => (isCode(run) ? '••••' : run))
+  let out = subject
+  for (const [start, end] of codeSpans(subject).reverse()) out = `${out.slice(0, start)}••••${out.slice(end)}`
+  return out
 }
