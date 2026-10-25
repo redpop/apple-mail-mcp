@@ -1,5 +1,7 @@
-import PostalMime from 'postal-mime'
+import PostalMime, { type Email } from 'postal-mime'
 import { convert } from 'html-to-text'
+import { trimForScan } from './mimeTrim.js'
+import { quickHtmlText } from './quickHtml.js'
 
 export interface Address {
   address: string
@@ -30,16 +32,27 @@ export function stripEmlxFrame(raw: Buffer): Buffer {
   return body.subarray(0, length)
 }
 
-/** Alle Zeichensatz-Angaben aus Content-Type-Kopfzeilen (inklusive Fortsetzungszeilen). */
-function declaredCharsets(raw: Buffer): string[] {
+/**
+ * Alle Zeichensatz-Angaben aus Content-Type-Kopfzeilen (inklusive Fortsetzungszeilen).
+ * Sucht die Kopfzeilen direkt, statt die ganze Nachricht in Zeilen zu zerlegen; Zeilen enden
+ * an LF, ein CR davor gehoert nicht zur Zeile (wie ein Split an /\r?\n/).
+ */
+export function declaredCharsets(raw: Buffer): string[] {
   const out: string[] = []
-  const lines = raw.toString('latin1').split(/\r?\n/)
-  let inContentType = false
-  for (const line of lines) {
-    if (/^content-type:/i.test(line)) inContentType = true
-    else if (!/^[ \t]/.test(line)) inContentType = false
-    if (!inContentType) continue
-    for (const m of line.matchAll(/charset\s*=\s*"?([A-Za-z0-9_.:-]+)/gi)) out.push(m[1] as string)
+  const s = raw.toString('latin1')
+  const header = /(?:^|\n)content-type:/gi
+  for (const h of s.matchAll(header)) {
+    let start = h[0].startsWith('\n') ? h.index + 1 : h.index
+    for (;;) {
+      const nl = s.indexOf('\n', start)
+      const end = nl < 0 ? s.length : nl
+      const line = s.slice(start, end > start && s.charCodeAt(end - 1) === 0x0d && nl >= 0 ? end - 1 : end)
+      for (const m of line.matchAll(/charset\s*=\s*"?([A-Za-z0-9_.:-]+)/gi)) out.push(m[1] as string)
+      if (nl < 0) break
+      start = nl + 1
+      const next = s.charCodeAt(start)
+      if (next !== 0x20 && next !== 0x09) break
+    }
   }
   return out
 }
@@ -62,7 +75,7 @@ function toAddresses(list: { address?: string; name?: string }[] | undefined): A
   return (list ?? []).map(toAddress).filter((a): a is Address => a !== null)
 }
 
-function normalise(s: string): string {
+export function normalise(s: string): string {
   return s
     .normalize('NFC')
     .replace(/\r\n?/g, '\n')
@@ -70,7 +83,7 @@ function normalise(s: string): string {
     .trim()
 }
 
-function htmlToText(html: string): string {
+export function htmlToText(html: string): string {
   return convert(html, {
     wordwrap: false,
     selectors: [
@@ -80,31 +93,36 @@ function htmlToText(html: string): string {
   })
 }
 
+type Source = { format: 'plain'; text: string } | { format: 'html'; html: string }
+
+/**
+ * Zeichensaetze pruefen, MIME parsen und den Textteil waehlen: `text`, sonst `html`. Null, wenn
+ * nur unbekannte Zeichensaetze angegeben sind oder kein Text vorliegt. Erwartet die Nachricht
+ * ohne .emlx-Rahmen.
+ */
+async function decode(mime: Buffer): Promise<{ email: Email; source: Source } | null> {
+  const charsets = declaredCharsets(mime)
+  const unknownOnly = charsets.length > 0 && !charsets.some(isKnownCharset)
+  if (unknownOnly) return null
+
+  const email = await PostalMime.parse(mime)
+  if (typeof email.text === 'string' && email.text.trim() !== '') return { email, source: { format: 'plain', text: email.text } }
+  if (typeof email.html === 'string' && email.html.trim() !== '') return { email, source: { format: 'html', html: email.html } }
+  return null
+}
+
 /** Rahmen entfernen, MIME parsen, HTML zu Text, normalisieren. Wirft nie. */
 export async function parseMessage(raw: Buffer): Promise<ParsedMessage> {
   try {
-    const mime = stripEmlxFrame(raw)
-    const charsets = declaredCharsets(mime)
-    const unknownOnly = charsets.length > 0 && !charsets.some(isKnownCharset)
-    if (unknownOnly) return { ok: false }
-
-    const email = await PostalMime.parse(mime)
-    let text: string
-    let format: 'plain' | 'html'
-    if (typeof email.text === 'string' && email.text.trim() !== '') {
-      text = email.text
-      format = 'plain'
-    } else if (typeof email.html === 'string' && email.html.trim() !== '') {
-      text = htmlToText(email.html)
-      format = 'html'
-    } else {
-      return { ok: false }
-    }
+    const decoded = await decode(stripEmlxFrame(raw))
+    if (decoded === null) return { ok: false }
+    const { email, source } = decoded
+    const text = source.format === 'plain' ? source.text : htmlToText(source.html)
 
     return {
       ok: true,
       text: normalise(text),
-      format,
+      format: source.format,
       headers: {
         from: email.from ? toAddress(email.from) : null,
         to: toAddresses(email.to),
@@ -113,6 +131,41 @@ export async function parseMessage(raw: Buffer): Promise<ParsedMessage> {
         date: email.date && !Number.isNaN(new Date(email.date).getTime()) ? new Date(email.date) : null,
       },
     }
+  } catch {
+    return { ok: false }
+  }
+}
+
+/**
+ * Text fuer den Body-Scan. Ist `exact` gesetzt, ist `quick` genau der Text von parseMessage.
+ * Sonst ist `quick` nur eine Naeherung zum Vorfiltern: bei reinem HTML die grobe Fassung
+ * (quickHtmlText), bei einer fuer den Scan gekuerzten Nachricht (trimForScan) der Text ohne die
+ * entfernten Teile. `full()` liefert dann den Text von parseMessage aus der ungekuerzten
+ * Nachricht, oder null, wenn er nicht entsteht. So zahlt nur ein moeglicher Treffer den teuren
+ * Weg, und Treffer sowie Sicherheitspruefung sehen denselben Text wie get_message. Wirft nie.
+ */
+export type ScanBody = { ok: false } | { ok: true; exact: boolean; quick: string; full: () => Promise<string | null> }
+
+export async function parseForScan(raw: Buffer): Promise<ScanBody> {
+  try {
+    const mime = stripEmlxFrame(raw)
+    const trimmed = trimForScan(mime)
+    let decoded = trimmed === null ? null : await decode(trimmed).catch(() => null)
+    const approximate = decoded !== null
+    // Ungekuerzt, oder gekuerzt kein Text (etwa leerer Klartext neben entferntem HTML).
+    decoded ??= await decode(mime)
+    if (decoded === null) return { ok: false }
+    const { source } = decoded
+    const full = async (): Promise<string | null> => {
+      const parsed = await parseMessage(raw)
+      return parsed.ok ? parsed.text : null
+    }
+    if (source.format === 'plain') {
+      const text = normalise(source.text)
+      if (approximate) return { ok: true, exact: false, quick: text, full }
+      return { ok: true, exact: true, quick: text, full: async () => text }
+    }
+    return { ok: true, exact: false, quick: quickHtmlText(source.html), full }
   } catch {
     return { ok: false }
   }

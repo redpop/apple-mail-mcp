@@ -1,7 +1,7 @@
 import type { Config } from './config.js'
 import { fold } from './fold.js'
 import type { HelperRunner } from './helper.js'
-import { parseMessage } from './mime.js'
+import { parseForScan } from './mime.js'
 import type { Policy } from './policy.js'
 import { getMessagesResult, searchResult, type MessageRow } from './schemas.js'
 import { classify } from './securityMail.js'
@@ -56,6 +56,37 @@ function foldWithMap(text: string): { folded: string; origin: number[] } {
   return { folded, origin }
 }
 
+const foldCache = new Map<string, string>()
+
+/** fold fuer einen Lauf ohne ASCII, pro Codepoint wie foldWithMap (mit Zwischenspeicher). */
+function foldRun(run: string): string {
+  let out = ''
+  for (const ch of run) {
+    let f = foldCache.get(ch)
+    if (f === undefined) {
+      f = fold(ch)
+      if (foldCache.size < 4096) foldCache.set(ch, f)
+    }
+    out += f
+  }
+  return out
+}
+
+// Unterhalb von U+0340 gleicht fold(c) fuer jedes Zeichen ausser ß dem einfachen toLowerCase
+// (tests/bodyScan.test.ts prueft das fuer jeden Codepoint); nur der Rest braucht fold pro Zeichen.
+const NEEDS_FOLD = /ß|[^\x00-\u033f]+/g
+
+/**
+ * Liefert genau foldWithMap(text).folded, nur schnell: ß und Laeufe ab U+0340 werden pro
+ * Codepoint gefaltet, danach schreibt toLowerCase den Rest klein. Das ist gleichwertig, weil die
+ * Ausgabe von fold fuer jeden Codepoint schon klein ist (toLowerCase aendert sie nicht) und kein
+ * grosses Sigma enthaelt, die einzige kontextabhaengige Abbildung von toLowerCase. Die
+ * Positionstabelle entsteht erst bei einem Treffer (findMatch).
+ */
+export function foldFast(text: string): string {
+  return text.replace(NEEDS_FOLD, foldRun).toLowerCase()
+}
+
 /** Suchbegriff: erst als Ganzes NFC (zerlegte Umlaute aus der Eingabe), dann wie der Text falten. */
 function foldTerm(term: string): string {
   return collapse(foldWithMap(collapse(term.normalize('NFC'))).folded)
@@ -64,6 +95,7 @@ function foldTerm(term: string): string {
 /** Erste Fundstelle des gefalteten Begriffs; Kontext aus dem Original (nur Leerraum zusammengezogen). */
 export function findMatch(rawText: string, foldedTerm: string): string | null {
   const text = collapse(rawText)
+  if (!foldFast(text).includes(foldedTerm)) return null
   const { folded, origin } = foldWithMap(text)
   const at = folded.indexOf(foldedTerm)
   if (at < 0) return null
@@ -89,14 +121,11 @@ export function findMatch(rawText: string, foldedTerm: string): string | null {
   return text.slice(from, to).trim()
 }
 
-interface Fetched {
-  text: string | null
-}
-
-async function fetchBatch(runner: HelperRunner, policy: Policy, batch: MessageRow[]): Promise<Map<number, Fetched>> {
-  const out = new Map<number, Fetched>()
+/** Holt die Rohtexte eines Blocks (base64, null = nicht verfuegbar). Geparst wird erst im Scan. */
+async function fetchBatch(runner: HelperRunner, policy: Policy, batch: MessageRow[]): Promise<Map<number, string | null>> {
+  const out = new Map<number, string | null>()
   let pending = batch.filter((r) => r.file !== 'none').map((r) => r.gid)
-  for (const r of batch) if (r.file === 'none') out.set(r.gid, { text: null })
+  for (const r of batch) if (r.file === 'none') out.set(r.gid, null)
   while (pending.length > 0) {
     const res = getMessagesResult.parse(
       await runner.run('get-messages', {
@@ -112,23 +141,45 @@ async function fetchBatch(runner: HelperRunner, policy: Policy, batch: MessageRo
       got.add(m.gid)
       if (m.raw === null) {
         if (res.budgetExhausted && m.file !== 'none') retry.push(m.gid)
-        else out.set(m.gid, { text: null })
+        else out.set(m.gid, null)
         continue
       }
-      const parsed = await parseMessage(Buffer.from(m.raw, 'base64'))
-      out.set(m.gid, { text: parsed.ok ? parsed.text : null })
+      out.set(m.gid, m.raw)
     }
-    for (const g of res.missing) out.set(g, { text: null })
+    for (const g of res.missing) out.set(g, null)
     // Weder geliefert noch als fehlend gemeldet: bei Budgetende nachfordern, sonst nicht verfuegbar.
     for (const g of pending) {
       if (got.has(g) || res.missing.includes(g)) continue
       if (res.budgetExhausted) retry.push(g)
-      else out.set(g, { text: null })
+      else out.set(g, null)
     }
     // Ohne Fortschritt nicht endlos nachfordern; was dann fehlt, zaehlt als nicht verfuegbar.
     pending = retry.length < pending.length ? retry : []
   }
   return out
+}
+
+/**
+ * Prueft eine Nachricht: Treffer-Kontext, null ohne Treffer, undefined wenn nicht verfuegbar.
+ * Erst wird gesucht, dann klassifiziert: die Klassifikation entscheidet nur ueber Treffer.
+ * Ist der Scan-Text nur eine Naeherung (reines HTML oder gekuerzte Nachricht, siehe
+ * parseForScan), filtert er ohne Leerraum vor; ein moeglicher Treffer wird am Text von
+ * parseMessage bestaetigt, und genau dieser Text geht in die Sicherheitspruefung (E2).
+ */
+export async function examine(raw: string, row: MessageRow, term: string, looseTerm: string, showSecurityMails: boolean): Promise<string | null | undefined> {
+  const body = await parseForScan(Buffer.from(raw, 'base64'))
+  if (!body.ok) return undefined
+  let text: string | null = body.quick
+  if (!body.exact) {
+    if (!foldFast(body.quick.replace(/\s+/g, '')).includes(looseTerm)) return null
+    text = await body.full()
+    if (text === null) return undefined
+  }
+  const ctx = findMatch(text, term)
+  if (ctx === null) return null
+  if (showSecurityMails) return ctx
+  const verdict = classify({ subject: row.subject, fromAddress: row.sender === null || row.sender.address === '' ? null : row.sender.address, text })
+  return verdict.security ? null : ctx
 }
 
 export async function scanBodies(a: {
@@ -145,6 +196,7 @@ export async function scanBodies(a: {
   const started = now()
   const term = foldTerm(a.term)
   if (term === '') throw new HelperError('INVALID_INPUT', 'bodyContains must contain a visible character.')
+  const looseTerm = term.replace(/\s+/g, '')
 
   const matches: ScanResult['matches'] = []
   let scanned = 0
@@ -153,7 +205,15 @@ export async function scanBodies(a: {
   let resumeAfter: ScanResult['resumeAfter'] = null
   let cursor = a.after
 
+  // Zeitbudget vor jedem Helper-Abruf und vor jeder Nachricht pruefen. Mindestens ein Kandidat
+  // pro Aufruf, damit Weiterblaettern immer vorankommt.
+  const timeUp = (): boolean => scanned > 0 && now() - started >= TIME_BUDGET_MS
+
   outer: for (;;) {
+    if (timeUp()) {
+      stoppedBy = 'time'
+      break
+    }
     const page = searchResult.parse(
       await a.runner.run('search', {
         allowedMailboxIds: a.policy.allowedMailboxIds,
@@ -166,29 +226,25 @@ export async function scanBodies(a: {
     )
     const rows = page.messages
     for (let b = 0; b < rows.length; b += BATCH) {
+      if (timeUp()) {
+        stoppedBy = 'time'
+        break outer
+      }
       const batch = rows.slice(b, b + BATCH)
-      let fetched: Map<number, Fetched> | null = null
+      const fetched = await fetchBatch(a.runner, a.policy, batch)
       for (let i = 0; i < batch.length; i++) {
-        // Mindestens ein Kandidat pro Aufruf, damit Weiterblaettern immer vorankommt.
-        if (scanned > 0 && now() - started >= TIME_BUDGET_MS) {
+        if (timeUp()) {
           stoppedBy = 'time'
           break outer
         }
-        fetched ??= await fetchBatch(a.runner, a.policy, batch)
         const row = batch[i]!
         scanned++
         resumeAfter = { d: row.dateReceived, g: row.gid }
         cursor = resumeAfter
-        const text = fetched.get(row.gid)?.text ?? null
-        if (text === null) {
-          unavailable++
-        } else {
-          const verdict = classify({ subject: row.subject, fromAddress: row.sender === null || row.sender.address === '' ? null : row.sender.address, text })
-          if (!verdict.security || a.config.showSecurityMails) {
-            const ctx = findMatch(text, term)
-            if (ctx !== null) matches.push({ row, matchContext: ctx })
-          }
-        }
+        const raw = fetched.get(row.gid) ?? null
+        const ctx = raw === null ? undefined : await examine(raw, row, term, looseTerm, a.config.showSecurityMails)
+        if (ctx === undefined) unavailable++
+        else if (ctx !== null) matches.push({ row, matchContext: ctx })
         const more = i < batch.length - 1 || b + BATCH < rows.length || page.hasMore
         if (!more) break outer
         if (matches.length >= a.limit) {

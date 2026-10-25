@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { parseMessage, stripEmlxFrame, truncateText, type ParsedMessage } from '../src/mime.js'
+import { declaredCharsets, parseForScan, parseMessage, stripEmlxFrame, truncateText, type ParsedMessage } from '../src/mime.js'
+import { quickHtmlText } from '../src/quickHtml.js'
 
 const eml = (n: string) => readFileSync(new URL(`./fixtures/eml/${n}`, import.meta.url))
 const text = (m: ParsedMessage) => (m.ok ? m.text : '')
@@ -92,3 +93,70 @@ test('truncate cuts at word boundary', () =>
   expect(truncateText('alpha beta gamma', 8)).toEqual({ text: 'alpha', truncated: true, totalChars: 16 }))
 test('truncate leaves short text alone', () =>
   expect(truncateText('alpha', 8)).toEqual({ text: 'alpha', truncated: false, totalChars: 5 }))
+
+// Die fruehere Fassung von declaredCharsets (ganze Nachricht in Zeilen zerlegt) als Referenz.
+function charsetsByLines(raw: Buffer): string[] {
+  const out: string[] = []
+  let inContentType = false
+  for (const line of raw.toString('latin1').split(/\r?\n/)) {
+    if (/^content-type:/i.test(line)) inContentType = true
+    else if (!/^[ \t]/.test(line)) inContentType = false
+    if (!inContentType) continue
+    for (const m of line.matchAll(/charset\s*=\s*"?([A-Za-z0-9_.:-]+)/gi)) out.push(m[1] as string)
+  }
+  return out
+}
+
+test('declaredCharsets finds the same labels as a line-by-line scan', () => {
+  const samples = [
+    ...readdirSync(new URL('./fixtures/eml/', import.meta.url)).map(eml),
+    Buffer.from('Content-Type: text/plain;\r\n charset="iso-8859-1"\r\nX: charset=no\r\n\r\nbody charset=utf-8\r\n'),
+    Buffer.from('content-type: multipart/mixed; boundary=b\n\tcharset=a\n\n--b\nContent-Type: text/plain; charset=b\r\n \r\n charset=c\nContent-Type: text/html; charset=d'),
+    Buffer.from('Content-Type: text/plain; charset=\r\n utf-8\r\nContent-Type: x;charset=y\rcharset=z\n'),
+    Buffer.from('X: 1\nContent-Type: text/plain; charset=utf-8'),
+    Buffer.alloc(0),
+  ]
+  for (const raw of samples) expect(declaredCharsets(raw)).toEqual(charsetsByLines(raw))
+})
+
+test('quickHtmlText drops tags, comments, script and style and decodes entities', () => {
+  const t = quickHtmlText(
+    '<!DOCTYPE html><html><head><title>Titel</title><style>p{color:red}</style></head><body>' +
+      '<!-- versteckt --><p>Gr&ouml;&szlig;e &amp; Preis &euro;&#160;12 &#x2013; a &lt; b</p><script>var x = 1</script>' +
+      '<p>Mehr <a href="https://example.com/x?a=1&amp;b=2">Details</a> und <a href="https://example.com">https://example.com</a></p>' +
+      '<img src="https://example.com/i.png" alt="Bild"> 3 < 4 &unknown;</body></html>',
+  )
+  const words = t.replace(/\s+/g, ' ').trim()
+  expect(words).toBe('Größe & Preis € 12 – a < b Mehr Details [https://example.com/x?a=1&b=2] und https://example.com 3 < 4 &unknown;')
+})
+
+test('quickHtmlText survives unterminated markup', () => {
+  expect(quickHtmlText('a <b c="d').trim()).toBe('a')
+  expect(quickHtmlText('a <script>never closed').trim()).toBe('a')
+  expect(quickHtmlText('a <!-- open').trim()).toBe('a')
+  expect(quickHtmlText('<style>x</style>').trim()).toBe('')
+})
+
+test('quickHtmlText keeps every word of the html-to-text output', async () => {
+  const html = eml('html-only.eml')
+  const parsed = await parseMessage(html)
+  if (!parsed.ok) throw new Error('expected ok')
+  const scan = await parseForScan(html)
+  if (!scan.ok) throw new Error('expected ok')
+  const quick = scan.quick.replace(/\s+/g, '')
+  for (const word of parsed.text.split(/[\s[\]]+/).filter((w) => w !== '')) expect(quick).toContain(word)
+})
+
+test('parseForScan gives the parseMessage text for plain and, via full(), for html', async () => {
+  for (const name of readdirSync(new URL('./fixtures/eml/', import.meta.url))) {
+    const raw = eml(name)
+    const full = await parseMessage(raw)
+    const scan = await parseForScan(raw)
+    expect(scan.ok).toBe(full.ok)
+    if (!full.ok || !scan.ok) continue
+    if (scan.exact) expect(full.format).toBe('plain')
+    // Klartext, auch aus einer gekuerzten Nachricht, ist derselbe Text.
+    if (full.format === 'plain') expect(scan.quick).toBe(full.text)
+    expect(await scan.full()).toBe(full.text)
+  }
+})

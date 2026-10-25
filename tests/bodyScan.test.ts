@@ -2,7 +2,8 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { CANDIDATE_CAP, findMatch, scanBodies } from '../src/bodyScan.js'
+import { CANDIDATE_CAP, findMatch, foldFast, scanBodies } from '../src/bodyScan.js'
+import { fold } from '../src/fold.js'
 import { loadConfig, type Config } from '../src/config.js'
 import { createContext } from '../src/context.js'
 import { HelperError } from '../src/errors.js'
@@ -47,9 +48,15 @@ function raw(body: string): string {
   return Buffer.from(`${Buffer.byteLength(mime)}\n${mime}`).toString('base64')
 }
 
+/** Beliebige MIME-Nachricht im .emlx-Rahmen. */
+function rawMime(mime: string): string {
+  return Buffer.from(`${Buffer.byteLength(mime)}\n${mime}`).toString('base64')
+}
+
 interface World {
   rows: ReturnType<typeof row>[]
   bodies: Record<number, string>
+  mimes?: Record<number, string>
   onCall?: (command: string) => void
   budgetOnce?: boolean
 }
@@ -73,7 +80,9 @@ function fakeRunner(w: World) {
         let messages = gids.map((g) => {
           const r = w.rows.find((x) => x.gid === g)!
           const b = w.bodies[g]
-          return { ...r, raw: r.file === 'none' || b === undefined ? null : raw(b), rawSize: 10, rawTruncated: false }
+          const mime = w.mimes?.[g]
+          const data = mime !== undefined ? rawMime(mime) : b === undefined ? null : raw(b)
+          return { ...r, raw: r.file === 'none' ? null : data, rawSize: 10, rawTruncated: false }
         })
         let budgetExhausted = false
         if (w.budgetOnce && !budgetUsed && gids.length > 2) {
@@ -146,11 +155,77 @@ describe('scanBodies', () => {
     for (const r of rows) bodies[r.gid] = 'nothing'
     let t = 0
     const { res } = await scan({ rows, bodies, onCall: (c) => { if (c === 'get-messages') t += 2000 } }, { now: () => t })
-    // Zwei Bloecke zu 50 sind geholt, danach ist das Budget weg: erst 50, nach dem zweiten Abruf 4000 ms.
+    // Zwei Bloecke zu 50 sind geholt: nach dem ersten Abruf 2000 ms, nach dem zweiten 4000 ms.
+    // Vor der 51. Nachricht ist das Budget weg; sie wird nicht mehr geprueft.
     expect(res.scan.stoppedBy).toBe('time')
     expect(res.scan.complete).toBe(false)
-    expect(res.scan.scanned).toBe(51)
-    expect(res.resumeAfter?.g).toBe(51)
+    expect(res.scan.scanned).toBe(50)
+    expect(res.resumeAfter?.g).toBe(50)
+  })
+
+  it('stops within a batch as soon as the budget is gone and the next page resumes without gaps', async () => {
+    const rows = rowsOf(12)
+    const bodies: Record<number, string> = {}
+    for (const r of rows) bodies[r.gid] = 'a needle'
+    // Uhr: der Abruf kostet 2500 ms, danach kostet jedes Ablesen 100 ms.
+    const clocked = () => {
+      let t = 0
+      let ticking = false
+      return {
+        now: () => (ticking ? (t += 100) : t),
+        onCall: (c: string) => {
+          if (c === 'get-messages') {
+            t += 2500
+            ticking = true
+          }
+        },
+      }
+    }
+    const seen: number[] = []
+    let after: { d: number; g: number } | null = null
+    for (let call = 0; call < 10; call++) {
+      const clock = clocked()
+      const { res, calls } = await scan({ rows, bodies, onCall: clock.onCall }, { now: clock.now, after, limit: 100 })
+      seen.push(...res.matches.map((m) => m.row.gid))
+      if (res.scan.complete) break
+      expect(res.scan.stoppedBy).toBe('time')
+      // Abbruch mitten im Block: ein Abruf, weniger Kandidaten als der Block hat.
+      expect(calls.filter((c) => c.command === 'get-messages')).toHaveLength(1)
+      expect(res.scan.scanned).toBe(5)
+      expect(res.resumeAfter?.g).toBe(seen[seen.length - 1])
+      after = res.resumeAfter
+    }
+    // Jeder Kandidat genau einmal, in Reihenfolge.
+    expect(seen).toEqual(rows.map((r) => r.gid))
+  })
+
+  it('checks the budget before fetching the next batch', async () => {
+    const rows = rowsOf(120)
+    const bodies: Record<number, string> = {}
+    for (const r of rows) bodies[r.gid] = 'nothing'
+    let t = 0
+    let ticking = false
+    const onCall = (c: string) => {
+      if (c === 'get-messages') {
+        t += 1000
+        ticking = true
+      }
+    }
+    // 1000 ms Abruf, dann 49 Ablesungen zu 40 ms bis zur 50. Nachricht (2960 ms); die Pruefung vor dem
+    // naechsten Block erreicht 3000 ms und holt ihn nicht mehr.
+    const { res, calls } = await scan({ rows, bodies, onCall }, { now: () => (ticking ? (t += 40) : t) })
+    expect(res.scan).toEqual({ scanned: 50, unavailable: 0, stoppedBy: 'time', complete: false })
+    expect(res.resumeAfter?.g).toBe(50)
+    expect(calls.filter((c) => c.command === 'get-messages')).toHaveLength(1)
+  })
+
+  it('scans at least one candidate even when the first fetch exceeds the budget', async () => {
+    const rows = rowsOf(3)
+    let t = 0
+    const { res } = await scan({ rows, bodies: { 1: 'needle', 2: 'needle', 3: 'needle' }, onCall: (c) => { if (c === 'get-messages') t += 5000 } }, { now: () => t })
+    expect(res.scan).toEqual({ scanned: 1, unavailable: 0, stoppedBy: 'time', complete: false })
+    expect(res.matches.map((m) => m.row.gid)).toEqual([1])
+    expect(res.resumeAfter?.g).toBe(1)
   })
 
   it('security mails never match even if the term is in the body', async () => {
@@ -169,6 +244,65 @@ describe('scanBodies', () => {
     // Nur scanned zaehlt; die Mail ist weder "nicht verfuegbar" noch beendet sie den Scan.
     expect(res.scan).toEqual({ scanned: 1, unavailable: 0, stoppedBy: null, complete: true })
     expect(res.resumeAfter).toBeNull()
+  })
+
+  const html = (body: string) => `From: Anna <anna@example.com>\r\nSubject: x\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${body}\r\n`
+  const alternative = (plain: string, htmlBody: string) =>
+    'From: Anna <anna@example.com>\r\nSubject: x\r\nContent-Type: multipart/alternative; boundary="b"\r\n\r\n' +
+    `--b\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${plain}\r\n` +
+    `--b\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${htmlBody}\r\n--b--\r\n`
+
+  it('a security mail whose code sits only in the HTML part is excluded from the scan (E2)', async () => {
+    const rows = rowsOf(4, () => ({ subject: 'Hello' }))
+    const mimes = {
+      // Nur HTML, Code fett gesetzt.
+      1: html('<html><body><p>Your verification <span>code</span> is <b>482913</b>.</p></body></html>'),
+      // Leerer Klartext-Teil: der Text kommt aus dem HTML-Teil.
+      2: alternative('   ', '<p>Ihr Best&auml;tigungscode lautet <strong>482913</strong></p>'),
+      // Schluesselwort nur im Linkziel, das html-to-text in den Text uebernimmt.
+      3: html('<p>Weiter mit <a href="https://example.com/verify-your-email?c=1">diesem Link</a>. Kennung 482913</p>'),
+      // Gegenprobe: gewoehnliche HTML-Mail mit derselben Zahl wird gefunden.
+      4: html('<p>Bestellnummer <b>482913</b> &ndash; danke</p>'),
+    }
+    const { res } = await scan({ rows, bodies: {}, mimes }, { term: '482913' })
+    expect(res.matches.map((m) => m.row.gid)).toEqual([4])
+    expect(res.matches[0]!.matchContext).toBe('Bestellnummer 482913 – danke')
+    expect(res.scan).toEqual({ scanned: 4, unavailable: 0, stoppedBy: null, complete: true })
+  })
+
+  it('mails with attachments are scanned without the attachment and verified on the full text', async () => {
+    const pdf = Buffer.alloc(40000, 1).toString('base64').replace(/.{76}/g, '$&\r\n')
+    const mixed = (text: string) =>
+      'From: Anna <anna@example.com>\r\nSubject: x\r\nContent-Type: multipart/mixed; boundary="m"\r\n\r\n' +
+      `--m\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${text}\r\n` +
+      `--m\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename="a.pdf"\r\nContent-Transfer-Encoding: base64\r\n\r\n${pdf}\r\n--m--\r\n`
+    const rows = rowsOf(3, () => ({ subject: 'Hello' }))
+    const mimes = {
+      1: mixed('Rechnung 482913 im Anhang'),
+      2: mixed('Your one-time code is 482913'),
+      3: mixed('nichts'),
+    }
+    const { res } = await scan({ rows, bodies: {}, mimes }, { term: '482913' })
+    expect(res.matches.map((m) => m.row.gid)).toEqual([1])
+    expect(res.matches[0]!.matchContext).toBe('Rechnung 482913 im Anhang')
+    expect(res.scan).toEqual({ scanned: 3, unavailable: 0, stoppedBy: null, complete: true })
+  })
+
+  it('html-only mails match across tags and entities with context from html-to-text', async () => {
+    const rows = rowsOf(3)
+    const mimes = {
+      1: html('<style>.needle{color:red}</style><div>Ihre <b>Rech</b>nung &amp; Liefer<br>schein</div>'),
+      2: html('<script>var needle = 1</script><p>nothing here</p>'),
+      3: html('<p>Gr&ouml;&szlig;e passt</p>'),
+    }
+    const a = await scan({ rows, bodies: {}, mimes }, { term: 'rechnung & liefer' })
+    expect(a.res.matches.map((m) => m.row.gid)).toEqual([1])
+    expect(a.res.matches[0]!.matchContext).toContain('Rechnung & Liefer')
+    // Inhalt von <style> und <script> zaehlt nicht.
+    const b = await scan({ rows, bodies: {}, mimes }, { term: 'needle' })
+    expect(b.res.matches).toEqual([])
+    const c = await scan({ rows, bodies: {}, mimes }, { term: 'GRÖSSE' })
+    expect(c.res.matches.map((m) => m.row.gid)).toEqual([3])
   })
 
   it('a decomposed search term matches precomposed text', async () => {
@@ -226,6 +360,41 @@ describe('scanBodies', () => {
     await expect(scan(w)).rejects.toMatchObject({ code: 'HELPER_CRASHED' })
     const ok = await scan(w)
     expect(ok.res.matches).toHaveLength(1)
+  })
+})
+
+describe('foldFast', () => {
+  it('equals folding every codepoint on its own', () => {
+    const perCodepoint = (t: string) => [...t].map((ch) => fold(ch)).join('')
+    const samples = [
+      'Grüße aus KÖLN, Straße ẞ ß',
+      'ΣΟΦΟΣ σοφος ΌΣΟΣ',
+      'İstanbul KELVIN \u212a Ω \u2126 Å \u212b',
+      'zerlegt: o\u0308 A\u030a e\u0301',
+      '😀 Emoji 𝐀𝐁 \ud800 einsam',
+      'ﬁ ﬂ ǅ ǈ',
+    ]
+    let seed = 7
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff)
+    for (let k = 0; k < 200; k++) {
+      let t = ''
+      for (let j = 0; j < 40; j++) t += String.fromCodePoint(Math.floor(rnd() * 0x3000))
+      samples.push(t)
+    }
+    for (const t of samples) expect(foldFast(t)).toBe(perCodepoint(t))
+  })
+
+  it('relies on toLowerCase only where it equals fold (below U+0340, except ß)', () => {
+    for (let c = 0; c < 0x340; c++) {
+      const ch = String.fromCodePoint(c)
+      expect(foldFast(`${ch}A${ch}`)).toBe(`${fold(ch)}a${fold(ch)}`)
+    }
+    // Ausgabe von fold ist klein und ohne grosses Sigma, fuer jeden Codepoint.
+    for (let c = 0; c <= 0x10ffff; c += c < 0x20000 ? 1 : 97) {
+      if (c >= 0xd800 && c <= 0xdfff) continue
+      const f = fold(String.fromCodePoint(c))
+      if (f.toLowerCase() !== f || f.includes('\u03a3')) throw new Error(`fold output not lowercase at ${c.toString(16)}`)
+    }
   })
 })
 

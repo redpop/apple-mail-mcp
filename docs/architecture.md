@@ -214,10 +214,24 @@ parse is reported as `parse_failed`, never as an empty body.
 - candidates come newest first in pages of 200 from the other filters;
 - messages are fetched in blocks of 50, at most 256 KiB per message and 16 MiB per request;
 - it stops at the requested number of matches, after 2,000 candidates, or after 3 seconds,
-  whichever comes first;
+  whichever comes first; the clock is checked before every helper request and before every
+  message, so the budget overshoots by at most one helper request or one message (one candidate
+  is always examined);
 - the result says which, in `scan` and in a plain-text `note`, and `nextCursor` continues
   after the last **examined** candidate (not the last match);
 - security mails are skipped, so they cannot be found by content.
+
+The scan does less work per message than `get_message` (`parseForScan` in `src/mime.ts`):
+before parsing, `src/mimeTrim.ts` drops the bodies of parts that never become text
+(attachments, images, `application/*`, the HTML half of an alternative with a plain half), and
+an HTML-only message is searched in a rough tag-stripped form (`src/quickHtml.ts`) instead of
+the `html-to-text` output. Both are only a prefilter, compared without any whitespace. A
+message that passes it is parsed again exactly as `get_message` does, and that text decides the
+match, the `matchContext` and the security check. Search runs first and the security check only
+on a match, which gives the same result because the check only ever removes matches.
+`node scripts/bench-mime.mjs` (after `npm run build`) prints the per-stage timings on synthetic
+mail; on the development machine the scan path handles about 2,400 messages per second there,
+the full path about 600.
 
 A raw grep over 2,000 random files took 2.5 s in the spike, and a scan of the whole mailbox
 takes minutes, which is why the scan is bounded. An opt-in full-text index is a possible later
