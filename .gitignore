@@ -1,0 +1,12 @@
+node_modules/
+dist/
+bin/
+swift/.build/
+*.log
+.DS_Store
+.superpowers/
+
+# Interne Design-, Planungs- und Spike-Dokumente (nicht veroeffentlicht)
+docs/superpowers/
+docs/spikes/
+docs/decisions-*.md
