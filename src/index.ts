@@ -5,11 +5,11 @@ import { createContext } from './context.js'
 import { createHelperRunner, type HelperRunner } from './helper.js'
 import { createServer } from './server.js'
 
-// Task 16 ersetzt setup/doctor. Auf stdout darf im Servermodus nur das Protokoll stehen.
+// Auf stdout darf im Servermodus nur das Protokoll stehen; setup/doctor sind eigene Kommandozeilenmodi.
 const arg = process.argv[2]
 if (arg === 'setup' || arg === 'doctor') {
-  process.stderr.write(`apple-mail-mcp ${arg}: not implemented yet\n`)
-  process.exit(2)
+  const { runCli } = await import('./cli/main.js')
+  process.exit(await runCli(arg, process.argv.slice(3)))
 }
 
 const configResult = loadConfig(process.env)
