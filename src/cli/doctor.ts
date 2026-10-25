@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { arch as osArch } from 'node:os'
+import { arch as osArch, homedir } from 'node:os'
 import type { Writable } from 'node:stream'
 import type { ConfigResult } from '../config.js'
 import { describeError, HelperError } from '../errors.js'
@@ -32,6 +32,13 @@ export interface DoctorDeps {
   /** `--schema`: nur Fingerabdruck, fehlende Spalten und CREATE-Zeilen. */
   schema?: boolean
   packageVersion?: string
+  /** Nur fuer Tests: Home-Verzeichnis, das in der Standardausgabe zu ~ wird. */
+  home?: string
+}
+
+/** Ersetzt das Home-Verzeichnis durch ~ (Standardausgabe enthaelt keinen Benutzernamen). */
+export function tildePath(path: string, home: string = homedir()): string {
+  return home !== '' && home !== '/' && (path === home || path.startsWith(home + '/')) ? '~' + path.slice(home.length) : path
 }
 
 type Status = 'ok' | 'warn' | 'fail'
@@ -50,8 +57,9 @@ function packageVersion(): string {
   }
 }
 
-function errText(e: unknown): string {
-  return e instanceof HelperError ? describeError(e.code, e.message) : 'The helper could not be started.'
+// Helper-Details (Pfade, Datenbanktext) nur mit --verbose; sonst nur der feste Text zum Code.
+function errText(e: unknown, verbose = false): string {
+  return e instanceof HelperError ? describeError(e.code, verbose ? e.message : undefined) : 'The helper could not be started.'
 }
 
 interface Signature {
@@ -71,14 +79,16 @@ function parseCodesign(text: string): Signature {
   }
 }
 
+const VERBOSE_WARNING = 'Warning: verbose output contains mailbox names and account identifiers. Do not paste it publicly.'
+
 export async function runDoctor(deps: DoctorDeps): Promise<number> {
   const { out, runner } = deps
   const checks: Check[] = []
   const add = (id: string, status: Status, message: string): void => void checks.push({ id, status, message })
   const verboseLines: string[] = []
 
-  // --schema: eigener, minimaler Pfad.
-  if (deps.schema) return runSchema(deps)
+  // --schema ohne --json: eigener, minimaler Pfad.
+  if (deps.schema && !deps.json) return runSchema(deps)
 
   const override = deps.configResult.ok && deps.configResult.config.helperPath !== null
   const channel = override ? 'override' : deps.bundlePath.includes('/Claude Extensions/') ? 'mcpb' : 'npm'
@@ -103,11 +113,12 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
   try {
     probe = probeResult.parse(await runner.run('probe', {}))
   } catch (e) {
-    probeError = errText(e)
+    probeError = errText(e, deps.verbose)
   }
   add('system', 'ok', `macOS ${probe?.osVersion ?? 'unknown'}, ${osArch()}, Node ${process.versions.node}.`)
 
   // Helper-Bundle, Signatur, Stapling
+  const shownBundle = deps.verbose ? deps.bundlePath : tildePath(deps.bundlePath, deps.home)
   let bundleId: string | null = null
   try {
     const execOne = (f: string, a: string[]): string => {
@@ -120,7 +131,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
     bundleId = null
   }
   const isRelease = bundleId === RELEASE_BUNDLE_ID
-  add('helper-bundle', bundleId ? 'ok' : 'fail', bundleId ? `Bundle ${deps.bundlePath}, identifier ${bundleId}.` : `Bundle ${deps.bundlePath} has no readable identifier.`)
+  add('helper-bundle', bundleId ? 'ok' : 'fail', bundleId ? `Bundle ${shownBundle}, identifier ${bundleId}.` : `Bundle ${shownBundle} has no readable identifier.`)
 
   const cs = deps.exec('/usr/bin/codesign', ['-dv', '--verbose=2', deps.bundlePath])
   if (cs.status !== 0) {
@@ -162,7 +173,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
       an.status === 'available' && an.unmatchedAccounts === 0 ? 'ok' : 'warn',
       an.status === 'available'
         ? `Account names available; ${an.unmatchedAccounts} mail accounts without a match.`
-        : `Account names unavailable${an.reason ? ` (${an.reason})` : ''}; ${an.unmatchedAccounts} mail accounts without a match.`,
+        : `Account names unavailable${deps.verbose && an.reason ? ` (${an.reason})` : ''}; ${an.unmatchedAccounts} mail accounts without a match.`,
     )
   }
 
@@ -210,43 +221,47 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
           for (const m of res.messages) n[m.file]++
           add('local-files', 'ok', `Of the ${res.messages.length} newest messages: full ${n.full}, partial ${n.partial}, none ${n.none}.`)
         } catch (e) {
-          add('local-files', 'warn', `Local file coverage could not be measured. ${errText(e)}`)
+          add('local-files', 'warn', `Local file coverage could not be measured. ${errText(e, deps.verbose)}`)
         }
       }
     } catch (e) {
-      add('mailbox-roles', 'fail', `Mailboxes could not be listed. ${errText(e)}`)
+      add('mailbox-roles', 'fail', `Mailboxes could not be listed. ${errText(e, deps.verbose)}`)
     }
   }
   if (!deps.configResult.ok) add('config', 'fail', `Configuration error in ${deps.configResult.key}: ${deps.configResult.error}`)
 
   const exit = checks.some((c) => c.status === 'fail') ? 1 : 0
   if (deps.json) {
-    out.write(JSON.stringify({ checks, ...(deps.verbose ? { verbose: verboseLines } : {}), exitCode: exit }) + '\n')
+    const body: Record<string, unknown> = { checks, exitCode: exit }
+    if (deps.verbose) body.verbose = { warning: VERBOSE_WARNING, lines: verboseLines }
+    if (deps.schema) body.schema = (await schemaLines(deps)).lines
+    out.write(JSON.stringify(body) + '\n')
   } else {
-    if (deps.verbose) out.write('Warning: verbose output contains mailbox names and account identifiers. Do not paste it publicly.\n')
+    if (deps.verbose) out.write(VERBOSE_WARNING + '\n')
     for (const c of checks) out.write(`[${c.status}] ${c.id}: ${c.message}\n`)
     for (const l of verboseLines) out.write(l + '\n')
   }
   return exit
 }
 
-/** `doctor --schema`: nur Fingerabdruck, fehlende Spalten und ggf. CREATE-Zeilen, sonst nichts. */
-async function runSchema(deps: DoctorDeps): Promise<number> {
+async function schemaLines(deps: DoctorDeps): Promise<{ lines: string[]; ok: boolean }> {
   let raw: unknown
   try {
     raw = await deps.runner.run('probe', {})
   } catch (e) {
-    deps.out.write(errText(e) + '\n')
-    return 1
+    return { lines: [errText(e, deps.verbose)], ok: false }
   }
   const p = probeResult.safeParse(raw)
-  if (!p.success || !p.data.schema) {
-    deps.out.write('No schema information available.\n')
-    return 1
-  }
+  if (!p.success || !p.data.schema) return { lines: ['No schema information available.'], ok: false }
   const lines = [p.data.schema.fingerprint, ...p.data.schema.missing]
   const ddl = (raw as { schema?: { ddl?: unknown } }).schema?.ddl
   if (typeof ddl === 'string') lines.push(...ddl.split('\n').filter((l) => l.startsWith('CREATE ')))
-  deps.out.write(lines.join('\n') + '\n')
-  return 0
+  return { lines, ok: true }
+}
+
+/** `doctor --schema`: nur Fingerabdruck, fehlende Spalten und ggf. CREATE-Zeilen, sonst nichts. */
+async function runSchema(deps: DoctorDeps): Promise<number> {
+  const r = await schemaLines(deps)
+  deps.out.write(r.lines.join('\n') + '\n')
+  return r.ok ? 0 : 1
 }

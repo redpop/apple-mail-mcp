@@ -1,4 +1,5 @@
 import type { Writable } from 'node:stream'
+import { tildePath } from './doctor.js'
 import { describeError, HelperError } from '../errors.js'
 import { FDA_SETTINGS_URL, type OpenFn } from '../fdaPrompt.js'
 import type { HelperRunner } from '../helper.js'
@@ -15,6 +16,9 @@ export interface SetupDeps {
   now: () => number
   /** Nur fuer Tests: wohin die Zustandsdatei geschrieben wird. */
   stateDir?: string
+  /** Konfigurationsfehler, der vor dem Start als Warnung erscheint. */
+  configWarning?: string
+  home?: string
 }
 
 const POLL_MS = 2000
@@ -42,6 +46,8 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
     return 0
   }
 
+  if (deps.configWarning) say(`Warning: ${deps.configWarning}`)
+  const shown = tildePath(deps.bundlePath, deps.home)
   let p: ProbeResult
   try {
     p = await probe()
@@ -63,7 +69,7 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
   say('Apple Mail data is protected by macOS. Grant Full Disk Access to "Mail MCP Helper":')
   say('  1. A Finder window shows "Mail MCP Helper" and System Settings opens on Full Disk Access.')
   say('  2. Drag "Mail MCP Helper" from Finder into the list and switch it on.')
-  say(`  (If it is missing from the list: click +, press Cmd-Shift-G and paste ${deps.bundlePath})`)
+  say(`  (If it is missing from the list: click +, press Cmd-Shift-G and paste ${shown})`)
   for (const args of [[FDA_SETTINGS_URL], ['-R', deps.bundlePath]]) {
     try {
       deps.open('/usr/bin/open', args)

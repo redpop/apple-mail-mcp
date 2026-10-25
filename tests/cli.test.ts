@@ -3,9 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
 import { describe, expect, it } from 'vitest'
+import { runCli } from '../src/cli/main.js'
 import { runDoctor, type DoctorExec } from '../src/cli/doctor.js'
 import { runSetup } from '../src/cli/setup.js'
 import { loadConfig } from '../src/config.js'
+import { HelperError } from '../src/errors.js'
 import { FDA_SETTINGS_URL } from '../src/fdaPrompt.js'
 
 const BUNDLE = '/opt/x/bin/Mail MCP Helper.app'
@@ -264,5 +266,84 @@ describe('doctor', () => {
     expect(s.text()).toContain('messages.size')
     expect(s.text()).not.toContain('secret row')
     expect(s.text()).not.toContain('alice')
+  })
+})
+
+describe('doctor privacy of error details', () => {
+  const leak = '/Users/someone/Library/Mail/V10/ABC-UUID/Secret.mbox'
+  const leaks = (t: string) => expect(t).not.toMatch(/someone|Secret\.mbox|ABC-UUID/)
+
+  it('keeps helper error details and account-name reasons out of default text and json', async () => {
+    for (const json of [false, true]) {
+      const s = sink()
+      const runner = goodRunner({
+        probe: () => probe('granted', { accountNames: { status: 'unavailable', unmatchedAccounts: 1, reason: leak } }),
+        'list-mailboxes': () => { throw new HelperError('DATABASE_ERROR', leak) },
+      })
+      await runDoctor(doctorDeps(s, runner, { json }))
+      leaks(s.text())
+    }
+    const s2 = sink()
+    await runDoctor(doctorDeps(s2, goodRunner({ probe: () => { throw new HelperError('DATABASE_ERROR', leak) } })))
+    leaks(s2.text())
+    const s3 = sink()
+    await runDoctor(doctorDeps(s3, goodRunner({ probe: () => { throw new HelperError('DATABASE_ERROR', leak) } }), { verbose: true }))
+    expect(s3.text()).toContain('Secret.mbox')
+  })
+
+  it('shows the home directory as ~ by default', async () => {
+    const s = sink()
+    await runDoctor(doctorDeps(s, goodRunner(), { bundlePath: '/Users/someone/x/Mail MCP Helper.app', home: '/Users/someone' }))
+    expect(s.text()).toContain('~/x/Mail MCP Helper.app')
+    leaks(s.text())
+  })
+
+  it('--json with --schema and --verbose stays one JSON object', async () => {
+    const s = sink()
+    await runDoctor(doctorDeps(s, goodRunner(), { json: true, schema: true, verbose: true }))
+    const o = JSON.parse(s.text()) as { schema: string[]; verbose: { warning: string; lines: string[] } }
+    expect(o.schema).toContain('sha256:abc123')
+    expect(o.verbose.warning).toMatch(/^Warning/)
+    expect(o.verbose.lines.join('\n')).toContain('Private Folder')
+  })
+})
+
+describe('runCli', () => {
+  const mkRunner = () => {
+    const st = { stops: 0, helperPath: undefined as string | null | undefined }
+    return { st, make: (c: { helperPath: string | null }) => { st.helperPath = c.helperPath; return { bundlePath: BUNDLE, run: async (): Promise<unknown> => { throw new Error('boom') }, stop: () => void st.stops++ } } }
+  }
+
+  it('uses APPLE_MAIL_HELPER_PATH despite invalid config and warns in setup', async () => {
+    const { st, make } = mkRunner()
+    const s = sink()
+    const code = await runCli('setup', [], { env: { APPLE_MAIL_HELPER_PATH: ' /dev/H.app ', APPLE_MAIL_MAX_RESULTS: 'x' }, makeRunner: make as never, out: s.out, onSignal: () => {} })
+    expect(st.helperPath).toBe('/dev/H.app')
+    expect(s.text()).toMatch(/^Warning: APPLE_MAIL_MAX_RESULTS/)
+    expect(code).toBe(1)
+    expect(st.stops).toBe(1)
+  })
+
+  it('doctor keeps the config fail check and stops the runner', async () => {
+    const { st, make } = mkRunner()
+    const s = sink()
+    const code = await runCli('doctor', ['--json'], { env: { APPLE_MAIL_MAX_RESULTS: 'x', APPLE_MAIL_HELPER_PATH: '  ' }, makeRunner: make as never, out: s.out, onSignal: () => {} })
+    expect(st.helperPath).toBeNull()
+    const o = JSON.parse(s.text()) as { checks: Array<{ id: string; status: string }> }
+    expect(o.checks.find((c) => c.id === 'config')?.status).toBe('fail')
+    expect(code).toBe(1)
+    expect(st.stops).toBe(1)
+  })
+
+  it('signals stop the runner and exit 130 / 143', async () => {
+    const { st, make } = mkRunner()
+    const handlers = new Map<string, () => void>()
+    const exits: number[] = []
+    await runCli('doctor', [], { env: {}, makeRunner: make as never, out: sink().out, onSignal: (sig, h) => void handlers.set(sig, h), exit: (c) => void exits.push(c) })
+    const before = st.stops
+    handlers.get('SIGINT')!()
+    handlers.get('SIGTERM')!()
+    expect(st.stops).toBe(before + 2)
+    expect(exits).toEqual([130, 143])
   })
 })
