@@ -204,23 +204,42 @@ Run it with `PERF_REAL_SIZE=1 swift test -c release --package-path swift --filte
 no-filter case is slower here than on the maintainer's real store (112 ms), so compare the rows
 with each other, not with real-store numbers.
 
-Timings from a reviewer's synthetic store of 238,000 message rows, run in Python as an upper
-bound for the Swift code:
+Measured on the maintainer's real mailbox (macOS 27.0.1, arm64, 238,642 message rows, 120,904
+distinct mails, 221 mailboxes of which 190 allowed) with `scripts/measure-latency.mjs`, Dev
+bundle (release build), warm helper, median of five runs, one 20-row page with `countTotal`
+unless noted, 2026-10-26:
 
-| Filter | Time |
-|---|---|
-| subject | about 100 ms |
-| to | about 25 ms |
-| query (subject, sender, recipients) | about 50 ms |
+| Request | Median | First call |
+|---|---|---|
+| `list-mailboxes` | 1 ms | 1 ms |
+| search, no filter | 89 ms | 92 ms |
+| search, no filter, no count | 61 ms | 62 ms |
+| search, subject | 25 ms | 225 ms (builds the fold cache) |
+| search, from | 7 ms | 16 ms |
+| search, to | 4 ms | 9 ms |
+| search, query | 30 ms | 32 ms |
+| search, unread | 71 ms | 71 ms |
+| search, `hasAttachment: true` | 27 ms | 30 ms |
+| `get-messages`, 1 / 20 messages | 2 / 13 ms | 3 / 13 ms |
+| `thread` | 2 ms | 2 ms |
+| body scan, one term, 20 matches | 1,267 ms for 981 examined candidates | |
 
-These are not benchmarks of the finished helper. They came from synthetic data and a different
-language. The Swift search was not timed against a real mailbox when this was written; the
-manual run with the dev build adds that measurement. To time it, start the server with
-`APPLE_MAIL_MCP_DEBUG=true`: every helper request then writes one line to stderr with the
-command, its duration including the pipe round trip, and the result code, for example
-`apple-mail-mcp: search 42 ms ok`. A `search_messages` page is one `search` line (plus
-`get-messages` lines when `bodyContains` scans bodies); the first request after a start also pays
-for opening the database.
+Before the fold cache and the planner hints the same run gave subject 476 ms, query 534 ms,
+`hasAttachment` 223 ms and a body scan of 6.5 s that broke its 3-second budget. The numbers are
+for helper requests through the pipe; a tool call adds the Node work (summaries, MIME for
+`get_message`). They are one mailbox on one machine, not a guarantee.
+
+Run it yourself (prints timings and row counts only, never content):
+
+```bash
+APPLE_MAIL_HELPER_PATH="$PWD/bin/Mail MCP Helper (Dev).app" node scripts/measure-latency.mjs <term>
+```
+
+Inside a client, start the server with `APPLE_MAIL_MCP_DEBUG=true`: every helper request then
+writes one line to stderr with the command, its duration including the pipe round trip, and the
+result code, for example `apple-mail-mcp: search 42 ms ok`. A `search_messages` page is one
+`search` line (plus `get-messages` lines when `bodyContains` scans bodies); the first request
+after a start also pays for opening the database.
 
 Separately measured on a real mailbox during the spike: `LIKE` over all subjects 42 ms and over
 sender addresses 27 ms with `sqlite3` including process start; `count(*)` through the helper 2
@@ -301,7 +320,8 @@ Measured on macOS 27.0.1, Mail 16.0, arm64, one real mailbox (spike, 2026-10-25)
   files;
 - the column semantics used (`recipients.type`, `addresses.comment` as display name, Unix-second
   dates), checked against parsed headers;
-- Spotlight finds no mail items, so it is not an option for body search.
+- Spotlight finds no mail items, so it is not an option for body search;
+- helper latency per request on that mailbox (2026-10-26), in the table under Text search.
 
 Assumed, not measured:
 
@@ -310,5 +330,4 @@ Assumed, not measured:
 - Exchange accounts: not in the spike mailbox;
 - whether macOS turns a grant off at `exec` or at first file access for an unexpected
   ad-hoc build with the release id;
-- search timings with the Swift implementation on a mailbox of that size, beyond the upper bound
-  above.
+- latency on other machines, Intel Macs and mailboxes much larger than the one measured.

@@ -31,9 +31,9 @@ the mail in Mail.app. Details: [`docs/tools.md`](./docs/tools.md).
 ## Why this one
 
 - **Fast.** It queries Mail's SQLite index instead of scripting Mail.app with AppleScript.
-  A subject search over a mailbox with a few hundred thousand rows takes tens of milliseconds
-  in the database; see [`docs/architecture.md`](./docs/architecture.md) for what was measured
-  and what is assumed.
+  On one real mailbox with about 240,000 message rows, a page of search results takes 4 to
+  90 ms in the helper, a subject search 25 ms after the first one; see
+  [`docs/architecture.md`](./docs/architecture.md) for the measurements and their limits.
 - **Full Disk Access goes to a small helper, not to your terminal or your AI client.** The
   server reaches Mail's files through a small app, "Mail MCP Helper", and macOS binds the
   permission to that app alone. Node, Terminal and Claude never get it.
