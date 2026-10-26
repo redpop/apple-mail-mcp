@@ -140,6 +140,9 @@ extension MailStore {
         while start < gids.count {
             let chunk = Array(gids[start..<min(start + gidChunk, gids.count)])
             start += gidChunk
+            // Unaeres + vor deleted und mailbox: ohne ANALYZE-Statistik waehlte SQLite sonst
+            // messages_deleted_mailbox_index und las alle erlaubten Zeilen (auf 240000 Zeilen rund 200 ms je
+            // Seite) statt der wenigen Kopien ueber messages_global_message_id_mailbox_index.
             let sql = """
                 SELECT m.ROWID, m.global_message_id, m.mailbox, m.read, m.flagged, m.date_received, m.date_sent,
                        m.conversation_id, m.subject_prefix, s.subject, a.address, a.comment, g.message_id_header
@@ -147,9 +150,9 @@ extension MailStore {
                 LEFT JOIN subjects s ON s.ROWID = m.subject
                 LEFT JOIN addresses a ON a.ROWID = m.sender
                 LEFT JOIN message_global_data g ON g.ROWID = m.global_message_id
-                WHERE m.deleted = 0
+                WHERE +m.deleted = 0
                   AND m.global_message_id IN (\(placeholders(chunk.count)))
-                  AND m.mailbox IN (\(placeholders(allowed.count)))
+                  AND +m.mailbox IN (\(placeholders(allowed.count)))
                 """
             try db.query(sql, (chunk + allowed).map { .int($0) }) { r in
                 let c = MessageCopy(

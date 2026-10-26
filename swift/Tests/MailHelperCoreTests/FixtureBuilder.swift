@@ -259,7 +259,19 @@ enum FixtureBuilder {
     /// Form der Massenzeilen: `uniform` ist die kleine, gleichfoermige Variante (500 Betreffs, 300 Absender,
     /// 400 Empfaenger); `varied` naehert die Verhaeltnisse einer echten Ablage an (30000 Betreffs,
     /// 6000 Adressen, Umlaute, zweite Kopien, mehrere Empfaenger, einige Anhaenge).
-    enum BulkShape { case uniform, varied }
+    /// `realSize` bildet die Verteilung der Ablage des Maintainers nach (2026-10-26: 238642 Zeilen in
+    /// messages, 120904 gids, rund 27700 Zeilen in attachments, 190 von 221 Mailboxen erlaubt):
+    /// `extraMessages` ist dort die Zahl der gids, jede hat im Mittel zwei Kopien in 200 zusaetzlichen
+    /// Mailboxen (`realSizeMailboxes`, davon `realSizeExcluded` nicht erlaubt).
+    enum BulkShape { case uniform, varied, realSize }
+
+    static let realSizeMailboxes: ClosedRange<Int64> = 1000...1199
+    static let realSizeExcluded: ClosedRange<Int64> = 1170...1199
+
+    /// Erlaubte Mailboxen fuer `realSize`: alle des Seeds und die zusaetzlichen ohne `realSizeExcluded`.
+    static func realSizeAllowed(_ f: Fixture) -> [Int64] {
+        f.allMailboxIds + realSizeMailboxes.filter { !realSizeExcluded.contains($0) }
+    }
 
     static func build(extraMessages: Int = 0, bulk: BulkShape = .uniform,
                       dropping: (table: String, column: String)? = nil) throws -> Fixture {
@@ -349,6 +361,8 @@ enum FixtureBuilder {
 
         if extraMessages > 0, bulk == .varied {
             try insertVariedBulk(db, f, count: extraMessages)
+        } else if extraMessages > 0, bulk == .realSize {
+            try insertRealSizeBulk(db, count: extraMessages)
         } else if extraMessages > 0 {
             // Massenzeilen ohne Dateien, alle in INBOX; Datum faellt je Zeile um eine Sekunde.
             let inbox = f.mailboxId(named: "inbox")
@@ -430,6 +444,73 @@ enum FixtureBuilder {
         try db.exec(seq(count) + """
             INSERT INTO attachments (message, attachment_id, name) SELECT \(baseRowid) + i, '1', 'anhang-' || i || '.pdf'
             FROM seq WHERE i % 10 = 0
+            """)
+    }
+
+    /// Massenzeilen in der Verteilung einer echten Ablage, ohne Dateien. Je gid i:
+    /// - erste Kopie: 60 % in Mailbox 1000 (wie "Alle Nachrichten"), sonst verteilt auf 1001...1199;
+    ///   jede 40. geloescht
+    /// - zweite Kopie bei 90 % (i % 10 != 0), verteilt, jede 30. geloescht; dritte bei 10 % (i % 10 == 9)
+    /// - Anhaenge: i % 32 == 3 an allen Kopien, i % 16 == 7 nur an der zweiten Kopie (die geloescht oder in
+    ///   einer nicht erlaubten Mailbox liegen kann); 1 oder 2 Zeilen je Nachricht, im Mittel 1,8
+    /// - jede siebte erste Kopie ungelesen, jede 50. markiert; Datum steigt mit i
+    /// Ergibt bei 121000 gids rund 242000 Zeilen in messages und 26000 in attachments auf 14000 Nachrichten.
+    private static func insertRealSizeBulk(_ db: SQLiteHandle, count n: Int) throws {
+        let subjectCount: Int64 = 30_000, addressCount: Int64 = 6_000
+        let s0 = try db.scalarInt("SELECT coalesce(max(ROWID), 0) FROM subjects")
+        let a0 = try db.scalarInt("SELECT coalesce(max(ROWID), 0) FROM addresses")
+        let first = realSizeMailboxes.lowerBound, spread = Int64(realSizeMailboxes.count - 1)
+        let baseRowid: Int64 = 10_000_000, thirdRowid: Int64 = 13_000_000
+        let baseGid: Int64 = 5_000_000, baseDate: Int64 = 1_600_000_000
+        func seq(_ count: Int64) -> String {
+            "WITH RECURSIVE seq(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM seq WHERE i + 1 < \(count)) "
+        }
+        let count = Int64(n)
+        try db.exec(seq(Int64(realSizeMailboxes.count)) + """
+            INSERT INTO mailboxes (ROWID, url) SELECT \(first) + i, 'imap://bulk.example.com/Ordner%20' || i FROM seq
+            """)
+        try db.exec(seq(subjectCount) + """
+            INSERT INTO subjects (ROWID, subject) SELECT \(s0) + 1 + i,
+                CASE i % 3 WHEN 0 THEN 'Rechnung Nr. ' || i || ' für Straße ' || (i % 90)
+                ELSE 'Thema ' || i || ': Neuigkeiten und Termine' END FROM seq
+            """)
+        try db.exec(seq(addressCount) + """
+            INSERT INTO addresses (ROWID, address, comment) SELECT \(a0) + 1 + i, 'person' || i || '@example.com',
+                CASE WHEN i % 5 = 0 THEN 'Jürgen Größe ' || i ELSE 'Person ' || i END FROM seq
+            """)
+        try db.exec(seq(count) + """
+            INSERT INTO message_global_data (ROWID, message_id_header) SELECT \(baseGid) + i, '<real-' || i || '@example.com>' FROM seq
+            """)
+        let columns = """
+            INSERT INTO messages (ROWID, global_message_id, sender, subject_prefix, subject,
+                date_sent, date_received, mailbox, read, flagged, deleted, conversation_id)
+            """
+        let common = "\(baseGid) + i, \(a0) + 1 + i % \(addressCount), '', \(s0) + 1 + i % \(subjectCount), \(baseDate) + i * 600"
+        try db.exec(seq(count) + columns + """
+            SELECT \(baseRowid) + 2 * i, \(common), \(baseDate) + i * 600,
+                CASE WHEN i % 5 < 3 THEN \(first) ELSE \(first) + 1 + (i * 7919) % \(spread) END,
+                i % 7 <> 0, i % 50 = 0, i % 40 = 0, 0 FROM seq
+            """)
+        try db.exec(seq(count) + columns + """
+            SELECT \(baseRowid) + 2 * i + 1, \(common), \(baseDate) + i * 600 + 1,
+                \(first) + 1 + (i * 104729) % \(spread), 1, 0, i % 30 = 0, 0 FROM seq WHERE i % 10 <> 0
+            """)
+        try db.exec(seq(count) + columns + """
+            SELECT \(thirdRowid) + i, \(common), \(baseDate) + i * 600,
+                \(first) + 1 + (i * 1299709) % \(spread), 1, 0, 0, 0 FROM seq WHERE i % 10 = 9
+            """)
+        try db.exec("""
+            INSERT INTO recipients (message, address, type, position)
+            SELECT ROWID, \(a0) + 1 + (global_message_id * 7 + 1) % \(addressCount), 0, 0 FROM messages WHERE ROWID >= \(baseRowid)
+            """)
+        try db.exec("""
+            WITH k(n) AS (VALUES (1), (2))
+            INSERT INTO attachments (message, attachment_id, name)
+            SELECT m.ROWID, k.n, 'anhang-' || m.ROWID || '-' || k.n || '.pdf' FROM messages m, k
+            WHERE m.ROWID >= \(baseRowid)
+                AND ((m.global_message_id - \(baseGid)) % 32 = 3
+                    OR ((m.global_message_id - \(baseGid)) % 16 = 7 AND m.ROWID < \(thirdRowid) AND m.ROWID % 2 = 1))
+                AND (k.n = 1 OR m.ROWID % 5 <> 0)
             """)
     }
 

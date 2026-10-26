@@ -92,6 +92,8 @@ extension MailStore {
         let allowedBind: [SQLValue] = r.allowedMailboxIds.map { .int($0) }
 
         let term = Self.term
+        // true, sobald ein Vorfilter eine gid-Menge liefert (m.global_message_id IN ...), siehe unten.
+        var driveByGid = false
         // Textfilter: die kleinen Woerterbuchtabellen (subjects, addresses) werden verglichen, nicht die
         // Nachrichten- oder Empfaengerzeilen, und zwar in ihrer gefalteten Kopie in TEMP (FoldCache.swift).
         // Ein IN je Filter, damit "irgendeine erlaubte Kopie" je Filter gilt.
@@ -102,17 +104,21 @@ extension MailStore {
                 (SELECT id FROM temp.fold_addresses WHERE instr(a, ?) > 0 OR instr(c, ?) > 0))
             """
         // Vorfilter auf Gruppen: irgendeine nicht geloeschte Kopie in einer erlaubten Mailbox erfuellt cond.
-        // IS NOT NULL nur zur Sicherheit fuer NOT IN (eine NULL in der Menge machte NOT IN fuer alle NULL);
-        // die Spalte ist im Schema NOT NULL.
+        // Das unaere + vor deleted und mailbox nimmt diesen Spalten die Indexnutzung, damit SQLite die Kopien
+        // ueber den Index der Bedingung findet (messages_subject_*, messages_sender_*, ROWID) statt ueber
+        // messages_deleted_mailbox_index alle erlaubten Zeilen zu lesen. Mit ANALYZE-Statistik waehlt SQLite
+        // das von selbst, ohne (frisch angelegter Index) nicht; ob Mails Index sqlite_stat1 fuehrt, ist nicht
+        // belegt. Am Ergebnis aendert + nichts.
         func anyAllowedCopy(_ cond: String) -> String {
             """
             SELECT m2.global_message_id FROM messages m2
-                WHERE m2.deleted = 0 AND \(allowedIn) AND m2.global_message_id IS NOT NULL AND (\(cond))
+                WHERE +m2.deleted = 0 AND +\(allowedIn) AND (\(cond))
             """
         }
         func textFilter(_ cond: String, _ binds: [SQLValue]) {
             wherePre.append("m.global_message_id IN (\(anyAllowedCopy(cond)))")
             whereBind += allowedBind + binds
+            driveByGid = true
         }
         if let t = term(r.from) { textFilter(senderDict, [.text(t), .text(t)]) }
         if let t = term(r.to) { textFilter(recipientDict, [.text(t), .text(t)]) }
@@ -130,18 +136,36 @@ extension MailStore {
         if let u = r.unread { having.append("max(m.read) = \(u ? 0 : 1)") }
         if let f = r.flagged { having.append("max(m.flagged) = \(f ? 1 : 0)") }
         if let h = r.hasAttachment {
-            // Als Vorfilter statt EXISTS je Zeile im HAVING: die Menge der Nachrichten mit Anhang wird einmal
-            // gebildet. Gleiche Bedeutung: irgendeine erlaubte Kopie hat einen Anhang (bzw. keine).
-            wherePre.append("m.global_message_id \(h ? "IN" : "NOT IN") (\(anyAllowedCopy("m2.ROWID IN (SELECT message FROM attachments)")))")
+            // Bedeutung: irgendeine nicht geloeschte, erlaubte Kopie hat einen Anhang (true) bzw. keine (false).
+            // Die gid-Menge wird einmal gebildet, ausgehend von attachments: CROSS JOIN legt die Reihenfolge
+            // fest (je Anhangszeile ein Zugriff ueber den Primaerschluessel von messages). Ohne diese Vorgabe
+            // waehlte SQLite messages_deleted_mailbox_index mit (deleted, mailbox IN erlaubt, ROWID IN
+            // Anhaenge), also je erlaubte Mailbox einen Zugriff je Anhangsnachricht: bei echter Groesse rund
+            // 190 x 15000 Suchschritte, langsamer als das fruehere EXISTS je Zeile. IS NOT NULL nur zur
+            // Sicherheit fuer NOT IN (eine NULL in der Menge machte NOT IN fuer alle NULL); die Spalte ist im
+            // Schema NOT NULL.
+            let withAttachment = """
+                SELECT m2.global_message_id FROM attachments a CROSS JOIN messages m2 ON m2.ROWID = a.message
+                    WHERE m2.deleted = 0 AND \(allowedIn) AND m2.global_message_id IS NOT NULL
+                """
+            wherePre.append("m.global_message_id \(h ? "IN" : "NOT IN") (\(withAttachment))")
             whereBind += allowedBind
+            if h { driveByGid = true }
         }
         bind += whereBind + havingBind
+        // Gibt es eine gid-Menge, nimmt das unaere + deleted und mailbox die Indexnutzung, damit SQLite die
+        // Gruppen ueber messages_global_message_id_mailbox_index aus der Menge holt (schon nach gid sortiert,
+        // kein GROUP-BY-Baum) statt alle erlaubten Zeilen ueber messages_deleted_mailbox_index zu lesen. Das
+        // ist auch dann nicht langsamer, wenn die Menge fast alle Nachrichten umfasst (gemessen: Betreff "e"
+        // auf 242000 Zeilen). Bei mehreren Mengen waehlt SQLite eine davon. Ohne Menge (kein Filter, nur
+        // HAVING-Filter oder nur hasAttachment = false) bleibt der Durchlauf ueber alle erlaubten Zeilen.
+        let plus = driveByGid ? "+" : ""
 
         let sql = """
             WITH cand AS (
                 SELECT m.global_message_id AS gid, max(m.date_received) AS d
                 FROM messages m
-                WHERE m.deleted = 0 AND m.mailbox IN (\(placeholders(r.allowedMailboxIds.count)))
+                WHERE \(plus)m.deleted = 0 AND \(plus)m.mailbox IN (\(placeholders(r.allowedMailboxIds.count)))
                 \(wherePre.map { "AND " + $0 }.joined(separator: " "))
                 GROUP BY m.global_message_id
                 \(having.isEmpty ? "" : "HAVING " + having.joined(separator: " AND "))

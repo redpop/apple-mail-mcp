@@ -169,8 +169,40 @@ connection reopens, which happens when Mail recreates the index file (new inode)
 
 `totalMatched` comes from the same statement as the page, as `count(*) OVER ()` over the grouped
 candidates, and only on the first page; later pages omit it. It is exact, without the former cap
-at 10,000, so `totalMatchedCapped` is always `false`. `hasAttachment` is a prefilter on the set of
-messages with an attachment instead of an `EXISTS` per row.
+at 10,000, so `totalMatchedCapped` is always `false`.
+
+`hasAttachment` is a prefilter on the set of groups where some allowed, non-deleted copy has an
+attachment. The set is built starting from `attachments` (`attachments CROSS JOIN messages`, one
+primary-key lookup per attachment row). Written the other way round, SQLite without `ANALYZE`
+statistics picked `messages_deleted_mailbox_index` and probed every allowed mailbox for every
+message with an attachment: about 1.1 s per page at real size, against 0.3 s for the old
+per-row `EXISTS`.
+
+Whenever a prefilter yields a set of group ids (a text filter or `hasAttachment: true`), the
+outer query marks `deleted` and `mailbox` with a unary `+`. SQLite then fetches the groups through
+`messages_global_message_id_mailbox_index` instead of reading every allowed row. The text filter
+subqueries get the same `+`, so they use the subject, sender or ROWID index. The `+` does not
+change results. With `sqlite_stat1` present SQLite picks these plans on its own; without it, it
+does not. Nobody has checked yet whether Mail's index carries statistics, so the query fixes the
+plan in both cases. `loadRows` uses the same `+` for the same reason.
+
+A synthetic store in the real proportions (`FixtureBuilder` `.realSize`: 242,000 rows, 121,000
+group ids, 28,700 attachment rows on 15,900 messages, 178 of 208 mailboxes allowed) times this,
+one 20-row page with `countTotal`, release build, median of five warm runs, the same with and
+without `ANALYZE`:
+
+| Filter | Time |
+|---|---|
+| none | 270 ms |
+| `hasAttachment: true` | 37 ms |
+| `hasAttachment: false` | 325 ms |
+| subject | 100 ms |
+| subject and `hasAttachment: true` | 86 ms |
+| from, to, query | 8 to 19 ms |
+
+Run it with `PERF_REAL_SIZE=1 swift test -c release --package-path swift --filter realSize`. The
+no-filter case is slower here than on the maintainer's real store (112 ms), so compare the rows
+with each other, not with real-store numbers.
 
 Timings from a reviewer's synthetic store of 238,000 message rows, run in Python as an upper
 bound for the Swift code:
