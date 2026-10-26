@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, test } from 'vitest'
-import { ADHOC_BUNDLE_ID, checkBundle, DEV_BUNDLE_ID, readBundleId, RELEASE_BUNDLE_ID, RELEASE_REQUIREMENT, TEAM_ID, type ExecFn } from '../src/signing.js'
+import { ADHOC_BUNDLE_ID, checkBundle, DEV_BUNDLE_ID, readBundleId, readBundleName, RELEASE_BUNDLE_ID, RELEASE_REQUIREMENT, TEAM_ID, type ExecFn } from '../src/signing.js'
 
 function fakeExec(o: { plutil: string; codesignExit?: number }): ExecFn & { calls: [string, string[]][] } {
   const calls: [string, string[]][] = []
@@ -80,5 +80,23 @@ describe('signing', () => {
   it('unreadable Info.plist is refused', () => {
     const exec = (() => { throw new Error('boom') }) as ExecFn
     expect(() => checkBundle('/b', { override: true, exec, exists })).toThrowError(expect.objectContaining({ code: 'HELPER_SIGNATURE_INVALID' }))
+  })
+})
+
+describe('readBundleName', () => {
+  it('reads CFBundleName from Info.plist', () => {
+    const exec = fakeExec({ plutil: 'Mail MCP Helper (Dev)' })
+    expect(readBundleName('/x/Mail MCP Helper (Dev).app', exec)).toBe('Mail MCP Helper (Dev)')
+    expect(exec.calls[0]).toEqual(['/usr/bin/plutil', ['-extract', 'CFBundleName', 'raw', '-o', '-', '/x/Mail MCP Helper (Dev).app/Contents/Info.plist']])
+  })
+
+  it('falls back to the file name without .app, then to the default name', () => {
+    const fail: ExecFn = () => {
+      throw new Error('no plist')
+    }
+    expect(readBundleName('/x/Mail MCP Helper (Ad hoc).app', fail)).toBe('Mail MCP Helper (Ad hoc)')
+    expect(readBundleName('/x/Mail MCP Helper (Dev).app/', fail)).toBe('Mail MCP Helper (Dev)')
+    expect(readBundleName('/.app', fail)).toBe('Mail MCP Helper')
+    expect(readBundleName('/x/y.app', () => '  \n')).toBe('y')
   })
 })

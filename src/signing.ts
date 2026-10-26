@@ -20,6 +20,24 @@ export function readBundleId(bundle: string, exec: ExecFn = defaultExec): string
   return exec('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', '-o', '-', `${bundle}/Contents/Info.plist`]).trim()
 }
 
+export const DEFAULT_HELPER_NAME = 'Mail MCP Helper'
+
+/**
+ * Anzeigename des Bundles (Finder, Liste der Vollzugriffe): CFBundleName, sonst der Dateiname ohne `.app`,
+ * sonst der Standardname. Dev- und Ad-hoc-Bundles heissen anders als das Release.
+ */
+export function readBundleName(bundle: string, exec: ExecFn = defaultExec): string {
+  try {
+    const name = exec('/usr/bin/plutil', ['-extract', 'CFBundleName', 'raw', '-o', '-', `${bundle}/Contents/Info.plist`]).trim()
+    if (name) return name
+  } catch {
+    // weiter mit dem Dateinamen
+  }
+  const file = bundle.replace(/\/+$/, '').split('/').pop() ?? ''
+  const base = file.replace(/\.app$/, '')
+  return base || DEFAULT_HELPER_NAME
+}
+
 const invalid = (why: string): HelperError => new HelperError('HELPER_SIGNATURE_INVALID', why)
 
 /**

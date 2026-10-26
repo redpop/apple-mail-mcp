@@ -59,6 +59,33 @@ describe('setup', () => {
     ...over,
   })
 
+  const plutilName = (name: string | null) => (file: string, args: string[]): string => {
+    expect(file).toBe('/usr/bin/plutil')
+    expect(args).toContain('CFBundleName')
+    if (name === null) throw new Error('no plist')
+    return name + '\n'
+  }
+
+  it('setup names the dev bundle in the Full Disk Access steps', async () => {
+    const s = sink()
+    const code = await runSetup({ ...base(fakeRunner({ probe: () => probe('denied') }), s, { isTTY: false, exec: plutilName('Mail MCP Helper (Dev)') }) })
+    expect(code).toBe(1)
+    expect(s.text()).toContain('Grant Full Disk Access to "Mail MCP Helper (Dev)":')
+    expect(s.text()).toContain('Drag "Mail MCP Helper (Dev)" from Finder')
+    expect(s.text()).not.toContain('"Mail MCP Helper"')
+  })
+
+  it('setup prints the checkout command with an override and the npx command without', async () => {
+    const withOverride = sink()
+    await runSetup(base(fakeRunner({ probe: () => probe('granted') }), withOverride, { override: true, entryPath: '/src/repo/dist/index.js' }))
+    expect(withOverride.text()).toContain(`claude mcp add apple-mail-dev -e APPLE_MAIL_HELPER_PATH="${BUNDLE}" -- node "/src/repo/dist/index.js"`)
+    expect(withOverride.text()).not.toContain('npx -y @redpop/apple-mail-mcp\n')
+    const plain = sink()
+    await runSetup(base(fakeRunner({ probe: () => probe('granted') }), plain))
+    expect(plain.text()).toContain('claude mcp add apple-mail -- npx -y @redpop/apple-mail-mcp')
+    expect(plain.text()).not.toContain('apple-mail-dev')
+  })
+
   it('setup with granted access prints success and the claude mcp add line', async () => {
     const s = sink()
     const code = await runSetup(base(fakeRunner({ probe: () => probe('granted') }), s))
@@ -222,6 +249,13 @@ const goodRunner = (over: Record<string, () => unknown> = {}) =>
   })
 
 describe('doctor', () => {
+  it('doctor names the bundle it found in the denied message', async () => {
+    const s = sink()
+    const exec: DoctorExec = (file, args) => (file === '/usr/bin/plutil' && args.includes('CFBundleName') ? { stdout: 'Mail MCP Helper (Dev)\n', stderr: '', status: 0 } : makeExec()(file, args))
+    await runDoctor(doctorDeps(s, goodRunner({ probe: () => probe('denied') }), { exec }))
+    expect(s.text()).toContain('not granted to Mail MCP Helper (Dev).')
+  })
+
   it('doctor output without --verbose contains no seed names, addresses or subjects', async () => {
     const s = sink()
     const code = await runDoctor(doctorDeps(s, goodRunner()))

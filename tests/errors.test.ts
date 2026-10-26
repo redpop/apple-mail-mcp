@@ -31,6 +31,14 @@ describe('errors', () => {
     expect(describeError('FULL_DISK_ACCESS_REQUIRED')).not.toContain('has been opened')
   })
 
+  it('fda message uses the given bundle name everywhere', () => {
+    const m = fdaMessage('/x/Mail MCP Helper (Dev).app', true, 'Mail MCP Helper (Dev)')
+    expect(m).toContain('app "Mail MCP Helper (Dev)", not')
+    expect(m).toContain('drag "Mail MCP Helper (Dev)" from that Finder window')
+    expect(m).toContain('If "Mail MCP Helper (Dev)" is already listed')
+    expect(m.replaceAll('Mail MCP Helper (Dev)', '')).not.toContain('Mail MCP Helper')
+  })
+
   it('HelperError carries its code', () => {
     const e = new HelperError('X', 'm')
     expect(e.code).toBe('X')

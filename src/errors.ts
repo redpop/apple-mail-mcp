@@ -13,27 +13,27 @@ export class HelperError extends Error {
  * Meldung fuer FULL_DISK_ACCESS_REQUIRED (Spec 10). `finder` sagt, ob gerade ein Finder-Fenster mit dem
  * Helper geoeffnet wurde (nur einmal pro Prozess, Spec 12.1); nur dann behauptet der Text das.
  */
-function fdaText(pathSentence: string, finder: 'opened' | 'earlier' | 'none'): string {
+function fdaText(pathSentence: string, finder: 'opened' | 'earlier' | 'none', name = 'Mail MCP Helper'): string {
   const steps =
     finder === 'opened'
       ? 'A Finder window showing it has been opened. The user needs to open System Settings > Privacy & Security > Full Disk Access, ' +
-        'drag "Mail MCP Helper" from that Finder window into the list, and switch it on. '
+        `drag "${name}" from that Finder window into the list, and switch it on. `
       : (finder === 'earlier' ? 'A Finder window showing it was opened on the first attempt in this session and may have been closed since. ' : '') +
         'The user needs to open System Settings > Privacy & Security > Full Disk Access, ' +
-        'drag "Mail MCP Helper" from Finder into the list, and switch it on. '
+        `drag "${name}" from Finder into the list, and switch it on. `
   return (
-    'Apple Mail data is protected by macOS. Full Disk Access has to be granted to the small helper app "Mail MCP Helper", not to the MCP client. ' +
+    `Apple Mail data is protected by macOS. Full Disk Access has to be granted to the small helper app "${name}", not to the MCP client. ` +
     steps +
     pathSentence +
-    'If "Mail MCP Helper" is already listed and switched on, the entry is stale: remove it with −, then add it again. ' +
+    `If "${name}" is already listed and switched on, the entry is stale: remove it with −, then add it again. ` +
     'Retry afterwards; no restart is needed. In Terminal, `npx -y @redpop/apple-mail-mcp setup` walks through the same steps.'
   )
 }
 
 // Texte gehen an das Modell, das den Tool-Aufruf gemacht hat: auf Englisch, mit Klickpfad, wo nur ein Mensch handeln kann.
 // `openedNow`: hat dieser Aufruf Einstellungen und Finder geoeffnet (openFdaOnce)?
-export function fdaMessage(bundlePath: string, openedNow: boolean): string {
-  return fdaText(`Alternatively click +, press Cmd-Shift-G and paste \`${bundlePath}\`. `, openedNow ? 'opened' : 'earlier')
+export function fdaMessage(bundlePath: string, openedNow: boolean, name = 'Mail MCP Helper'): string {
+  return fdaText(`Alternatively click +, press Cmd-Shift-G and paste \`${bundlePath}\`. `, openedNow ? 'opened' : 'earlier', name)
 }
 
 const MESSAGES: Record<string, string> = {

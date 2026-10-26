@@ -8,7 +8,7 @@ import type { HelperRunner } from '../helper.js'
 import { parseMailbox, type MailboxRole } from '../mailboxes.js'
 import { computePolicy } from '../policy.js'
 import { helloResult, listMailboxesResult, probeResult, searchResult, type ProbeResult } from '../schemas.js'
-import { RELEASE_BUNDLE_ID, readBundleId } from '../signing.js'
+import { RELEASE_BUNDLE_ID, readBundleId, readBundleName } from '../signing.js'
 import { readState } from '../state.js'
 import { PROTOCOL_VERSION } from '../stdioRunner.js'
 
@@ -120,12 +120,13 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
   // Helper-Bundle, Signatur, Stapling
   const shownBundle = deps.verbose ? deps.bundlePath : tildePath(deps.bundlePath, deps.home)
   let bundleId: string | null = null
+  const execOne = (f: string, a: string[]): string => {
+    const r = deps.exec(f, a)
+    if (r.status !== 0) throw new Error('exec failed')
+    return r.stdout
+  }
+  const helperName = readBundleName(deps.bundlePath, execOne)
   try {
-    const execOne = (f: string, a: string[]): string => {
-      const r = deps.exec(f, a)
-      if (r.status !== 0) throw new Error('exec failed')
-      return r.stdout
-    }
     bundleId = readBundleId(deps.bundlePath, execOne)
   } catch {
     bundleId = null
@@ -151,7 +152,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
   } else if (probe.access !== 'granted') {
     const msg =
       probe.access === 'denied'
-        ? 'Access: denied. Full Disk Access is not granted to Mail MCP Helper. Run `npx -y @redpop/apple-mail-mcp setup`.'
+        ? `Access: denied. Full Disk Access is not granted to ${helperName}. Run \`npx -y @redpop/apple-mail-mcp setup\`.`
         : probe.access === 'no_mail_data'
           ? 'Access: no_mail_data. Apple Mail does not appear to be set up on this Mac.'
           : 'Access: untrusted_signature. The helper refused to read mail because its signature is not trusted.'
@@ -186,7 +187,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
       add(
         'stale-fda',
         'fail',
-        `Access worked on ${state.lastAccessOk.slice(0, 10)}. Since then macOS denies it. If Mail MCP Helper is listed and switched on, remove the entry and add it again.`,
+        `Access worked on ${state.lastAccessOk.slice(0, 10)}. Since then macOS denies it. If ${helperName} is listed and switched on, remove the entry and add it again.`,
       )
     }
   }

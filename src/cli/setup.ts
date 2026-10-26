@@ -1,9 +1,11 @@
+import { fileURLToPath } from 'node:url'
 import type { Writable } from 'node:stream'
 import { tildePath } from './doctor.js'
 import { describeError, HelperError } from '../errors.js'
 import { FDA_SETTINGS_URL, type OpenFn } from '../fdaPrompt.js'
 import type { HelperRunner } from '../helper.js'
 import { probeResult, type ProbeResult } from '../schemas.js'
+import { readBundleName, type ExecFn } from '../signing.js'
 import { recordAccessOk } from '../state.js'
 
 export interface SetupDeps {
@@ -19,11 +21,22 @@ export interface SetupDeps {
   /** Konfigurationsfehler, der vor dem Start als Warnung erscheint. */
   configWarning?: string
   home?: string
+  /** true, wenn APPLE_MAIL_HELPER_PATH gesetzt ist (Lauf aus einem Checkout). */
+  override?: boolean
+  /** Nur fuer Tests: plutil-Aufruf fuer den Bundle-Namen. */
+  exec?: ExecFn
+  /** Nur fuer Tests: Pfad von dist/index.js. */
+  entryPath?: string
 }
 
 const POLL_MS = 2000
 const TIMEOUT_MS = 10 * 60 * 1000
 const ADD_LINE = 'claude mcp add apple-mail -- npx -y @redpop/apple-mail-mcp'
+
+/** Befehl fuer einen Checkout mit eigenem Helper-Bundle (das npm-Paket gibt es noch nicht). */
+function checkoutLine(bundlePath: string, entryPath: string): string {
+  return `claude mcp add apple-mail-dev -e APPLE_MAIL_HELPER_PATH="${bundlePath}" -- node "${entryPath}"`
+}
 
 function fmt(n: number): string {
   return n.toLocaleString('en-US')
@@ -54,11 +67,12 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
     if (c) say(`Found ${fmt(c.mailboxes)} mailboxes and ${fmt(c.uniqueMessages)} messages (${fmt(c.messages)} including copies).`)
     say('')
     say('Add the server to Claude Code with:')
-    say(`  ${ADD_LINE}`)
+    say(`  ${deps.override ? checkoutLine(deps.bundlePath, deps.entryPath ?? fileURLToPath(new URL('../index.js', import.meta.url))) : ADD_LINE}`)
     return 0
   }
 
   if (deps.configWarning) say(`Warning: ${deps.configWarning}`)
+  const name = readBundleName(deps.bundlePath, deps.exec)
   const shown = tildePath(deps.bundlePath, deps.home)
   let p: ProbeResult
   try {
@@ -78,9 +92,9 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
     return 1
   }
 
-  say('Apple Mail data is protected by macOS. Grant Full Disk Access to "Mail MCP Helper":')
-  say('  1. A Finder window shows "Mail MCP Helper" and System Settings opens on Full Disk Access.')
-  say('  2. Drag "Mail MCP Helper" from Finder into the list and switch it on.')
+  say(`Apple Mail data is protected by macOS. Grant Full Disk Access to "${name}":`)
+  say(`  1. A Finder window shows "${name}" and System Settings opens on Full Disk Access.`)
+  say(`  2. Drag "${name}" from Finder into the list and switch it on.`)
   say(`  (If it is missing from the list: click +, press Cmd-Shift-G and paste ${shown})`)
   for (const args of [[FDA_SETTINGS_URL], ['-R', deps.bundlePath]]) {
     try {

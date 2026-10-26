@@ -47,6 +47,7 @@ export async function runCli(command: 'setup' | 'doctor', args: string[], deps: 
         bundlePath: runner.bundlePath || packagedHelperBundle(),
         open: defaultOpen,
         out,
+        override: config.helperPath !== null,
         isTTY: deps.isTTY ?? process.stdout.isTTY === true,
         sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
         now: Date.now,
