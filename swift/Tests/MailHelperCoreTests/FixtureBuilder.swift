@@ -62,10 +62,19 @@ struct FixtureError: Error, CustomStringConvertible {
     let description: String
 }
 
+/// Loescht das Fixture-Verzeichnis, sobald die letzte Kopie des Fixtures freigegeben ist.
+final class FixtureCleanup: Sendable {
+    let directory: URL
+    init(directory: URL) { self.directory = directory }
+    deinit { try? FileManager.default.removeItem(at: directory) }
+}
+
 struct Fixture: Sendable {
     let mailRoot: URL
     let accountsDB: URL
     let seed: Seed
+    /// Haelt das temporaere Verzeichnis am Leben; Fixtures muessen so lange leben wie ihre MailStores.
+    let cleanup: FixtureCleanup
 
     var config: MailStoreConfig { MailStoreConfig(mailRoot: mailRoot, accountsDB: accountsDB) }
     var envelopeIndex: URL { mailRoot.appending(path: "V10/MailData/Envelope Index") }
@@ -273,10 +282,14 @@ enum FixtureBuilder {
         f.allMailboxIds + realSizeMailboxes.filter { !realSizeExcluded.contains($0) }
     }
 
+    /// `extraSeedMessages` haengt Mails an den Seed an (nur fuer einzelne Tests, ohne seed.json und die
+    /// Contract-Dateien zu veraendern).
     static func build(extraMessages: Int = 0, bulk: BulkShape = .uniform,
+                      extraSeedMessages: [Seed.Message] = [],
                       dropping: (table: String, column: String)? = nil) throws -> Fixture {
         let root = try repoRoot()
-        let seed = try loadSeed()
+        let base = try loadSeed()
+        let seed = Seed(accounts: base.accounts, mailboxes: base.mailboxes, messages: base.messages + extraSeedMessages)
         let fm = FileManager.default
 
         let tmp = fm.temporaryDirectory.appending(path: "mail-fixture-\(UUID().uuidString)")
@@ -286,7 +299,8 @@ enum FixtureBuilder {
         try fm.createDirectory(at: accountsDir, withIntermediateDirectories: true)
         let fixture = Fixture(mailRoot: mailRoot,
                               accountsDB: accountsDir.appending(path: "Accounts4.sqlite"),
-                              seed: seed)
+                              seed: seed,
+                              cleanup: FixtureCleanup(directory: tmp))
 
         try buildEnvelopeIndex(fixture, root: root, extraMessages: extraMessages, bulk: bulk)
         if let d = dropping { try dropColumn(fixture, table: d.table, column: d.column) }

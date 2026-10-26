@@ -118,13 +118,17 @@ import Testing
     }
 
     @Test func fingerprintIsStable() throws {
-        let a = MailStore(config: try FixtureBuilder.build().config).probe()
-        let b = MailStore(config: try FixtureBuilder.build().config).probe()
+        let fa = try FixtureBuilder.build()
+        let fb = try FixtureBuilder.build()
+        let fd = try FixtureBuilder.build(dropping: ("messages", "size"))
+        defer { withExtendedLifetime((fa, fb, fd)) {} }
+        let a = MailStore(config: fa.config).probe()
+        let b = MailStore(config: fb.config).probe()
         let fp = try #require(a.schema?.fingerprint)
         #expect(fp.hasPrefix("sha256:"))
         #expect(fp.count == "sha256:".count + 64)
         #expect(fp == b.schema?.fingerprint)
-        let dropped = MailStore(config: try FixtureBuilder.build(dropping: ("messages", "size")).config).probe()
+        let dropped = MailStore(config: fd.config).probe()
         #expect(dropped.schema?.fingerprint != fp)
     }
 
@@ -139,7 +143,8 @@ import Testing
     }
 
     @Test func fingerprintIgnoresSqliteInternalTables() throws {
-        let a = try #require(MailStore(config: try FixtureBuilder.build().config).probe().schema?.fingerprint)
+        let fa = try FixtureBuilder.build()
+        let a = try #require(MailStore(config: fa.config).probe().schema?.fingerprint)
         let f = try FixtureBuilder.build()
         let h = try SQLiteHandle(path: f.envelopeIndex.path)
         try h.exec("ANALYZE")

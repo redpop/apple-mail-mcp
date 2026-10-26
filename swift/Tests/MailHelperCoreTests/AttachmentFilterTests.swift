@@ -151,6 +151,13 @@ import Testing
                 #expect(first.messages.count == 20 && first.hasMore, "\(c.name)")
                 if let limit = c.limit { #expect(m < limit, "\(c.name)") }
             }
+            // Breite Textfilter, nur Zeitausgabe ohne Pruefung (fast alle Zeilen treffen).
+            for (name, req) in [("query broad", page(.init(allowedMailboxIds: allowed, query: "e", limit: 20))),
+                                ("to broad", page(.init(allowedMailboxIds: allowed, to: "example", limit: 20)))] {
+                var total = -1
+                let m = try median { total = try s.search(req).totalMatched ?? -1 }
+                print("real size search, stats \(stats), \(name): median \(m), total \(total)")
+            }
             // Vergleichsformen, nur die Kandidatenseite mit Zaehlung (ohne Zeilenaufbau), eigene Verbindung.
             let db = try SQLiteHandle(path: f.envelopeIndex.path, readOnly: true)
             for shape in Shape.allCases {
