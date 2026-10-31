@@ -22,7 +22,11 @@ export function helperExecutable(bundle: string): string {
   return `${bundle}/Contents/MacOS/mail-helper`
 }
 
-/** Ein Runner pro Serverprozess; das Signaturgatter laeuft einmal vor dem ersten Start, das Ergebnis ist gecacht. */
+/**
+ * Ein Runner pro Serverprozess; das Signaturgatter laeuft einmal vor dem ersten Start, das Ergebnis ist gecacht.
+ * Auch ein Fehlschlag bleibt bis zum Prozessende stehen: nach einer Neuinstallation muss der Client neu starten
+ * (docs/troubleshooting.md).
+ */
 export function createHelperRunner(
   config: Config,
   deps: {

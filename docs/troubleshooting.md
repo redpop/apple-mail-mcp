@@ -59,6 +59,11 @@ at a local Dev or Ad hoc build; a bundle with the release id is refused as an ov
 `HELPER_UNTRUSTED_SIGNATURE` is the same problem seen from the helper's side. `doctor` shows
 the bundle id, authority and team.
 
+The server checks the signature once, before the helper's first start, and keeps the result for
+as long as the server process runs. After a failed check every tool call returns
+`HELPER_SIGNATURE_INVALID`, even once the bundle has been fixed or reinstalled. Restart the MCP
+client so it starts a new server process, which checks again.
+
 If `HELPER_MISSING` appears when running from source, the server looks for the release bundle
 inside the package. Build the helper and set `APPLE_MAIL_HELPER_PATH`.
 
