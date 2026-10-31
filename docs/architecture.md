@@ -72,6 +72,27 @@ Not tested: a validly signed build with the same bundle id but a different ident
 Development versus Developer ID). The rule that covers it is the same: no non-release build
 ever uses the release bundle id.
 
+### Release candidate results (macOS 27.0.1, 2026-10-31)
+
+The first two release candidates, built, signed with Developer ID and notarized in CI, on the
+maintainer's Mac:
+
+| Test | Result |
+|---|---|
+| `rc.1` from the npm tarball, `setup` | first grant, access works |
+| `rc.1` `.mcpb` in Claude Desktop, unpacked at another path | installs and starts the helper |
+| `rc.2` `.mcpb` over `rc.1` (new build, different CDHash) | granted without a new grant, one entry in the list |
+| `rc.2` from the npm tarball, in the npx cache at a third path | granted, `doctor` all `ok` |
+
+This is the spike's result for real release builds: the grant follows bundle id and Developer
+ID requirement across builds, paths and both install channels.
+
+Claude Desktop starts the server once and keeps it running. Saving the extension's settings, or
+switching the extension off and on, did not restart it; only quitting and reopening the app
+applied new settings. A `user_config` field with neither a value nor a `default` reaches the
+server as the literal `${user_config.<name>}`, so every field in `manifest.json` has a default
+and the server rejects such a placeholder as `CONFIG_INVALID`.
+
 ### Three bundle ids
 
 | Build | Signature | Bundle id | Name in the list |
@@ -381,7 +402,11 @@ Measured on macOS 27.0.1, Mail 16.0, arm64, one real mailbox (spike, 2026-10-25)
 - the column semantics used (`recipients.type`, `addresses.comment` as display name, Unix-second
   dates), checked against parsed headers;
 - Spotlight finds no mail items, so it is not an option for body search;
-- helper latency per request on that mailbox (2026-10-26), in the table under Text search.
+- helper latency per request on that mailbox (2026-10-26), in the table under Text search;
+- the grant across release builds, paths and install channels with `rc.1` and `rc.2`
+  (2026-10-31), in the table under Permission model. `doctor` on that mailbox: 221 mailboxes,
+  238,863 message rows, 121,125 distinct mails, 190 mailboxes visible with the default policy;
+  of the 500 newest messages 446 have a full local file, 54 a partial one, none is missing.
 
 Assumed, not measured:
 
