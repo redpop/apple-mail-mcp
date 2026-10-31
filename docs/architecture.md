@@ -92,7 +92,9 @@ Three checks protect the release grant:
    id). Otherwise `HELPER_SIGNATURE_INVALID`. An override path (`APPLE_MAIL_HELPER_PATH`) must
    not carry the release id.
 3. The helper checks its own signature against its bundle id before it opens anything under
-   `~/Library/Mail` or `~/Library/Accounts`. On failure it answers read commands with
+   `~/Library/Mail` or `~/Library/Accounts`: a release id against the release requirement, a dev
+   id against its identifier, the Apple Development intermediate and the team id. On failure it
+   answers read commands with
    `HELPER_UNTRUSTED_SIGNATURE` and touches no file.
 
 Whether macOS switches a grant off at `exec` or at first file access is not measured. Check 2
