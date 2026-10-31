@@ -26,6 +26,9 @@ function raw(env: NodeJS.ProcessEnv, key: string): string | undefined {
   const v = env[key]
   if (v === undefined) return undefined
   const t = v.trim()
+  // Claude Desktop laesst ${user_config.x} stehen, wenn ein Feld weder Wert noch Default hat.
+  // Ein Platzhalter ist kein Wert: weder Kontoname noch "nicht gesetzt" (das hiesse alle Konten).
+  if (/\$\{user_config\.[^}]*\}/.test(t)) throw new ConfigError(key, `${key} was not replaced by the MCPB host (it still reads ${t}); set a value or reinstall the extension`)
   return t === '' ? undefined : t
 }
 

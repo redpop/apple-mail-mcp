@@ -33,8 +33,8 @@ describe('manifest.json', () => {
 
   test('user_config types, bounds and defaults match src/config.ts', () => {
     const uc = manifest.user_config
-    expect(uc.accounts).toMatchObject({ type: 'string', multiple: true })
-    expect(uc.exclude_mailboxes).toMatchObject({ type: 'string' })
+    expect(uc.accounts).toMatchObject({ type: 'string', default: '' })
+    expect(uc.exclude_mailboxes).toMatchObject({ type: 'string', default: '' })
     expect(uc.include_junk).toMatchObject({ type: 'boolean', default: false })
     expect(uc.include_trash).toMatchObject({ type: 'boolean', default: false })
     expect(uc.show_security_mails).toMatchObject({ type: 'boolean', default: false })
@@ -48,6 +48,15 @@ describe('manifest.json', () => {
     expect(config).toContain("bool(env, 'APPLE_MAIL_INCLUDE_TRASH', false)")
     expect(config).toContain("bool(env, 'APPLE_MAIL_SHOW_SECURITY_MAILS', false)")
     expect(config).toContain("bool(env, 'APPLE_MAIL_BODY_SEARCH', true)")
+  })
+
+  // Claude Desktop ersetzt ${user_config.x} nur, wenn ein Wert oder Default existiert, und nie mit
+  // einem Array in einem String. Sonst kommt der Platzhalter woertlich in der Umgebung an.
+  test('every user_config field has a default and none takes multiple values', () => {
+    for (const [key, field] of Object.entries(manifest.user_config as Record<string, { default?: unknown; multiple?: boolean }>)) {
+      expect(field.default, key).toBeDefined()
+      expect(field.multiple, key).toBeUndefined()
+    }
   })
 
   test('tools match the registered tools', () => {
