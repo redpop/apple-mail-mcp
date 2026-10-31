@@ -95,6 +95,8 @@ export function decodeEntities(s: string, inAttribute = false): { text: string; 
 }
 
 const NAME = /^\/?([A-Za-z][A-Za-z0-9:-]*)/
+// Leerraum im Sinne von html-to-text (Option whitespaceCharacters).
+const H2T_SPACE = /[ \t\r\n\f\u200b]+/g
 const HREF = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i
 
 /** Sucht das schliessende Tag ab `from`; Ende des Textes, wenn es fehlt. */
@@ -184,13 +186,17 @@ export function quickHtmlText(html: string): { text: string; sure: boolean } {
     }
     if (name !== 'a') continue
     if (!closing) {
+      // Wie html-to-text: "mailto:" faellt weg, ein leeres Ziel oder ein Anker ist kein Link.
       const h = HREF.exec(tag)
-      const href = h === null ? '' : decode(h[1] ?? h[2] ?? h[3] ?? '', true).trim()
+      const href = h === null ? '' : decode(h[1] ?? h[2] ?? h[3] ?? '', true).replace(/^mailto:/, '')
       link = href === '' || href.startsWith('#') ? null : { href, at: parts.length }
     } else if (link !== null) {
-      // Wie html-to-text: Ziel in Klammern hinter dem Text, ausser es gleicht dem Text.
-      const text = parts.slice(link.at).join('').trim()
-      if (text !== link.href && `mailto:${text}` !== link.href) parts.push(` [${link.href}] `)
+      // Wie html-to-text: Ziel in Klammern hinter dem Text, ohne Text das Ziel allein, und nichts,
+      // wenn es dem Text gleicht. Verglichen wird der Text ohne Leerraum, denn html-to-text setzt
+      // ihn aus den Woertern zusammen (auch ueber innere Tags wie <b> hinweg).
+      const text = parts.slice(link.at).join('').replace(H2T_SPACE, '')
+      if (text === '') parts.push(` ${link.href} `)
+      else if (text !== link.href) parts.push(` [${link.href}] `)
       link = null
     }
   }

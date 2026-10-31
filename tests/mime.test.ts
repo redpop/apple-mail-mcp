@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { parseForScan, parseMessage, stripEmlxFrame, truncateText, type ParsedMessage } from '../src/mime.js'
+import { htmlToText, parseForScan, parseMessage, stripEmlxFrame, truncateText, type ParsedMessage } from '../src/mime.js'
 import { textParts } from '../src/mimeTrim.js'
 import { quickHtmlText } from '../src/quickHtml.js'
 
@@ -181,6 +181,23 @@ test('quickHtmlText is unsure about unknown named entities and decodes legacy on
   // Im Attribut bleibt ein Legacy-Name vor Buchstabe, Ziffer oder "=" stehen.
   expect(quickHtmlText('<a href="https://example.com/?a=1&copy=2&notx=3">x</a>').text).toContain('[https://example.com/?a=1&copy=2&notx=3]')
   expect(quickHtmlText('<a href="https://example.com/?a&copy;">x</a>').text).toContain('?a\u00a9]')
+})
+
+test('quickHtmlText renders link targets like html-to-text', () => {
+  const cases = [
+    '<a href="https://example.com/a"><img src="x.png" alt="Logo"></a> next',
+    '<a href="https://example.com/a">https://<b>example.com/a</b></a> next',
+    '<a href="https://example.com/a"><span>Click</span> <b>here</b></a>',
+    '<a href="mailto:x@example.com"><b>x@example.com</b></a> next',
+    '<a href="mailto:x@example.com">Write</a>',
+    '<a href="https://example.com/a">  https://example.com/a  </a>',
+    '<a href="https://example.com/a">Https://example.com/a</a>',
+    '<a href="https://example.com/a"><h2>Title</h2></a>',
+    '<a href="https://example.com/a">a<br>b</a>',
+    '<a href="#top">Top</a> <a href="">empty</a>',
+  ]
+  const loose = (t: string) => t.replace(/\s+/g, '')
+  for (const html of cases) expect(loose(quickHtmlText(html).text), html).toBe(loose(htmlToText(html)))
 })
 
 test('quickHtmlText keeps a title inside the body and ends tags outside quoted values', () => {
