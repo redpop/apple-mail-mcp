@@ -11,7 +11,8 @@ env:
 
 jobs:
   build:
-    runs-on: macos-14
+    # macos-14 wird am 2026-11-02 abgeschaltet. Das Deployment-Target 14.0 setzt swift/build.sh.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
 

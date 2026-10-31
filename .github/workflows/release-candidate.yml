@@ -25,7 +25,8 @@ env:
 
 jobs:
   candidate:
-    runs-on: macos-14
+    # macos-14 wird am 2026-11-02 abgeschaltet. Das Deployment-Target 14.0 setzt swift/build.sh.
+    runs-on: macos-15
     environment: release
     # Grosszuegig ueber Build, Tests und Notarisierung (--timeout 30m); begrenzt, wie lange der Job laeuft.
     timeout-minutes: 90
