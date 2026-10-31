@@ -51,6 +51,16 @@ try {
   await time('search, query', search({ query: term }))
   await time('search, unread', search({ unread: true }))
   await time('search, hasAttachment', search({ hasAttachment: true }))
+  // Breite Begriffe: fast jede Zeile trifft, die gid-Menge ist so gross wie die Ablage.
+  await time('search, query broad ("e")', search({ query: 'e' }))
+  await time('search, to broad ("@")', search({ to: '@' }))
+  // Kleinste nicht leere und groesste erlaubte Mailbox; ausgegeben wird nur die Zeilenzahl.
+  const allowedSet = new Set(allowed)
+  const boxes = raw.mailboxes.filter((m) => allowedSet.has(m.id) && m.total > 0).sort((a, b) => a.total - b.total)
+  if (boxes.length > 0) {
+    await time('search, mailboxIds smallest', search({ mailboxIds: [boxes[0].id] }))
+    await time('search, mailboxIds largest', search({ mailboxIds: [boxes[boxes.length - 1].id] }))
+  }
 
   const page = await runner.run('search', { ...base, countTotal: false })
   const gids = page.messages.map((m) => m.gid)
