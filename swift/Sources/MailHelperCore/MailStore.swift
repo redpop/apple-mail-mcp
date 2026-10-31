@@ -11,6 +11,9 @@ public final class MailStore {
 
     private var locator: (name: String, locator: EmlxLocator)?
 
+    /// Nur fuer Tests: laeuft in `search` zwischen Seitenabfrage und Zeilenaufbau (simuliert Mails Schreiben).
+    var testHookAfterPageQuery: (() -> Void)?
+
     /// Ein Locator je Mail-Verzeichnis `V<n>`; sein Store-UUID-Cache lebt so lange wie der Helper.
     func emlxLocator() throws(HelperFailure) -> EmlxLocator {
         let located = try MailRoot.locate(root: config.mailRoot)
@@ -47,8 +50,9 @@ public final class MailStore {
         accountNamesCache = nil
         let db = try Database(readOnlyAt: located.envelopeIndex)
         let schema = try Schema.check(db)
-        // Nach dem Oeffnen erneut stat, damit dev/ino zur geoeffneten Datei passen.
-        if stat(path, &st) == 0 { envelope = (path, st.st_dev, st.st_ino, db, schema) }
+        // dev/ino vom Deskriptor der Pruefung vor dem Oeffnen (Database.identity), nicht erneut per stat am
+        // Pfad: sonst koennte die Inode einer inzwischen ersetzten Datei an der alten Verbindung haengen.
+        envelope = (path, db.identity.dev, db.identity.ino, db, schema)
         return (db, schema)
     }
 }

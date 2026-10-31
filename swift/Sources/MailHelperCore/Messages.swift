@@ -73,7 +73,10 @@ extension MailStore {
 
         var seen = Set<Int64>()
         let gids = r.gids.filter { seen.insert($0).inserted }
-        let detailed = try loadDetailed(gids: gids, allowed: r.allowedMailboxIds, maxRecipients: getMessagesMaxRecipients)
+        // Zeilen aus einem Stand des Index; die Dateien werden danach ausserhalb der Transaktion gelesen.
+        let detailed = try envelopeDatabase().readTransaction { () throws(HelperFailure) in
+            try loadDetailed(gids: gids, allowed: r.allowedMailboxIds, maxRecipients: getMessagesMaxRecipients)
+        }
         let found = Set(detailed.map(\.row.gid))
         let missing = gids.filter { !found.contains($0) }
 

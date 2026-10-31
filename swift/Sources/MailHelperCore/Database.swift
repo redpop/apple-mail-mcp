@@ -22,13 +22,33 @@ struct Row {
     }
 }
 
+/// Geraet und Inode einer geoeffneten Datei.
+struct FileIdentity: Equatable {
+    let dev: dev_t
+    let ino: ino_t
+}
+
+struct OpenErrno: Error {
+    let code: Int32
+}
+
 /// Gemeinsame errno-Pruefung vor SQLite: SQLite meldet EPERM und ENOENT beide als CANTOPEN.
 enum FileProbe {
     /// `nil` = lesbar, sonst errno.
     static func openErrno(_ path: String) -> Int32? {
+        if case .failure(let e) = identity(path) { return e.code }
+        return nil
+    }
+
+    /// Oeffnet die Datei und liest dev/ino per fstat am geoeffneten Deskriptor, nicht per stat am Pfad:
+    /// so gehoert die Identitaet sicher zu der Datei, die geoeffnet wurde.
+    static func identity(_ path: String) -> Result<FileIdentity, OpenErrno> {
         let fd = open(path, O_RDONLY)
-        if fd >= 0 { close(fd); return nil }
-        return errno
+        guard fd >= 0 else { return .failure(OpenErrno(code: errno)) }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0 else { return .failure(OpenErrno(code: errno)) }
+        return .success(FileIdentity(dev: st.st_dev, ino: st.st_ino))
     }
 }
 
@@ -38,11 +58,19 @@ final class Database {
     /// Hoechste bereits gefaltete ROWID je Woerterbuchtabelle (FoldCache.swift); nil, solange die
     /// TEMP-Tabellen dieser Verbindung noch nicht angelegt sind.
     var foldedMax: (subjects: Int64, addresses: Int64)?
+    /// Identitaet der Datei aus der Pruefung unmittelbar vor `sqlite3_open_v2`. Wird die Datei dazwischen
+    /// ersetzt, haelt SQLite die neuere Datei und hier steht die aeltere: die naechste Anfrage sieht eine
+    /// andere Inode und oeffnet einmal unnoetig neu. Umgekehrt (stat am Pfad nach dem Oeffnen) bekaeme die
+    /// alte Verbindung die neue Inode und bliebe dauerhaft an der entlinkten Datei haengen.
+    let identity: FileIdentity
 
     init(readOnlyAt url: URL) throws(HelperFailure) {
         let path = url.path
-        if let e = FileProbe.openErrno(path) {
-            switch e {
+        switch FileProbe.identity(path) {
+        case .success(let id):
+            identity = id
+        case .failure(let failure):
+            switch failure.code {
             case EPERM, EACCES:
                 throw HelperFailure(code: .fullDiskAccessRequired, message: "Full Disk Access is required to read the Mail database.")
             case ENOENT, ENOTDIR:
@@ -60,6 +88,13 @@ final class Database {
         }
         db = handle
         sqlite3_busy_timeout(handle, 2000)
+        // TEMP-Tabellen (FoldCache.swift) im Arbeitsspeicher. Hier und nicht beim Anlegen der Tabellen, weil
+        // das Pragma innerhalb einer Transaktion nicht geaendert werden darf (readTransaction).
+        guard sqlite3_exec(handle, "PRAGMA temp_store = MEMORY", nil, nil, nil) == SQLITE_OK else {
+            sqlite3_close(handle)
+            db = nil
+            throw Database.failure(SQLITE_ERROR, "The Mail database cannot be opened.")
+        }
 
         let frc = sqlite3_create_function_v2(handle, "mcp_fold", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, nil, { ctx, argc, argv in
             guard argc == 1, let argv, let value = argv[0], sqlite3_value_type(value) != SQLITE_NULL else {
@@ -89,6 +124,25 @@ final class Database {
             return HelperFailure(code: .databaseBusy, message: "The Mail database is busy.")
         default:
             return HelperFailure(code: .databaseError, message: text)
+        }
+    }
+
+    /// Fuehrt `body` in einer Lesetransaktion aus, damit alle Abfragen darin denselben Stand sehen (im
+    /// WAL-Modus ein Snapshot, sonst haelt die Verbindung bis zum Ende die SHARED-Sperre). Laeuft schon eine
+    /// Transaktion, wird `body` nur ausgefuehrt. Bei einem Fehler wird zurueckgerollt; dabei verschwinden
+    /// auch die in `body` gefalteten TEMP-Zeilen, deshalb wird `foldedMax` auf den Stand davor gesetzt.
+    func readTransaction<T>(_ body: () throws(HelperFailure) -> T) throws(HelperFailure) -> T {
+        guard sqlite3_get_autocommit(db) != 0 else { return try body() }
+        let saved = foldedMax
+        try execute("BEGIN")
+        do {
+            let value = try body()
+            try execute("COMMIT")
+            return value
+        } catch {
+            try? execute("ROLLBACK")
+            foldedMax = saved
+            throw error
         }
     }
 

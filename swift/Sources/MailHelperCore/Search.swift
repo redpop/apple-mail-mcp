@@ -128,8 +128,16 @@ extension MailStore {
         }
 
         if let ids = r.mailboxIds {
-            having.append("max(CASE WHEN m.mailbox IN (\(placeholders(ids.count))) THEN 1 ELSE 0 END) = 1")
-            havingBind += ids.map { .int($0) }
+            // Vorfilter statt HAVING: die gids mit einer nicht geloeschten Kopie in einer der Mailboxen, ueber
+            // messages_mailbox_date_received_index (das + nimmt deleted die Indexnutzung). Als HAVING las die
+            // Suche alle erlaubten Zeilen, auch fuer eine kleine Mailbox (rund 220 ms auf 242000 Zeilen).
+            // ids ist Teilmenge der erlaubten Mailboxen (geprueft in search), die Bedeutung bleibt gleich.
+            wherePre.append("""
+                m.global_message_id IN (SELECT m2.global_message_id FROM messages m2
+                    WHERE +m2.deleted = 0 AND m2.mailbox IN (\(placeholders(ids.count))))
+                """)
+            whereBind += ids.map { .int($0) }
+            driveByGid = true
         }
         if let since = r.since { having.append("max(m.date_received) >= ?"); havingBind.append(.int(since)) }
         if let before = r.before { having.append("max(m.date_received) < ?"); havingBind.append(.int(before)) }
@@ -183,6 +191,13 @@ extension MailStore {
         }
 
         let db = try envelopeDatabase()
+        // Eine Lesetransaktion fuer Fold-Nachtrag, Seitenabfrage und Zeilenaufbau: sonst koennte Mail
+        // dazwischen schreiben, und eine gefundene gid fehlte in `messages` oder totalMatched passte nicht
+        // zur Seite. Die Transaktion dauert so lange wie die Suche (Millisekunden bis wenige hundert).
+        return try db.readTransaction { () throws(HelperFailure) in try searchPage(r, db) }
+    }
+
+    private func searchPage(_ r: SearchRequest, _ db: Database) throws(HelperFailure) -> SearchResult {
         if [r.from, r.to, r.subject, r.query].contains(where: { Self.term($0) != nil }) {
             try db.refreshFoldedDictionaries()
         }
@@ -208,6 +223,7 @@ extension MailStore {
         }
         let hasMore = gids.count > r.limit
         if hasMore { gids.removeLast() }
+        testHookAfterPageQuery?()
 
         var result = SearchResult(messages: try loadRows(gids: gids, allowed: r.allowedMailboxIds, maxRecipients: r.maxRecipients),
                                   hasMore: hasMore)

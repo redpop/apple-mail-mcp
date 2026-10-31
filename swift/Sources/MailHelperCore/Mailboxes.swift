@@ -64,7 +64,9 @@ extension MailStore {
                                    accountNamesReason: names.reason)
     }
 
-    /// Einmal pro Helper-Lebenszeit; spaetere Aufrufe nutzen den Cache.
+    /// Liest Accounts4, wenn kein passender Cache-Eintrag da ist. Gecacht wird nur ein "available"-Ergebnis,
+    /// und nur solange die UUID-Menge der Mail-Konten gleich bleibt; das Neuoeffnen des Envelope Index
+    /// (MailStore.envelopeConnection) verwirft den Cache.
     func accountNames(for mailboxes: [MailboxInfo]) -> AccountNamesLookup {
         var seen = Set<String>()
         var uuids: [String] = []

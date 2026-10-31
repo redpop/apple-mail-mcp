@@ -175,6 +175,17 @@ import Testing
         #expect(thread.messageIdHeader == "<thread1-1007@example.com>")
     }
 
+    @Test func nullRecipientTypeReadsAsToAndUnknownAsBcc() throws {
+        let f2 = try FixtureBuilder.build()
+        let h = try SQLiteHandle(path: f2.envelopeIndex.path)
+        let rowid = try #require(f2.seed.messages.first { $0.name == "invoice" }?.rowid)
+        try h.run("UPDATE recipients SET type = NULL WHERE message = ? AND position = 0", [.int(rowid)])
+        try h.run("UPDATE recipients SET type = 7 WHERE message = ? AND position = 1", [.int(rowid)])
+        let r = try MailStore(config: f2.config).search(.init(allowedMailboxIds: f2.allMailboxIds, limit: 50, maxRecipients: 10))
+        let m = try #require(r.messages.first { $0.gid == f2.gid(named: "invoice") })
+        #expect(m.recipients.map(\.type) == [.to, .bcc, .bcc])
+    }
+
     @Test func attachmentNamesAreCappedAtTwenty() throws {
         let f2 = try FixtureBuilder.build()
         let h = try SQLiteHandle(path: f2.envelopeIndex.path)
@@ -230,6 +241,30 @@ import Testing
         #expect(gids(try s.search(.init(allowedMailboxIds: ids, query: "später", limit: 10))) == [small])
     }
 
+    /// Mail legt den Index neu an: gleiche ROWIDs in `subjects` tragen andere Texte. Der Fold-Cache der alten
+    /// Verbindung kennte diese ROWIDs schon und faltete sie nie neu; nach dem Neuoeffnen zaehlen die neuen Texte.
+    @Test func foldCacheIsRebuiltWhenTheIndexFileIsReplaced() throws {
+        let f2 = try FixtureBuilder.build()
+        let s = MailStore(config: f2.config)
+        let ids = f2.allMailboxIds
+        let thread = names(["thread1", "thread2", "thread3"])
+        #expect(try gids(s.search(.init(allowedMailboxIds: ids, subject: "projektplan", limit: 10))) == thread)
+        #expect(try s.search(.init(allowedMailboxIds: ids, subject: "neubauindex", limit: 10)).messages.isEmpty)
+
+        let rebuilt = try FixtureBuilder.build()
+        let h = try SQLiteHandle(path: rebuilt.envelopeIndex.path)
+        try h.exec("""
+            UPDATE subjects SET subject = 'Neubauindex ' || ROWID
+            WHERE ROWID IN (SELECT subject FROM messages WHERE global_message_id IN (\(thread.map(String.init).joined(separator: ","))))
+            """)
+        try FileManager.default.removeItem(at: f2.envelopeIndex)
+        try FileManager.default.copyItem(at: rebuilt.envelopeIndex, to: f2.envelopeIndex)
+
+        #expect(try s.search(.init(allowedMailboxIds: ids, subject: "projektplan", limit: 10)).messages.isEmpty)
+        #expect(try gids(s.search(.init(allowedMailboxIds: ids, subject: "neubauindex", limit: 10))) == thread)
+        #expect(try gids(s.search(.init(allowedMailboxIds: ids, query: "NEUBAUINDEX", limit: 10))) == thread)
+    }
+
     @Test func searchWritesNothingToTheEnvelopeIndex() throws {
         let f2 = try FixtureBuilder.build()
         let path = f2.envelopeIndex.path
@@ -241,6 +276,80 @@ import Testing
         let dir = f2.envelopeIndex.deletingLastPathComponent()
         let siblings = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasPrefix(f2.envelopeIndex.lastPathComponent) }
         #expect(siblings == [f2.envelopeIndex.lastPathComponent], "\(path)")
+    }
+
+    /// Wie bei Mail: ein Schreiber haelt den Index im WAL-Modus offen, die letzte Aenderung steht nur im
+    /// `-wal`. Die Lesekommandos sehen sie und aendern weder die Hauptdatei noch das `-wal`. Die `-shm`
+    /// aendert sich (Lesemarken der Verbindung); sie ist ein Index des WAL, keine Mail-Daten.
+    @Test func readCommandsInWalModeWriteNeitherMainFileNorWal() throws {
+        let f2 = try FixtureBuilder.build()
+        let writer = try SQLiteHandle(path: f2.envelopeIndex.path)
+        try writer.exec("PRAGMA journal_mode = WAL")
+        try writer.exec("PRAGMA wal_autocheckpoint = 0")
+        let small = try #require(f2.seed.messages.first { $0.name == "small" })
+        try writer.run("UPDATE subjects SET subject = 'Nur im Wal' WHERE ROWID = (SELECT subject FROM messages WHERE ROWID = ?)",
+                       [.int(small.rowid)])
+        let wal = URL(fileURLWithPath: f2.envelopeIndex.path + "-wal")
+        let mainBefore = try Data(contentsOf: f2.envelopeIndex)
+        let walBefore = try Data(contentsOf: wal)
+        #expect(!walBefore.isEmpty)
+
+        do {
+            let s = MailStore(config: f2.config)
+            let ids = f2.allMailboxIds
+            let hit = try s.search(.init(allowedMailboxIds: ids, subject: "nur im wal", limit: 10, countTotal: true))
+            #expect(hit.messages.map(\.gid) == [small.gid] && hit.totalMatched == 1)
+            _ = try s.search(.init(allowedMailboxIds: ids, query: "bob", hasAttachment: true, limit: 10, countTotal: true))
+            _ = try s.listMailboxes()
+            _ = try s.thread(.init(allowedMailboxIds: ids, gid: f2.gid(named: "thread1"), limit: 10, maxRecipients: 5))
+            _ = try s.getMessages(.init(allowedMailboxIds: ids, gids: [small.gid], maxBytesPerMessage: 1 << 20, maxBytesTotal: 1 << 20))
+        }   // Store und Verbindung sind hier freigegeben: auch das Schliessen schreibt nichts.
+        #expect(try Data(contentsOf: f2.envelopeIndex) == mainBefore)
+        #expect(try Data(contentsOf: wal) == walBefore)
+    }
+
+    /// Mail schreibt zwischen Seitenabfrage und Zeilenaufbau: die Suche liest trotzdem einen Stand, die
+    /// gefundene gid fehlt nicht in `messages`, und totalMatched passt zur Seite.
+    @Test func searchReadsOneSnapshotWhileMailWrites() throws {
+        let f2 = try FixtureBuilder.build()
+        let writer = try SQLiteHandle(path: f2.envelopeIndex.path)
+        try writer.exec("PRAGMA journal_mode = WAL")
+        // Eine Schreibtransaktion legt -wal und -shm an, wie bei laufendem Mail; ohne sie kann eine
+        // READONLY-Verbindung die Datenbank im WAL-Modus nicht oeffnen.
+        try writer.exec("UPDATE mailboxes SET total_count = total_count")
+        let small = try #require(f2.seed.messages.first { $0.name == "small" })
+        let s = MailStore(config: f2.config)
+        var writes = 0
+        s.testHookAfterPageQuery = {
+            writes += 1
+            try? writer.run("UPDATE messages SET deleted = 1 WHERE ROWID = ?", [.int(small.rowid)])
+        }
+        let r = try s.search(.init(allowedMailboxIds: f2.allMailboxIds, subject: "willkommen", limit: 10, countTotal: true))
+        #expect(writes == 1)
+        #expect(r.messages.map(\.gid) == [small.gid] && r.totalMatched == 1)
+        s.testHookAfterPageQuery = nil
+        // Die naechste Suche sieht den neuen Stand.
+        #expect(try s.search(.init(allowedMailboxIds: f2.allMailboxIds, subject: "willkommen", limit: 10)).messages.isEmpty)
+    }
+
+    /// Scheitert eine Lesetransaktion nach dem Falten, verschwinden die TEMP-Zeilen mit dem Rollback; der
+    /// Cache darf sie dann nicht als gefaltet fuehren.
+    @Test func failedReadTransactionForgetsFoldedRows() throws {
+        let db = try Database(readOnlyAt: f.envelopeIndex)
+        do {
+            _ = try db.readTransaction { () throws(HelperFailure) -> Int in
+                try db.refreshFoldedDictionaries()
+                throw HelperFailure(code: .databaseError, message: "test")
+            }
+            Issue.record("expected failure")
+        } catch {
+            #expect(error.code == .databaseError)
+        }
+        #expect(db.foldedMax == nil)
+        try db.refreshFoldedDictionaries()
+        var n: Int64 = 0
+        try db.query("SELECT count(*) FROM temp.fold_subjects") { n = $0.int(0) }
+        #expect(n > 0)
     }
 
     @Test func pageOnTenThousandRowsIsFast() throws {

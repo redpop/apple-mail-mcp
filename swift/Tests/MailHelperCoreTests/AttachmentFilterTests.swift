@@ -100,6 +100,41 @@ import Testing
         try Self.assertEquivalent(f, s, allowed: allowed.filter { $0 != FixtureBuilder.realSizeMailboxes.lowerBound })
     }
 
+    private static func seedCopy(gid: Int64, rowid: Int64, mailbox: String, deleted: Bool, attachments: [String]) -> Seed.Message {
+        Seed.Message(
+            name: "edge\(rowid)", gid: gid, rowid: rowid, mailbox: mailbox, subjectPrefix: "", subject: "Anhangsrand \(gid)",
+            sender: .init(address: "rand@example.com", comment: "Rand"), recipients: [],
+            dateReceived: 1_700_002_000 + rowid, dateSent: 1_700_001_000, read: true, flagged: false, deleted: deleted,
+            conversationId: 0, messageIdHeader: "<edge-\(rowid)@example.com>", attachments: attachments, file: "full",
+            storeIndex: 0, senderStored: nil, emlx: nil, body: "Synthetischer Text.\n")
+    }
+
+    /// Der Anhang haengt nur an einer Kopie, die nicht zaehlt: in einer ausgeschlossenen Mailbox (3101) oder
+    /// geloescht (3102). Die sichtbare Kopie hat keinen Anhang, also gilt die Gruppe als ohne Anhang.
+    @Test func attachmentOnlyOnHiddenCopyDoesNotCount() throws {
+        let f = try FixtureBuilder.build(extraSeedMessages: [
+            Self.seedCopy(gid: 3101, rowid: 9101, mailbox: "inbox", deleted: false, attachments: []),
+            Self.seedCopy(gid: 3101, rowid: 9102, mailbox: "junk", deleted: false, attachments: ["junk.pdf"]),
+            Self.seedCopy(gid: 3102, rowid: 9103, mailbox: "inbox", deleted: false, attachments: []),
+            Self.seedCopy(gid: 3102, rowid: 9104, mailbox: "archiv2024", deleted: true, attachments: ["tilg.pdf"]),
+        ])
+        let s = MailStore(config: f.config)
+        let noJunk = f.allMailboxIds.filter { $0 != f.mailboxId(named: "junk") }
+        let edge: Set<Int64> = [3101, 3102]
+        let yes = try Self.allGids(s, .init(allowedMailboxIds: noJunk, hasAttachment: true, limit: 1))
+        let no = try Self.allGids(s, .init(allowedMailboxIds: noJunk, hasAttachment: false, limit: 1))
+        #expect(yes.isDisjoint(with: edge))
+        #expect(edge.isSubset(of: no))
+        // Mit Textfilter (gid-Vorfilter) dasselbe.
+        #expect(try Self.allGids(s, .init(allowedMailboxIds: noJunk, subject: "anhangsrand", hasAttachment: true, limit: 1)).isEmpty)
+        #expect(try Self.allGids(s, .init(allowedMailboxIds: noJunk, subject: "anhangsrand", hasAttachment: false, limit: 1)) == edge)
+        let rows = try s.search(.init(allowedMailboxIds: noJunk, subject: "anhangsrand", limit: 10)).messages
+        #expect(rows.map(\.attachmentCount) == [0, 0] && rows.allSatisfy { $0.attachmentNames.isEmpty })
+        // Ist Junk erlaubt, zaehlt der Anhang dort; die geloeschte Kopie nie.
+        let withJunk = try Self.allGids(s, .init(allowedMailboxIds: f.allMailboxIds, subject: "anhangsrand", hasAttachment: true, limit: 1))
+        #expect(withJunk == [3101])
+    }
+
     /// Zeitmessung auf echter Groesse (rund 242000 Zeilen). Laeuft nur mit PERF_REAL_SIZE=1, am besten im
     /// Release-Build: `PERF_REAL_SIZE=1 swift test -c release --package-path swift --filter realSize`.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["PERF_REAL_SIZE"] == "1"))
@@ -135,6 +170,13 @@ import Testing
             ("from", page(.init(allowedMailboxIds: allowed, from: "jürgen größe 1", limit: 20)), nil),
             ("to", page(.init(allowedMailboxIds: allowed, to: "person12", limit: 20)), nil),
             ("query", page(.init(allowedMailboxIds: allowed, query: "straße 4", limit: 20)), nil),
+            // Breite Textfilter: fast alle Zeilen treffen, die gid-Menge ist so gross wie die Ablage.
+            ("query broad", page(.init(allowedMailboxIds: allowed, query: "e", limit: 20)), nil),
+            ("to broad", page(.init(allowedMailboxIds: allowed, to: "example", limit: 20)), nil),
+            // Eine kleine Mailbox (rund 0,4 % der Zeilen) und die grosse (60 % der ersten Kopien).
+            ("mailboxIds small", page(.init(allowedMailboxIds: allowed, mailboxIds: [1003], limit: 20)), .milliseconds(150)),
+            ("mailboxIds small + read", page(.init(allowedMailboxIds: allowed, mailboxIds: [1003], unread: false, limit: 20)), nil),
+            ("mailboxIds large", page(.init(allowedMailboxIds: allowed, mailboxIds: [1000], limit: 20)), nil),
         ]
         // Erst ohne ANALYZE-Statistik (wie der frisch gebaute Index), dann mit; ob Mails Index sqlite_stat1
         // fuehrt, ist nicht belegt, und der Planer entscheidet je nach Statistik anders.
@@ -150,13 +192,6 @@ import Testing
                 print("real size search, stats \(stats), \(c.name): median \(m), total \(first.totalMatched ?? -1)")
                 #expect(first.messages.count == 20 && first.hasMore, "\(c.name)")
                 if let limit = c.limit { #expect(m < limit, "\(c.name)") }
-            }
-            // Breite Textfilter, nur Zeitausgabe ohne Pruefung (fast alle Zeilen treffen).
-            for (name, req) in [("query broad", page(.init(allowedMailboxIds: allowed, query: "e", limit: 20))),
-                                ("to broad", page(.init(allowedMailboxIds: allowed, to: "example", limit: 20)))] {
-                var total = -1
-                let m = try median { total = try s.search(req).totalMatched ?? -1 }
-                print("real size search, stats \(stats), \(name): median \(m), total \(total)")
             }
             // Vergleichsformen, nur die Kandidatenseite mit Zaehlung (ohne Zeilenaufbau), eigene Verbindung.
             let db = try SQLiteHandle(path: f.envelopeIndex.path, readOnly: true)

@@ -114,6 +114,22 @@ import Testing
         #expect(r.mailboxes.last?.total == 7)
     }
 
+    /// dev/ino stammen vom geoeffneten Deskriptor und passen zur Datei am Pfad; nach dem Ersetzen nicht mehr.
+    @Test func databaseIdentityComesFromTheOpenedFile() throws {
+        let f = try FixtureBuilder.build()
+        let db = try Database(readOnlyAt: f.envelopeIndex)
+        var st = stat()
+        #expect(stat(f.envelopeIndex.path, &st) == 0)
+        #expect(db.identity == FileIdentity(dev: st.st_dev, ino: st.st_ino))
+        let f2 = try FixtureBuilder.build()
+        try FileManager.default.removeItem(at: f.envelopeIndex)
+        try FileManager.default.copyItem(at: f2.envelopeIndex, to: f.envelopeIndex)
+        #expect(stat(f.envelopeIndex.path, &st) == 0)
+        #expect(db.identity != FileIdentity(dev: st.st_dev, ino: st.st_ino))
+        let reopened = try Database(readOnlyAt: f.envelopeIndex)
+        #expect(reopened.identity == FileIdentity(dev: st.st_dev, ino: st.st_ino))
+    }
+
     @Test func unavailableAccountNamesAreNotCached() throws {
         let f = try FixtureBuilder.build()
         let saved = f.accountsDB.deletingLastPathComponent().appending(path: "saved.sqlite")

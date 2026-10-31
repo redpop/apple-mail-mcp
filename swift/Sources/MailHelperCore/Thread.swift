@@ -41,6 +41,11 @@ extension MailStore {
         guard r.maxRecipients >= 0 else { throw invalid("maxRecipients") }
 
         let db = try envelopeDatabase()
+        // Wie bei search: Konversation, gids und Zeilen aus einem Stand des Index.
+        return try db.readTransaction { () throws(HelperFailure) in try threadRows(r, db) }
+    }
+
+    private func threadRows(_ r: ThreadRequest, _ db: Database) throws(HelperFailure) -> ThreadResult {
         let allowedIn = "mailbox IN (\(placeholders(r.allowedMailboxIds.count)))"
         let allowedBind = r.allowedMailboxIds.map { SQLValue.int($0) }
 

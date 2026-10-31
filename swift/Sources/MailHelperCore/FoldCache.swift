@@ -11,8 +11,9 @@ import Foundation
 ///
 /// Nichts davon landet in Mails Dateien: die Verbindung bleibt SQLITE_OPEN_READONLY, `main` ist
 /// schreibgeschuetzt, und TEMP-Tabellen gehoeren zur Verbindung, nicht zur Datenbankdatei. Mit
-/// `temp_store = MEMORY` liegen sie im Arbeitsspeicher des Helpers (ohne das Pragma laege die
-/// TEMP-Datenbank in einer anonymen Datei im Temp-Verzeichnis des Systems, nie neben dem Envelope Index).
+/// `temp_store = MEMORY` (gesetzt beim Oeffnen, Database.init) liegen sie im Arbeitsspeicher des Helpers
+/// (ohne das Pragma laege die TEMP-Datenbank in einer anonymen Datei im Temp-Verzeichnis des Systems,
+/// nie neben dem Envelope Index).
 /// Geprueft 2026-10-25 mit SQLite 3.54: eine READONLY-Verbindung darf TEMP-Tabellen anlegen und
 /// beschreiben; `ATTACH ':memory:'` dagegen erbt READONLY und scheitert, deshalb TEMP.
 ///
@@ -26,7 +27,6 @@ extension Database {
     func refreshFoldedDictionaries() throws(HelperFailure) {
         var known = foldedMax ?? (0, 0)
         if foldedMax == nil {
-            try execute("PRAGMA temp_store = MEMORY")
             try execute("CREATE TEMP TABLE IF NOT EXISTS fold_subjects (id INTEGER PRIMARY KEY, f TEXT NOT NULL)")
             try execute("CREATE TEMP TABLE IF NOT EXISTS fold_addresses (id INTEGER PRIMARY KEY, a TEXT NOT NULL, c TEXT NOT NULL)")
         }
