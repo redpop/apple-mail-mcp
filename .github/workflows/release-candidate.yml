@@ -1,0 +1,137 @@
+name: Release candidate
+
+# Baut dieselben Artefakte wie release.yml, signiert und notarisiert, veroeffentlicht aber nichts
+# (Spec 16.2a): kein npm publish, kein GitHub-Release, kein Registry-Eintrag. Die Version bekommt
+# den Zusatz -rc.<run_number>; zwei Kandidaten nacheinander pruefen das Update von n auf n+1 (14.4).
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # Attestation
+  attestations: write
+
+env:
+  APPLE_TEAM_ID: 4KTGF63CD2
+  CODESIGN_IDENTITY: 'Developer ID Application: Martin Alker (4KTGF63CD2)'
+  # Gepinnt, gleiche Version wie in ci.yml und release-candidate.yml.
+  MCPB_VERSION: 2.1.2
+
+jobs:
+  candidate:
+    runs-on: macos-14
+    environment: release
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Wie in ci.yml: neueste Nicht-Beta-Version von Xcode 16.
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          XCODE="$(/bin/ls -d /Applications/Xcode_16*.app 2>/dev/null | /usr/bin/grep -vi beta | /usr/bin/sort -V | /usr/bin/tail -n 1 || true)"
+          if [ -z "$XCODE" ]; then
+            echo "::error::No non-beta Xcode 16 found under /Applications."
+            exit 1
+          fi
+          /usr/bin/sudo /usr/bin/xcode-select -s "$XCODE"
+          swift --version
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # Ueber den npm-"version"-Hook (sync-versions.mjs) auch in server.json, manifest.json und Swift.
+      - name: Set candidate version
+        run: |
+          set -euo pipefail
+          npm version "$(node -p "require('./package.json').version")-rc.${{ github.run_number }}" --no-git-tag-version
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+        env:
+          TZ: Europe/Berlin
+
+      - name: Swift tests
+        run: npm run test:swift
+
+      - name: TypeScript build
+        run: npm run build
+
+      # Vor Build und Notarisierung, damit ein fehlendes Secret nicht erst nach Minuten auffaellt.
+      - name: Check secrets
+        run: scripts/release/require-env.sh APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_API_KEY_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER_ID
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+
+      - name: Import signing certificate
+        run: scripts/release/import-signing.sh
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Build helper (Developer ID)
+        run: npm run build:helper
+        env:
+          CI: 'true'
+
+      - name: Notarize and staple
+        run: scripts/release/notarize.sh "bin/Mail MCP Helper.app" "$RUNNER_TEMP/mail-helper.zip"
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+
+      - name: Verify bundle
+        id: bundle
+        run: |
+          set -euo pipefail
+          CDHASH="$(scripts/release/verify-bundle.sh "bin/Mail MCP Helper.app")"
+          echo "cdhash=$CDHASH" >>"$GITHUB_OUTPUT"
+
+      - name: Verify npm package
+        id: npm
+        run: |
+          set -euo pipefail
+          TARBALL="$(scripts/release/verify-npm-pack.sh "${{ steps.bundle.outputs.cdhash }}")"
+          echo "tarball=$TARBALL" >>"$GITHUB_OUTPUT"
+
+      - name: Build and verify MCPB
+        id: mcpb
+        run: |
+          set -euo pipefail
+          MCPB="$(scripts/release/build-mcpb.sh "${{ steps.bundle.outputs.cdhash }}" "$RUNNER_TEMP/out")"
+          echo "path=$MCPB" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            ${{ runner.temp }}/mail-helper.zip
+            ${{ steps.mcpb.outputs.path }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-${{ github.run_number }}
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/mail-helper.zip
+            ${{ steps.mcpb.outputs.path }}
+            ${{ steps.npm.outputs.tarball }}
+
+      - name: Remove keychain
+        if: always()
+        run: scripts/release/cleanup-keychain.sh

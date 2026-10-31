@@ -38,6 +38,6 @@ const swiftBody = `// Von swift/build.sh aus package.json erzeugt. Bewusst einge
 // damit \`swift test\` ohne build.sh kompiliert; build.sh schreibt die Datei nur, wenn sich der Wert aendert.
 public let helperVersion = "${version}"
 `
-if (readFileSync(path(swiftFile), 'utf8') !== swiftBody) writeFileSync(path(swiftFile), swiftBody)
+if (!existsSync(path(swiftFile)) || readFileSync(path(swiftFile), 'utf8') !== swiftBody) writeFileSync(path(swiftFile), swiftBody)
 
 console.log(`Versions set to ${version}`)
