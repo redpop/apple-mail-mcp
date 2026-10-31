@@ -57,3 +57,14 @@ jobs:
           echo "$INFO"
           echo "$INFO" | /usr/bin/grep -q x86_64
           echo "$INFO" | /usr/bin/grep -q arm64
+
+      # Die Pruefungen des Release-Workflows muessen ein Ad-hoc-Bundle ablehnen; sonst pruefen sie nichts.
+      - name: Release checks reject an ad-hoc bundle
+        run: |
+          set -uo pipefail
+          if scripts/release/verify-bundle.sh "bin/Mail MCP Helper (Ad hoc).app" 2>verify.err; then
+            echo "::error::verify-bundle.sh accepted an ad-hoc bundle"
+            exit 1
+          fi
+          cat verify.err
+          /usr/bin/grep -Eq 'verify-bundle: (Identifier|Authority) failed' verify.err
