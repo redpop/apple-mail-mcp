@@ -12,6 +12,10 @@ Each line is `ok`, `warn` or `fail`. Exit code 1 means at least one `fail`. `--v
 mailbox names and account identifiers, `--json` gives machine output, `--schema` prints only the
 database fingerprint and missing columns.
 
+The `counts` line reads Mail's tables as they are: its message count includes rows that Mail has
+marked as deleted but not yet removed, so it can be higher than what Mail shows. The unique count
+counts distinct messages across those rows. Searches never return deleted rows.
+
 ## Full Disk Access denied (`FULL_DISK_ACCESS_REQUIRED`)
 
 macOS has not given the helper access to `~/Library/Mail`. The grant goes to the helper app, not
@@ -59,6 +63,11 @@ at a local Dev or Ad hoc build; a bundle with the release id is refused as an ov
 `HELPER_UNTRUSTED_SIGNATURE` is the same problem seen from the helper's side. `doctor` shows
 the bundle id, authority and team.
 
+The server checks the signature once, before the helper's first start, and keeps the result for
+as long as the server process runs. After a failed check every tool call returns
+`HELPER_SIGNATURE_INVALID`, even once the bundle has been fixed or reinstalled. Restart the MCP
+client so it starts a new server process, which checks again.
+
 If `HELPER_MISSING` appears when running from source, the server looks for the release bundle
 inside the package. Build the helper and set `APPLE_MAIL_HELPER_PATH`.
 
@@ -85,6 +94,12 @@ The data is only as fresh as Mail's last sync. Also check the settings: junk and
 excluded unless `APPLE_MAIL_INCLUDE_JUNK` / `APPLE_MAIL_INCLUDE_TRASH` are `true`, and
 `APPLE_MAIL_ACCOUNTS` and `APPLE_MAIL_EXCLUDE_MAILBOXES` hide accounts and mailboxes. `doctor`
 shows the effective policy and mailbox counts. `list_mailboxes` shows what the model can see.
+
+**An account is visible that the allowlist did not mean to include.**
+An `APPLE_MAIL_ACCOUNTS` entry matches every account whose UUID, address or name equals it. Two
+accounts with the same name (the description set in System Settings, for example two accounts
+both called "Work") are therefore both allowed by one entry with that name. Use the address or the
+account UUID (`doctor --verbose` lists the UUIDs) to allow only one of them.
 
 **A message has no body.**
 `bodyUnavailableReason` tells why: `not_downloaded` (Mail never fetched it; open it in Mail),

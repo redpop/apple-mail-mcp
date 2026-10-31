@@ -58,6 +58,7 @@ export async function runCli(command: 'setup' | 'doctor', args: string[], deps: 
       runner,
       bundlePath: runner.bundlePath,
       configResult,
+      override: config.helperPath !== null,
       exec: defaultDoctorExec,
       out,
       verbose: args.includes('--verbose'),

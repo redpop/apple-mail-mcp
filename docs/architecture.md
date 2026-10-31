@@ -113,6 +113,11 @@ what remains.
 - If the helper crashes, the next request restarts it. End of input on stdin ends the helper;
   SIGINT and SIGTERM stop it before the server exits.
 - **stdout carries protocol only, on both legs.** Logs go to stderr.
+- At runtime Node parses helper responses with non-strict zod schemas (`src/schemas.ts`): a missing
+  or mistyped field is a contract break, an unknown extra field is dropped silently. A field Swift
+  sends that Node does not declare is caught at test time instead: the golden files in
+  `tests/fixtures/contract/` hold one response per helper command, produced by the Swift tests, and
+  `tests/contract.test.ts` parses them with strict variants of the same schemas.
 - The state file `~/Library/Application Support/apple-mail-mcp/state.json` (mode 0600) records
   when access last worked and which helper version was used (from the handshake). The hash field
   stays empty: the grant follows bundle id and signature, not the file hash, so a hash would not
@@ -161,6 +166,14 @@ Search terms are substring matches, case-insensitive including umlauts. SQLite's
 folds ASCII, so the helper registers a function that applies Unicode case folding. Folding is
 accent-sensitive: "a with umlaut" does not match plain "a". Wildcard characters typed by the
 user have no special meaning.
+
+Node folds the same way for body search and for matching settings, with one known difference:
+the Greek capital sigma. JavaScript lowercases a word-final capital sigma to the final form
+(U+03C2), Swift always to the medial form (U+03C3). Each comparison folds both sides in the same
+process, so the difference never mixes the two. It shows only in one case: a search term written
+with a final sigma does not match the same word written in capitals in a subject or address
+(helper), while body search (Node) does match it. A term ending in the medial form behaves the
+other way round.
 
 To keep this fast, search is **dictionary-first**: subject and address text lives in lookup
 tables with far fewer rows than `messages`. The helper folds and matches each distinct string

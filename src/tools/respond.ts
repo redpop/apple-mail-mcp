@@ -1,7 +1,10 @@
 import type { ToolContext } from '../context.js'
 import { HelperError, describeError, fdaMessage } from '../errors.js'
 
-// Nur von Node selbst verfasste Meldungen gehen als Detail an das Modell; Helper-Texte koennen Pfade oder Mail-Daten enthalten.
+// Freigabe pro Code, nicht pro Herkunft: nur diese Codes geben ihren Text als Detail an das Modell weiter.
+// Node verfasst sie selbst (dates.ts, cursor.ts, context.ts); INVALID_INPUT kommt auch vom Helper, dort aber
+// nur mit festen Texten ohne Pfade oder Mail-Daten ("Invalid value for <feld>."). Ein neuer Helper-Text unter
+// einem dieser Codes darf deshalb nie Pfade oder Nutzerdaten enthalten. Alle anderen Codes geben nur den festen Text.
 const DETAIL_CODES: ReadonlySet<string> = new Set(['INVALID_INPUT', 'INVALID_CURSOR', 'CONFIG_INVALID'])
 
 export interface ToolResult {

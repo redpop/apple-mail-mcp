@@ -184,6 +184,22 @@ describe('search_messages', () => {
     expect(other.content[0].text).toContain('cursor')
   })
 
+  it('a follow-up page without totalMatched says only how many are shown', async () => {
+    // Der Helper zaehlt auf Folgeseiten nicht; dort fehlen totalMatched und totalMatchedCapped.
+    const { server } = setup(() => ({ messages: [row(1), row(2)], hasMore: true }))
+    const res = await call(server, 'search_messages', { limit: 2 })
+    expect(res.structuredContent.note).toBe('Showing 2 matches. Use nextCursor for more, or narrow with from, since or mailboxIds.')
+    expect(res.structuredContent).not.toHaveProperty('totalMatched')
+  })
+
+  it('an invalid date fails before the mailbox list is loaded', async () => {
+    const { server, calls } = setup(() => ({ messages: [], hasMore: false }))
+    const res = await call(server, 'search_messages', { since: 'yesterday-ish' })
+    expect(res.isError).toBe(true)
+    expect(res.content[0].text).toContain('Invalid date')
+    expect(calls).toHaveLength(0)
+  })
+
   it('redacts security subjects in summaries', async () => {
     const { server } = setup(() => ({ messages: [row(1, { subject: 'Your verification code 123456' })], hasMore: false }))
     const res = await call(server, 'search_messages', {})
@@ -356,13 +372,18 @@ describe('config and errors', () => {
     expect(res.content[0].text).not.toContain('secret internals')
   })
 
-  it('helper error messages never reach the model, except Node-authored codes', async () => {
-    for (const code of ['DATABASE_ERROR', 'MESSAGE_NOT_FOUND', 'HELPER_CRASHED', 'INVALID_INPUT_HELPER']) {
+  it('error details reach the model only for released codes', async () => {
+    // Echte Codes aus errors.ts, die keinen Detailtext freigeben.
+    for (const code of ['DATABASE_ERROR', 'DATABASE_BUSY', 'MESSAGE_NOT_FOUND', 'MAILBOX_NOT_FOUND', 'SCHEMA_UNSUPPORTED', 'MAIL_DATA_NOT_FOUND', 'HELPER_CRASHED', 'HELPER_TIMEOUT', 'HELPER_UNTRUSTED_SIGNATURE']) {
       const { server } = setup(() => { throw new HelperError(code, '/Users/x/Library/Mail/secret') })
       const res = await call(server, 'search_messages', {})
       expect(res.isError).toBe(true)
-      expect(res.content[0].text).not.toContain('/Users/x')
+      expect(res.content[0].text, code).not.toContain('/Users/x')
     }
+    // INVALID_INPUT ist pro Code freigegeben, auch wenn der Helper ihn mit seinem festen Text liefert.
+    const { server } = setup(() => { throw new HelperError('INVALID_INPUT', 'Invalid value for limit.') })
+    const res = await call(server, 'search_messages', {})
+    expect(res.content[0].text).toContain('Invalid value for limit.')
   })
 
   it('invalid cursor text does not repeat the code', async () => {

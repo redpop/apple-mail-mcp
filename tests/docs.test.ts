@@ -5,15 +5,18 @@ import { expect, test } from 'vitest'
 const root = join(import.meta.dirname, '..')
 const read = (p: string): string => readFileSync(join(root, p), 'utf8')
 
-// Nutzerdokumente: README und docs/*.md. docs/superpowers, docs/spikes und docs/decisions-* sind
-// git-ignoriert und liegen nicht im Repository; docs/ wird nur auf der obersten Ebene gelesen.
-const userDocs = ['README.md', ...readdirSync(join(root, 'docs')).filter((f) => f.endsWith('.md') && !f.startsWith('decisions-')).map((f) => `docs/${f}`)]
+// Dokumente im Repository: README, SECURITY, CLAUDE und docs/*.md. docs/superpowers, docs/spikes und
+// docs/decisions-* sind git-ignoriert und liegen nicht im Repository; docs/ wird nur auf der obersten Ebene gelesen.
+const userDocs = ['README.md', 'SECURITY.md', 'CLAUDE.md', ...readdirSync(join(root, 'docs')).filter((f) => f.endsWith('.md') && !f.startsWith('decisions-')).map((f) => `docs/${f}`)]
 
 test('README config table lists every config variable', () => {
   const vars = new Set(read('src/config.ts').match(/APPLE_MAIL_[A-Z_]+/g))
   expect(vars.size).toBeGreaterThan(0)
-  const readme = read('README.md')
-  for (const v of vars) expect(readme, v).toContain(`\`${v}\``)
+  // Nur die erste Spalte der Tabelle unter "## Configuration" zaehlt; eine Erwaehnung im Fliesstext reicht nicht.
+  const section = read('README.md').split(/^## /m).find((s) => s.startsWith('Configuration\n'))
+  expect(section, 'README has a Configuration section').toBeDefined()
+  const rows = new Set([...section!.matchAll(/^\| `(APPLE_MAIL_[A-Z_]+)` \|/gm)].map((m) => m[1]))
+  for (const v of vars) expect(rows, v).toContain(v)
 })
 
 test('docs never name a real mailbox domain outside example domains', () => {
