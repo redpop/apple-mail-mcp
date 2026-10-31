@@ -536,4 +536,48 @@ describe('search_messages bodyContains', () => {
     const other = await call({ bodyContains: 'other', limit: 3, cursor: s.nextCursor })
     expect(other.isError).toBe(true)
   })
+
+  it('search_messages note on a follow-up page says where the scan continued', async () => {
+    const rows = rowsOf(10)
+    const bodies: Record<number, string> = {}
+    for (const r of rows) bodies[r.gid] = 'a needle'
+    const { call } = setup({ rows, bodies })
+    const first = await call({ bodyContains: 'needle', limit: 3 })
+    const next = await call({ bodyContains: 'needle', limit: 3, cursor: first.structuredContent.nextCursor })
+    expect(next.structuredContent.note).toContain('Scanned the next 3 candidate messages after the previous page and found 3 matches')
+    expect(next.structuredContent.note).not.toContain('newest')
+    let cursor = next.structuredContent.nextCursor
+    let last = next
+    while (cursor !== null) {
+      last = await call({ bodyContains: 'needle', limit: 3, cursor })
+      cursor = last.structuredContent.nextCursor
+    }
+    expect(last.structuredContent.note).toBe('Scanned the remaining 1 candidate messages and found 1 match.')
+  })
+
+  it('the cap and time budget in the note come from the constants', async () => {
+    const rows = rowsOf(CANDIDATE_CAP + 1)
+    const bodies: Record<number, string> = {}
+    for (const r of rows) bodies[r.gid] = 'x'
+    const { call } = setup({ rows, bodies })
+    const res = await call({ bodyContains: 'needle' })
+    expect(res.structuredContent.note).toContain(`the limit of ${CANDIDATE_CAP.toLocaleString('en-US')} scanned messages per call was reached`)
+  })
+
+  it('a cursor from a plain search is rejected by a body search and vice versa', async () => {
+    const rows = rowsOf(10)
+    const bodies: Record<number, string> = {}
+    for (const r of rows) bodies[r.gid] = 'a needle'
+    const { call } = setup({ rows, bodies })
+    const plain = await call({ limit: 3 })
+    expect(plain.structuredContent.nextCursor).toEqual(expect.any(String))
+    const body = await call({ bodyContains: 'needle', limit: 3 })
+    expect(body.structuredContent.nextCursor).toEqual(expect.any(String))
+    const a = await call({ bodyContains: 'needle', limit: 3, cursor: plain.structuredContent.nextCursor })
+    expect(a.isError).toBe(true)
+    expect(a.content[0].text).toContain('cursor')
+    const b = await call({ limit: 3, cursor: body.structuredContent.nextCursor })
+    expect(b.isError).toBe(true)
+    expect(b.content[0].text).toContain('cursor')
+  })
 })

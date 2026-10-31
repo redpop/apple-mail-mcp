@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod/v4'
 import type { ToolContext } from '../context.js'
-import { scanBodies, type ScanInfo } from '../bodyScan.js'
+import { CANDIDATE_CAP, scanBodies, TIME_BUDGET_MS, type ScanInfo } from '../bodyScan.js'
 import { decodeCursor, encodeCursor, queryHash } from '../cursor.js'
 import { parseDateInput } from '../dates.js'
 import { HelperError } from '../errors.js'
@@ -47,12 +47,22 @@ const Output = z.object({
 
 const fmt = (n: number): string => n.toLocaleString('en-US')
 
-function scanNote(scan: ScanInfo, matches: number): string {
+/** `followUp`: der Scan setzte mit einem Cursor fort, begann also nicht bei der neuesten Nachricht. */
+function scanNote(scan: ScanInfo, matches: number, followUp: boolean): string {
   const found = `${matches} ${matches === 1 ? 'match' : 'matches'}`
   const noBody = scan.unavailable > 0 ? ` ${fmt(scan.unavailable)} of them could not be searched because their body is not on this Mac or could not be read.` : ''
-  if (scan.complete) return `Scanned all ${fmt(scan.scanned)} candidate messages and found ${found}.${noBody}`
-  const why = { limit: 'the requested number of matches was reached', cap: 'the scan limit of 2,000 messages was reached', time: 'the 3 second time budget ran out' }[scan.stoppedBy!]
-  return `Scanned the ${fmt(scan.scanned)} newest candidate messages and found ${found}; stopped because ${why}.${noBody} Call again with nextCursor to continue, or narrow the search with from, since or mailboxIds.`
+  const n = fmt(scan.scanned)
+  if (scan.complete) {
+    const what = followUp ? `the remaining ${n} candidate messages` : `all ${n} candidate messages`
+    return `Scanned ${what} and found ${found}.${noBody}`
+  }
+  const why = {
+    limit: 'the requested number of matches was reached',
+    cap: `the limit of ${fmt(CANDIDATE_CAP)} scanned messages per call was reached`,
+    time: `the ${fmt(TIME_BUDGET_MS / 1000)} second time budget ran out`,
+  }[scan.stoppedBy!]
+  const what = followUp ? `the next ${n} candidate messages after the previous page` : `the ${n} newest candidate messages`
+  return `Scanned ${what} and found ${found}; stopped because ${why}.${noBody} Call again with nextCursor to continue, or narrow the search with from, since or mailboxIds.`
 }
 
 function defined(o: Record<string, unknown>): Record<string, unknown> {
@@ -130,7 +140,7 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
               messages,
               nextCursor: res.resumeAfter ? encodeCursor(res.resumeAfter, hash) : null,
               scan: res.scan,
-              note: scanNote(res.scan, messages.length),
+              note: scanNote(res.scan, messages.length, after !== undefined),
             }),
           }
         }
