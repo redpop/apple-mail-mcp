@@ -292,16 +292,16 @@ describe('scanBodies', () => {
   it('scan counters do not depend on the term when the full parse fails after the prefilter (E2)', async () => {
     // A: reines HTML, so tief verschachtelt, dass html-to-text scheitert; der schnelle Weg geht.
     const deep = html(`${'<div>'.repeat(30000)}Your verification code is 482913${'</div>'.repeat(30000)}`)
-    // B: unbekannter Zeichensatz nur im Anhang; gekuerzt ist er weg, ungekuerzt scheitert parseMessage.
+    // B: unbekannter Zeichensatz nur im Text eines Anhangs. Frueher scheiterte daran parseMessage
+    // (ungekuerzt), seit der Pruefung pro Teil nicht mehr; die Zaehler bleiben trotzdem gleich.
     const att = 'Content-Type: text/plain; charset=x-unknown-cs\r\n\r\nirrelevant\r\n'
     const unknown =
       'From: Anna <anna@example.com>\r\nSubject: x\r\nContent-Type: multipart/mixed; boundary="m"\r\n\r\n' +
       '--m\r\nContent-Type: text/plain\r\n\r\nYour one-time code is 482913\r\n' +
       `--m\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename="x.eml"\r\n\r\n${att}--m--\r\n`
-    for (const mime of [deep, unknown]) {
-      expect((await parseMessage(Buffer.from(rawMime(mime), 'base64'))).ok).toBe(false)
-      expect((await parseForScan(Buffer.from(rawMime(mime), 'base64'))).ok).toBe(true)
-    }
+    expect((await parseMessage(Buffer.from(rawMime(deep), 'base64'))).ok).toBe(false)
+    expect((await parseMessage(Buffer.from(rawMime(unknown), 'base64'))).ok).toBe(true)
+    for (const mime of [deep, unknown]) expect((await parseForScan(Buffer.from(rawMime(mime), 'base64'))).ok).toBe(true)
     const rows = rowsOf(3, () => ({ subject: 'Hello' }))
     const mimes = { 1: deep, 2: unknown }
     const results = []
