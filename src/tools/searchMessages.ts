@@ -75,6 +75,9 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
         if (input.bodyContains !== undefined && !config.bodySearch) {
           throw new HelperError('INVALID_INPUT', 'Body search is disabled: the user turned it off (APPLE_MAIL_BODY_SEARCH=false), so bodyContains cannot be used.')
         }
+        // Datumsfehler vor policy(): ein ungueltiges Datum soll keinen list-mailboxes-Aufruf kosten.
+        const since = input.since !== undefined ? parseDateInput(input.since) : undefined
+        const before = input.before !== undefined ? parseDateInput(input.before) : undefined
         const policy = await ctx.policy()
 
         let mailboxIds: number[] | undefined
@@ -94,8 +97,6 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
             }),
           }
         }
-        const since = input.since !== undefined ? parseDateInput(input.since) : undefined
-        const before = input.before !== undefined ? parseDateInput(input.before) : undefined
         const limit = Math.min(input.limit, config.maxResults)
 
         const filters = defined({
@@ -151,8 +152,8 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
         const nextCursor = raw.hasMore && last ? encodeCursor({ d: last.dateReceived, g: last.gid }, hash) : null
         let note: string | undefined
         if (raw.hasMore) {
-          const total = raw.totalMatched
-          const of = total === null || total === undefined ? '' : ` of ${raw.totalMatchedCapped ? 'more than ' : ''}${total}`
+          // Folgeseiten zaehlen nicht (totalMatched fehlt); totalMatchedCapped ist laut Helper immer false.
+          const of = raw.totalMatched == null ? '' : ` of ${raw.totalMatched}`
           note = `Showing ${messages.length}${of} matches. Use nextCursor for more, or narrow with from, since or mailboxIds.`
         }
         return {

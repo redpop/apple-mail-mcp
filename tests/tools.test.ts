@@ -184,6 +184,22 @@ describe('search_messages', () => {
     expect(other.content[0].text).toContain('cursor')
   })
 
+  it('a follow-up page without totalMatched says only how many are shown', async () => {
+    // Der Helper zaehlt auf Folgeseiten nicht; dort fehlen totalMatched und totalMatchedCapped.
+    const { server } = setup(() => ({ messages: [row(1), row(2)], hasMore: true }))
+    const res = await call(server, 'search_messages', { limit: 2 })
+    expect(res.structuredContent.note).toBe('Showing 2 matches. Use nextCursor for more, or narrow with from, since or mailboxIds.')
+    expect(res.structuredContent).not.toHaveProperty('totalMatched')
+  })
+
+  it('an invalid date fails before the mailbox list is loaded', async () => {
+    const { server, calls } = setup(() => ({ messages: [], hasMore: false }))
+    const res = await call(server, 'search_messages', { since: 'yesterday-ish' })
+    expect(res.isError).toBe(true)
+    expect(res.content[0].text).toContain('Invalid date')
+    expect(calls).toHaveLength(0)
+  })
+
   it('redacts security subjects in summaries', async () => {
     const { server } = setup(() => ({ messages: [row(1, { subject: 'Your verification code 123456' })], hasMore: false }))
     const res = await call(server, 'search_messages', {})
