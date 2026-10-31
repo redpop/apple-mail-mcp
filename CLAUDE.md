@@ -14,7 +14,10 @@ npm run typecheck                         # tsc --noEmit (src/ and tests/)
 npm run build                             # tsc -> dist/ (src/ only)
 npm run build:helper                      # swift/build.sh -> bin/Mail MCP Helper (Dev).app
 npm run test:swift                        # swift test --package-path swift
+node scripts/sync-versions.mjs            # package.json version -> server.json, manifest.json, Swift
 ```
+
+Releases run only in CI: `release.yml` (tag `v*`), `release-candidate.yml` (manual, publishes nothing) and `registry.yml` (MCP Registry retry), all in the `release` environment except `registry.yml`. They call the scripts in `scripts/release/`; `docs/releasing.md` has the process. `ci.yml` runs `verify-bundle.sh` against the ad-hoc bundle and expects it to fail, and validates `manifest.json`.
 
 Run the built server against your local helper:
 
@@ -80,4 +83,4 @@ Runtime dependencies are limited to `@modelcontextprotocol/server`, `zod`, `post
 
 ## Scope
 
-Four tools, `setup` and `doctor`. Out on purpose: sending, drafts, moving, deleting, flagging, `extract_links`, attachment contents, embeddings. Not built yet: the opt-in body index, the MCPB bundle, the release workflow.
+Four tools, `setup` and `doctor`. Out on purpose: sending, drafts, moving, deleting, flagging, `extract_links`, attachment contents, embeddings. Not built yet: the opt-in body index. The release workflow and the MCPB bundle exist but have not shipped a release.

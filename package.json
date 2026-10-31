@@ -1,8 +1,27 @@
 {
   "name": "@redpop/apple-mail-mcp",
   "version": "0.0.0",
+  "mcpName": "io.github.redpop/apple-mail-mcp",
+  "description": "Read-only MCP server for Apple Mail on macOS: search and read mail, mailboxes and threads, with a Full Disk Access grant that only a signed helper holds",
   "license": "MIT",
   "type": "module",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "apple-mail",
+    "mail",
+    "email",
+    "macos",
+    "read-only"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/redpop/apple-mail-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/redpop/apple-mail-mcp/issues"
+  },
+  "homepage": "https://github.com/redpop/apple-mail-mcp#readme",
   "os": [
     "darwin"
   ],
@@ -12,12 +31,21 @@
   "bin": {
     "apple-mail-mcp": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "build:helper": "bash swift/build.sh",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:swift": "swift test --package-path swift"
+    "test:swift": "swift test --package-path swift",
+    "version": "node scripts/sync-versions.mjs && git add server.json manifest.json swift/Sources/MailHelperCore/Version.generated.swift",
+    "prepublishOnly": "node scripts/release/check-publish.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",

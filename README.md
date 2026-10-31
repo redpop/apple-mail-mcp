@@ -217,6 +217,7 @@ report we can get. Security problems go through GitHub Security Advisories, see
 - [`docs/architecture.md`](./docs/architecture.md): how it works and what was measured
 - [`docs/troubleshooting.md`](./docs/troubleshooting.md): permission and database problems
 - [`SECURITY.md`](./SECURITY.md): threat model and residual risks
+- [`docs/releasing.md`](./docs/releasing.md): how releases are built, signed and published (maintainers)
 
 ## Not included, on purpose
 
