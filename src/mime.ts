@@ -1,6 +1,6 @@
 import PostalMime, { type Email } from 'postal-mime'
 import { convert } from 'html-to-text'
-import { trimForScan } from './mimeTrim.js'
+import { textParts, trimForScan, type TextPart } from './mimeTrim.js'
 import { quickHtmlText } from './quickHtml.js'
 
 export interface Address {
@@ -30,31 +30,6 @@ export function stripEmlxFrame(raw: Buffer): Buffer {
   const body = raw.subarray(nl + 1)
   if (!Number.isSafeInteger(length) || length > body.length) return body
   return body.subarray(0, length)
-}
-
-/**
- * Alle Zeichensatz-Angaben aus Content-Type-Kopfzeilen (inklusive Fortsetzungszeilen).
- * Sucht die Kopfzeilen direkt, statt die ganze Nachricht in Zeilen zu zerlegen; Zeilen enden
- * an LF, ein CR davor gehoert nicht zur Zeile (wie ein Split an /\r?\n/).
- */
-export function declaredCharsets(raw: Buffer): string[] {
-  const out: string[] = []
-  const s = raw.toString('latin1')
-  const header = /(?:^|\n)content-type:/gi
-  for (const h of s.matchAll(header)) {
-    let start = h[0].startsWith('\n') ? h.index + 1 : h.index
-    for (;;) {
-      const nl = s.indexOf('\n', start)
-      const end = nl < 0 ? s.length : nl
-      const line = s.slice(start, end > start && s.charCodeAt(end - 1) === 0x0d && nl >= 0 ? end - 1 : end)
-      for (const m of line.matchAll(/charset\s*=\s*"?([A-Za-z0-9_.:-]+)/gi)) out.push(m[1] as string)
-      if (nl < 0) break
-      start = nl + 1
-      const next = s.charCodeAt(start)
-      if (next !== 0x20 && next !== 0x09) break
-    }
-  }
-  return out
 }
 
 function isKnownCharset(label: string): boolean {
@@ -89,6 +64,9 @@ export function htmlToText(html: string): string {
     selectors: [
       { selector: 'a', options: { linkBrackets: ['[', ']'], hideLinkHrefIfSameAsText: true } },
       { selector: 'img', format: 'skip' },
+      // Ueberschriften und Tabellenkoepfe in Originalschreibung, nicht in Grossbuchstaben.
+      ...(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const).map((selector) => ({ selector, options: { uppercase: false } })),
+      { selector: 'table', options: { uppercaseHeaderCells: false } },
     ],
   })
 }
@@ -96,18 +74,27 @@ export function htmlToText(html: string): string {
 type Source = { format: 'plain'; text: string } | { format: 'html'; html: string }
 
 /**
- * Zeichensaetze pruefen, MIME parsen und den Textteil waehlen: `text`, sonst `html`. Null, wenn
- * nur unbekannte Zeichensaetze angegeben sind oder kein Text vorliegt. Erwartet die Nachricht
- * ohne .emlx-Rahmen.
+ * Lesbar ist eine Textart (Klartext oder HTML), wenn sie keinen Teil hat oder mindestens einen
+ * ohne Zeichensatz oder mit bekanntem. Nur ein unbekannter Zeichensatz liefert sonst geratenen
+ * Text (postal-mime faellt dann auf UTF-8 oder Windows-1252 zurueck). Ohne erkannte Struktur
+ * (`parts` null) entscheidet postal-mime allein.
+ */
+function readable(parts: TextPart[] | null, type: TextPart['type']): boolean {
+  if (parts === null) return true
+  const own = parts.filter((p) => p.type === type)
+  return own.length === 0 || own.some((p) => p.charset === null || isKnownCharset(p.charset))
+}
+
+/**
+ * MIME parsen und den Textteil waehlen: `text`, sonst `html`, jeweils nur mit lesbarem
+ * Zeichensatz (pro Teil geprueft). Null, wenn kein lesbarer Text vorliegt. Erwartet die
+ * Nachricht ohne .emlx-Rahmen.
  */
 async function decode(mime: Buffer): Promise<{ email: Email; source: Source } | null> {
-  const charsets = declaredCharsets(mime)
-  const unknownOnly = charsets.length > 0 && !charsets.some(isKnownCharset)
-  if (unknownOnly) return null
-
+  const parts = textParts(mime)
   const email = await PostalMime.parse(mime)
-  if (typeof email.text === 'string' && email.text.trim() !== '') return { email, source: { format: 'plain', text: email.text } }
-  if (typeof email.html === 'string' && email.html.trim() !== '') return { email, source: { format: 'html', html: email.html } }
+  if (typeof email.text === 'string' && email.text.trim() !== '' && readable(parts, 'text/plain')) return { email, source: { format: 'plain', text: email.text } }
+  if (typeof email.html === 'string' && email.html.trim() !== '' && readable(parts, 'text/html')) return { email, source: { format: 'html', html: email.html } }
   return null
 }
 

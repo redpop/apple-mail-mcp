@@ -7,9 +7,9 @@
 //   node scripts/bench-mime.mjs [runden]
 import PostalMime from 'postal-mime'
 import { performance } from 'node:perf_hooks'
-import { declaredCharsets, htmlToText, normalise, parseMessage, stripEmlxFrame } from '../dist/mime.js'
+import { htmlToText, normalise, parseMessage, stripEmlxFrame } from '../dist/mime.js'
 import { quickHtmlText } from '../dist/quickHtml.js'
-import { trimForScan } from '../dist/mimeTrim.js'
+import { textParts, trimForScan } from '../dist/mimeTrim.js'
 import { classify } from '../dist/securityMail.js'
 import { examine, findMatch, foldFast } from '../dist/bodyScan.js'
 
@@ -159,7 +159,7 @@ for (const [name, raw] of Object.entries(messages)) {
   const s = {
     b64: await per([base64], (x) => Buffer.from(x, 'base64')),
     strip: await per(one, (x) => stripEmlxFrame(x)),
-    charset: await per([stripped], (x) => declaredCharsets(x)),
+    charset: await per([stripped], (x) => textParts(x)),
     postal: await per([stripped], (x) => PostalMime.parse(x)),
     trim: await per([stripped], (x) => trimForScan(x)),
     postalTrimmed: await per([trimForScan(stripped) ?? stripped], (x) => PostalMime.parse(x)),

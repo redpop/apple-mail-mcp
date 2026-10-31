@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { declaredCharsets, parseForScan, parseMessage, stripEmlxFrame, truncateText, type ParsedMessage } from '../src/mime.js'
+import { parseForScan, parseMessage, stripEmlxFrame, truncateText, type ParsedMessage } from '../src/mime.js'
+import { textParts } from '../src/mimeTrim.js'
 import { quickHtmlText } from '../src/quickHtml.js'
 
 const eml = (n: string) => readFileSync(new URL(`./fixtures/eml/${n}`, import.meta.url))
@@ -10,6 +11,8 @@ test('frame is stripped by declared length', () =>
   expect(stripEmlxFrame(Buffer.from('5\nhello<plist/>')).toString()).toBe('hello'))
 test('frame without number keeps everything', () =>
   expect(stripEmlxFrame(Buffer.from('From: a\n')).toString()).toBe('From: a\n'))
+test('frame shorter than the file cuts there even without a plist', () =>
+  expect(stripEmlxFrame(Buffer.from('5\nhello world\n')).toString()).toBe('hello'))
 test('frame length beyond file keeps the rest', () =>
   expect(stripEmlxFrame(Buffer.from('999\nshort')).toString()).toBe('short'))
 
@@ -94,29 +97,67 @@ test('truncate cuts at word boundary', () =>
 test('truncate leaves short text alone', () =>
   expect(truncateText('alpha', 8)).toEqual({ text: 'alpha', truncated: false, totalChars: 5 }))
 
-// Die fruehere Fassung von declaredCharsets (ganze Nachricht in Zeilen zerlegt) als Referenz.
-function charsetsByLines(raw: Buffer): string[] {
-  const out: string[] = []
-  let inContentType = false
-  for (const line of raw.toString('latin1').split(/\r?\n/)) {
-    if (/^content-type:/i.test(line)) inContentType = true
-    else if (!/^[ \t]/.test(line)) inContentType = false
-    if (!inContentType) continue
-    for (const m of line.matchAll(/charset\s*=\s*"?([A-Za-z0-9_.:-]+)/gi)) out.push(m[1] as string)
-  }
-  return out
-}
+const multipart = (sub: string, parts: string[]) =>
+  Buffer.from(
+    `From: a@example.com\r\nTo: b@example.org\r\nContent-Type: multipart/${sub}; boundary="b"\r\n\r\n` +
+      parts.map((p) => `--b\r\n${p}\r\n`).join('') +
+      '--b--\r\n',
+    'latin1',
+  )
 
-test('declaredCharsets finds the same labels as a line-by-line scan', () => {
-  const samples = [
-    ...readdirSync(new URL('./fixtures/eml/', import.meta.url)).map(eml),
-    Buffer.from('Content-Type: text/plain;\r\n charset="iso-8859-1"\r\nX: charset=no\r\n\r\nbody charset=utf-8\r\n'),
-    Buffer.from('content-type: multipart/mixed; boundary=b\n\tcharset=a\n\n--b\nContent-Type: text/plain; charset=b\r\n \r\n charset=c\nContent-Type: text/html; charset=d'),
-    Buffer.from('Content-Type: text/plain; charset=\r\n utf-8\r\nContent-Type: x;charset=y\rcharset=z\n'),
-    Buffer.from('X: 1\nContent-Type: text/plain; charset=utf-8'),
-    Buffer.alloc(0),
-  ]
-  for (const raw of samples) expect(declaredCharsets(raw)).toEqual(charsetsByLines(raw))
+test('charsets are checked per part: readable plain wins over an unknown html charset', async () => {
+  const raw = multipart('alternative', ['Content-Type: text/plain\r\n\r\nPlain without charset', 'Content-Type: text/html; charset=x-nonsense\r\n\r\n<p>Html</p>'])
+  const m = await parseMessage(raw)
+  expect(m).toMatchObject({ ok: true, format: 'plain' })
+  expect(text(m)).toBe('Plain without charset')
+})
+
+test('an unknown plain charset falls back to a readable html part', async () => {
+  const raw = multipart('alternative', ['Content-Type: text/plain; charset=x-nonsense\r\n\r\nGeraten', 'Content-Type: text/html; charset=utf-8\r\n\r\n<p>Html wins</p>'])
+  const m = await parseMessage(raw)
+  expect(m).toMatchObject({ ok: true, format: 'html' })
+  expect(text(m)).toBe('Html wins')
+  const scan = await parseForScan(raw)
+  expect(scan.ok && (await scan.full())).toBe('Html wins')
+})
+
+test('header lines inside a body or attachment do not count as charsets', async () => {
+  const forwarded = Buffer.from('Content-Type: text/plain\r\n\r\nForwarded:\r\nContent-Type: text/plain; charset=x-nonsense\r\n\r\nold text\r\n')
+  expect(textParts(forwarded)).toEqual([{ type: 'text/plain', charset: null }])
+  expect(text(await parseMessage(forwarded))).toContain('old text')
+  const attached = multipart('mixed', [
+    'Content-Type: text/plain; charset=utf-8\r\n\r\nSee attachment',
+    'Content-Type: text/plain; charset=x-nonsense\r\nContent-Disposition: attachment; filename="a.txt"\r\n\r\nraw',
+  ])
+  expect(textParts(attached)).toEqual([{ type: 'text/plain', charset: 'utf-8' }])
+  expect(text(await parseMessage(attached))).toBe('See attachment')
+})
+
+test('textParts reads nested multiparts and inline message/rfc822 parts', () => {
+  const raw = multipart('mixed', [
+    'Content-Type: multipart/alternative; boundary="i"\r\n\r\n--i\r\nContent-Type: text/plain;\r\n charset="ISO-8859-1"\r\n\r\nA\r\n--i\r\nContent-Type: text/html\r\n\r\n<p>B</p>\r\n--i--',
+    'Content-Type: message/rfc822\r\n\r\nSubject: inner\r\nContent-Type: text/plain; charset=koi8-r\r\n\r\nC',
+    'Content-Type: image/png\r\n\r\nxx',
+  ])
+  expect(textParts(raw)).toEqual([
+    { type: 'text/plain', charset: 'ISO-8859-1' },
+    { type: 'text/html', charset: null },
+    { type: 'text/plain', charset: 'koi8-r' },
+  ])
+  expect(textParts(Buffer.from('Subject: no body'))).toBeNull()
+})
+
+test('headings and table headers keep their case', async () => {
+  const m = await parseMessage(Buffer.from('Content-Type: text/html\r\n\r\n<h1>Ihre Rechnung</h1><table><tr><th>Posten</th></tr><tr><td>Tee</td></tr></table>'))
+  expect(text(m)).toContain('Ihre Rechnung')
+  expect(text(m)).toContain('Posten')
+  expect(text(m)).not.toMatch(/RECHNUNG|POSTEN/)
+})
+
+test('an attachment before the text part still yields the text', async () => {
+  const m = await parseMessage(eml('attachment-first.eml'))
+  expect(m).toMatchObject({ ok: true, format: 'plain' })
+  expect(text(m)).toBe('Text after attachment')
 })
 
 test('quickHtmlText drops tags, comments, script and style and decodes entities', () => {
