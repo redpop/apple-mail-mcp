@@ -120,8 +120,14 @@ export function createStdioRunner(
       return
     }
 
-    const index = typeof parsed.id === 'number' ? pending.findIndex((entry) => entry.id === parsed.id) : 0
-    if (index === -1 || pending.length === 0) return // Antwort auf etwas, das nicht mehr offen ist (z. B. nach Timeout).
+    // Ohne numerische id laesst sich die Antwort keiner Anfrage sicher zuordnen (der Helper hat eine
+    // Anfrage nicht lesen koennen). Kein Raten: die Leitung gilt als verloren, alles Offene scheitert laut.
+    if (typeof parsed.id !== 'number') {
+      discardChild(new HelperError('HELPER_CRASHED', 'The helper sent a response without a request id.'))
+      return
+    }
+    const index = pending.findIndex((entry) => entry.id === parsed.id)
+    if (index === -1) return // Antwort auf etwas, das nicht mehr offen ist (z. B. nach Timeout).
 
     const entry = pending.splice(index, 1)[0]
     if (entry === undefined) return

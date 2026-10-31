@@ -25,7 +25,11 @@ if [ -z "$IDENTITY" ]; then
     | /usr/bin/grep '"Apple Development' | /usr/bin/head -n 1 \
     | /usr/bin/sed -E 's/.*"(.*)".*/\1/' || true)"
 fi
-[ -n "$IDENTITY" ] || IDENTITY="-"
+if [ -z "$IDENTITY" ]; then
+  # Rueckfall auf ad hoc nur mit Hinweis (Spec 13.3): das Bundle bekommt eine eigene, schwaechere Identitaet.
+  echo "build.sh: warning: no Apple Development identity found, signing ad hoc ($ADHOC_BUNDLE_ID). Full Disk Access granted to a development build does not apply to it; set CODESIGN_IDENTITY to choose an identity." >&2
+  IDENTITY="-"
+fi
 
 case "$IDENTITY" in
   "Developer ID Application:"*)

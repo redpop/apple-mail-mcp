@@ -27,6 +27,26 @@ describe('signing', () => {
     expect(script).toContain(`ADHOC_BUNDLE_ID="${ADHOC_BUNDLE_ID}"`)
   })
 
+  test('TEAM_ID, bundle ids and release requirement match SigningCheck.swift', () => {
+    const swift = readFileSync(new URL('../swift/Sources/MailHelperCore/SigningCheck.swift', import.meta.url), 'utf8')
+    const literal = (name: string): string => {
+      const match = new RegExp(`static let ${name} =\\s*(.+)`).exec(swift)
+      expect(match, name).not.toBeNull()
+      return match![1]!.trim()
+    }
+    expect(literal('teamID')).toBe(`"${TEAM_ID}"`)
+    expect(literal('releaseBundleID')).toBe(`"${RELEASE_BUNDLE_ID}"`)
+    expect(literal('devBundleID')).toBe('releaseBundleID + ".dev"')
+    expect(literal('adhocBundleID')).toBe('releaseBundleID + ".adhoc"')
+    // Swift-Literal mit Interpolation in den Wert uebersetzen, den Node prueft.
+    const release = literal('releaseRequirement')
+      .replace(/^"|"$/g, '')
+      .replaceAll('\\(releaseBundleID)', RELEASE_BUNDLE_ID)
+      .replaceAll('\\(teamID)', TEAM_ID)
+      .replaceAll('\\"', '"')
+    expect(release).toBe(RELEASE_REQUIREMENT)
+  })
+
   it('constants', () => {
     expect(TEAM_ID).toBe('4KTGF63CD2')
     expect(DEV_BUNDLE_ID).toBe(RELEASE_BUNDLE_ID + '.dev')

@@ -15,7 +15,12 @@ jobs:
       - name: Select Xcode
         run: |
           set -euo pipefail
-          XCODE="$(/bin/ls -d /Applications/Xcode_16*.app | /usr/bin/grep -vi beta | /usr/bin/sort -V | /usr/bin/tail -n 1)"
+          # "|| true": ohne Treffer soll die Meldung unten erscheinen, nicht pipefail still abbrechen.
+          XCODE="$(/bin/ls -d /Applications/Xcode_16*.app 2>/dev/null | /usr/bin/grep -vi beta | /usr/bin/sort -V | /usr/bin/tail -n 1 || true)"
+          if [ -z "$XCODE" ]; then
+            echo "::error::No non-beta Xcode 16 found under /Applications (Swift 6 needs Xcode >= 16). Installed: $(/bin/ls -d /Applications/Xcode*.app 2>/dev/null | /usr/bin/tr '\n' ' ')"
+            exit 1
+          fi
           echo "Using $XCODE"
           /usr/bin/sudo /usr/bin/xcode-select -s "$XCODE"
           swift --version
