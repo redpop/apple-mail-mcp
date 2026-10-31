@@ -372,13 +372,18 @@ describe('config and errors', () => {
     expect(res.content[0].text).not.toContain('secret internals')
   })
 
-  it('helper error messages never reach the model, except Node-authored codes', async () => {
-    for (const code of ['DATABASE_ERROR', 'MESSAGE_NOT_FOUND', 'HELPER_CRASHED', 'INVALID_INPUT_HELPER']) {
+  it('error details reach the model only for released codes', async () => {
+    // Echte Codes aus errors.ts, die keinen Detailtext freigeben.
+    for (const code of ['DATABASE_ERROR', 'DATABASE_BUSY', 'MESSAGE_NOT_FOUND', 'MAILBOX_NOT_FOUND', 'SCHEMA_UNSUPPORTED', 'MAIL_DATA_NOT_FOUND', 'HELPER_CRASHED', 'HELPER_TIMEOUT', 'HELPER_UNTRUSTED_SIGNATURE']) {
       const { server } = setup(() => { throw new HelperError(code, '/Users/x/Library/Mail/secret') })
       const res = await call(server, 'search_messages', {})
       expect(res.isError).toBe(true)
-      expect(res.content[0].text).not.toContain('/Users/x')
+      expect(res.content[0].text, code).not.toContain('/Users/x')
     }
+    // INVALID_INPUT ist pro Code freigegeben, auch wenn der Helper ihn mit seinem festen Text liefert.
+    const { server } = setup(() => { throw new HelperError('INVALID_INPUT', 'Invalid value for limit.') })
+    const res = await call(server, 'search_messages', {})
+    expect(res.content[0].text).toContain('Invalid value for limit.')
   })
 
   it('invalid cursor text does not repeat the code', async () => {
