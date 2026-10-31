@@ -22,13 +22,33 @@ struct Row {
     }
 }
 
+/// Geraet und Inode einer geoeffneten Datei.
+struct FileIdentity: Equatable {
+    let dev: dev_t
+    let ino: ino_t
+}
+
+struct OpenErrno: Error {
+    let code: Int32
+}
+
 /// Gemeinsame errno-Pruefung vor SQLite: SQLite meldet EPERM und ENOENT beide als CANTOPEN.
 enum FileProbe {
     /// `nil` = lesbar, sonst errno.
     static func openErrno(_ path: String) -> Int32? {
+        if case .failure(let e) = identity(path) { return e.code }
+        return nil
+    }
+
+    /// Oeffnet die Datei und liest dev/ino per fstat am geoeffneten Deskriptor, nicht per stat am Pfad:
+    /// so gehoert die Identitaet sicher zu der Datei, die geoeffnet wurde.
+    static func identity(_ path: String) -> Result<FileIdentity, OpenErrno> {
         let fd = open(path, O_RDONLY)
-        if fd >= 0 { close(fd); return nil }
-        return errno
+        guard fd >= 0 else { return .failure(OpenErrno(code: errno)) }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0 else { return .failure(OpenErrno(code: errno)) }
+        return .success(FileIdentity(dev: st.st_dev, ino: st.st_ino))
     }
 }
 
@@ -38,11 +58,19 @@ final class Database {
     /// Hoechste bereits gefaltete ROWID je Woerterbuchtabelle (FoldCache.swift); nil, solange die
     /// TEMP-Tabellen dieser Verbindung noch nicht angelegt sind.
     var foldedMax: (subjects: Int64, addresses: Int64)?
+    /// Identitaet der Datei aus der Pruefung unmittelbar vor `sqlite3_open_v2`. Wird die Datei dazwischen
+    /// ersetzt, haelt SQLite die neuere Datei und hier steht die aeltere: die naechste Anfrage sieht eine
+    /// andere Inode und oeffnet einmal unnoetig neu. Umgekehrt (stat am Pfad nach dem Oeffnen) bekaeme die
+    /// alte Verbindung die neue Inode und bliebe dauerhaft an der entlinkten Datei haengen.
+    let identity: FileIdentity
 
     init(readOnlyAt url: URL) throws(HelperFailure) {
         let path = url.path
-        if let e = FileProbe.openErrno(path) {
-            switch e {
+        switch FileProbe.identity(path) {
+        case .success(let id):
+            identity = id
+        case .failure(let failure):
+            switch failure.code {
             case EPERM, EACCES:
                 throw HelperFailure(code: .fullDiskAccessRequired, message: "Full Disk Access is required to read the Mail database.")
             case ENOENT, ENOTDIR:

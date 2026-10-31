@@ -230,6 +230,30 @@ import Testing
         #expect(gids(try s.search(.init(allowedMailboxIds: ids, query: "später", limit: 10))) == [small])
     }
 
+    /// Mail legt den Index neu an: gleiche ROWIDs in `subjects` tragen andere Texte. Der Fold-Cache der alten
+    /// Verbindung kennte diese ROWIDs schon und faltete sie nie neu; nach dem Neuoeffnen zaehlen die neuen Texte.
+    @Test func foldCacheIsRebuiltWhenTheIndexFileIsReplaced() throws {
+        let f2 = try FixtureBuilder.build()
+        let s = MailStore(config: f2.config)
+        let ids = f2.allMailboxIds
+        let thread = names(["thread1", "thread2", "thread3"])
+        #expect(try gids(s.search(.init(allowedMailboxIds: ids, subject: "projektplan", limit: 10))) == thread)
+        #expect(try s.search(.init(allowedMailboxIds: ids, subject: "neubauindex", limit: 10)).messages.isEmpty)
+
+        let rebuilt = try FixtureBuilder.build()
+        let h = try SQLiteHandle(path: rebuilt.envelopeIndex.path)
+        try h.exec("""
+            UPDATE subjects SET subject = 'Neubauindex ' || ROWID
+            WHERE ROWID IN (SELECT subject FROM messages WHERE global_message_id IN (\(thread.map(String.init).joined(separator: ","))))
+            """)
+        try FileManager.default.removeItem(at: f2.envelopeIndex)
+        try FileManager.default.copyItem(at: rebuilt.envelopeIndex, to: f2.envelopeIndex)
+
+        #expect(try s.search(.init(allowedMailboxIds: ids, subject: "projektplan", limit: 10)).messages.isEmpty)
+        #expect(try gids(s.search(.init(allowedMailboxIds: ids, subject: "neubauindex", limit: 10))) == thread)
+        #expect(try gids(s.search(.init(allowedMailboxIds: ids, query: "NEUBAUINDEX", limit: 10))) == thread)
+    }
+
     @Test func searchWritesNothingToTheEnvelopeIndex() throws {
         let f2 = try FixtureBuilder.build()
         let path = f2.envelopeIndex.path
