@@ -213,6 +213,21 @@ final class SQLiteHandle {
         return out
     }
 
+    /// Alle Ergebniszeilen, je Spalte als Text, NULL als nil.
+    func rows(_ sql: String) throws -> [[String?]] {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw FixtureError(description: "sqlite prepare: \(lastError) in \(sql)")
+        }
+        defer { sqlite3_finalize(stmt) }
+        var out: [[String?]] = []
+        let n = sqlite3_column_count(stmt)
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            out.append((0..<n).map { i in sqlite3_column_text(stmt, i).map { String(cString: $0) } })
+        }
+        return out
+    }
+
     func lastInsertRowid() -> Int64 { sqlite3_last_insert_rowid(db) }
 
     func scalarInt(_ sql: String) throws -> Int64 {
