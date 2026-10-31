@@ -100,6 +100,41 @@ import Testing
         try Self.assertEquivalent(f, s, allowed: allowed.filter { $0 != FixtureBuilder.realSizeMailboxes.lowerBound })
     }
 
+    private static func seedCopy(gid: Int64, rowid: Int64, mailbox: String, deleted: Bool, attachments: [String]) -> Seed.Message {
+        Seed.Message(
+            name: "edge\(rowid)", gid: gid, rowid: rowid, mailbox: mailbox, subjectPrefix: "", subject: "Anhangsrand \(gid)",
+            sender: .init(address: "rand@example.com", comment: "Rand"), recipients: [],
+            dateReceived: 1_700_002_000 + rowid, dateSent: 1_700_001_000, read: true, flagged: false, deleted: deleted,
+            conversationId: 0, messageIdHeader: "<edge-\(rowid)@example.com>", attachments: attachments, file: "full",
+            storeIndex: 0, senderStored: nil, emlx: nil, body: "Synthetischer Text.\n")
+    }
+
+    /// Der Anhang haengt nur an einer Kopie, die nicht zaehlt: in einer ausgeschlossenen Mailbox (3101) oder
+    /// geloescht (3102). Die sichtbare Kopie hat keinen Anhang, also gilt die Gruppe als ohne Anhang.
+    @Test func attachmentOnlyOnHiddenCopyDoesNotCount() throws {
+        let f = try FixtureBuilder.build(extraSeedMessages: [
+            Self.seedCopy(gid: 3101, rowid: 9101, mailbox: "inbox", deleted: false, attachments: []),
+            Self.seedCopy(gid: 3101, rowid: 9102, mailbox: "junk", deleted: false, attachments: ["junk.pdf"]),
+            Self.seedCopy(gid: 3102, rowid: 9103, mailbox: "inbox", deleted: false, attachments: []),
+            Self.seedCopy(gid: 3102, rowid: 9104, mailbox: "archiv2024", deleted: true, attachments: ["tilg.pdf"]),
+        ])
+        let s = MailStore(config: f.config)
+        let noJunk = f.allMailboxIds.filter { $0 != f.mailboxId(named: "junk") }
+        let edge: Set<Int64> = [3101, 3102]
+        let yes = try Self.allGids(s, .init(allowedMailboxIds: noJunk, hasAttachment: true, limit: 1))
+        let no = try Self.allGids(s, .init(allowedMailboxIds: noJunk, hasAttachment: false, limit: 1))
+        #expect(yes.isDisjoint(with: edge))
+        #expect(edge.isSubset(of: no))
+        // Mit Textfilter (gid-Vorfilter) dasselbe.
+        #expect(try Self.allGids(s, .init(allowedMailboxIds: noJunk, subject: "anhangsrand", hasAttachment: true, limit: 1)).isEmpty)
+        #expect(try Self.allGids(s, .init(allowedMailboxIds: noJunk, subject: "anhangsrand", hasAttachment: false, limit: 1)) == edge)
+        let rows = try s.search(.init(allowedMailboxIds: noJunk, subject: "anhangsrand", limit: 10)).messages
+        #expect(rows.map(\.attachmentCount) == [0, 0] && rows.allSatisfy { $0.attachmentNames.isEmpty })
+        // Ist Junk erlaubt, zaehlt der Anhang dort; die geloeschte Kopie nie.
+        let withJunk = try Self.allGids(s, .init(allowedMailboxIds: f.allMailboxIds, subject: "anhangsrand", hasAttachment: true, limit: 1))
+        #expect(withJunk == [3101])
+    }
+
     /// Zeitmessung auf echter Groesse (rund 242000 Zeilen). Laeuft nur mit PERF_REAL_SIZE=1, am besten im
     /// Release-Build: `PERF_REAL_SIZE=1 swift test -c release --package-path swift --filter realSize`.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["PERF_REAL_SIZE"] == "1"))
