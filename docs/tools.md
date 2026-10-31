@@ -41,7 +41,8 @@ Conventions:
 Lists accounts and the mailboxes that are visible under the current settings. Takes no
 parameters.
 
-Result: `accounts`, each with `id`, `name`, `address`, `type` (`imap`, `local`, `exchange`,
+Result: `accounts`, each with `id`, `name` (the account description from macOS, else the
+account UUID), `address`, `type` (`imap`, `local`, `exchange`,
 `other`) and `mailboxes`. Each mailbox has `id`, `name`, `path`, `role` (`inbox`, `sent`,
 `drafts`, `archive`, `junk`, `trash`, `allmail`, `other`), `total` and `unread`. Accounts and
 mailboxes excluded by configuration are absent, not marked. If an entry of

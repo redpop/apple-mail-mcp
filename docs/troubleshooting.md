@@ -86,6 +86,12 @@ excluded unless `APPLE_MAIL_INCLUDE_JUNK` / `APPLE_MAIL_INCLUDE_TRASH` are `true
 `APPLE_MAIL_ACCOUNTS` and `APPLE_MAIL_EXCLUDE_MAILBOXES` hide accounts and mailboxes. `doctor`
 shows the effective policy and mailbox counts. `list_mailboxes` shows what the model can see.
 
+**An account is named by its UUID.**
+macOS has no description for it. Usually it is an account that was removed from Mail while its
+mailboxes stayed in Mail's index; `doctor` counts these as "mail accounts without a match".
+Their messages have no files any more, so bodies come back as `file_not_found`. To keep them
+out, list the accounts you want in `APPLE_MAIL_ACCOUNTS`.
+
 **A message has no body.**
 `bodyUnavailableReason` tells why: `not_downloaded` (Mail never fetched it; open it in Mail),
 `file_not_found`, `withheld_security` (looks like a verification or reset mail; see
