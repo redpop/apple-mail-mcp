@@ -1,5 +1,5 @@
 #!/bin/bash
-# Spec 16.2 Schritt 1: der Tag passt zur Version, alle Versionsangaben sind synchron, und der
+# Spec 16.2 Schritt 1: der Tag passt zur Version, sie ist keine Vorabversion, alle Versionsangaben sind synchron, und der
 # ausgecheckte Commit (der Tag) liegt auf main. Braucht origin/main (checkout mit fetch-depth: 0).
 # Aufruf: check-tag.sh <tag>
 set -euo pipefail
@@ -15,6 +15,13 @@ if [ "${TAG#v}" != "$VERSION" ]; then
   echo "check-tag: tag $TAG does not match package.json version $VERSION." >&2
   exit 1
 fi
+
+# Vorabversionen gehen nur ueber release-candidate.yml: npm publish ohne --tag machte sie zu "latest".
+case "$VERSION" in
+  *-*)
+    echo "check-tag: $VERSION is a prerelease version; use the release candidate workflow instead of a tag." >&2
+    exit 1 ;;
+esac
 
 node scripts/sync-versions.mjs >/dev/null
 if ! /usr/bin/git diff --quiet --exit-code; then

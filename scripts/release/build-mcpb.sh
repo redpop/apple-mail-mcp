@@ -47,6 +47,11 @@ FAILED=0
 /usr/bin/codesign --verify --strict --deep "$COPY" 2>/dev/null || { echo "build-mcpb: unpacked bundle fails codesign --verify --strict --deep" >&2; FAILED=1; }
 CDHASH="$(/usr/bin/codesign -dvvv "$COPY" 2>&1 | /usr/bin/sed -n 's/^CDHash=//p')"
 [ "$CDHASH" = "$EXPECTED_CDHASH" ] || { echo "build-mcpb: unpacked CDHash '$CDHASH' differs from '$EXPECTED_CDHASH'" >&2; FAILED=1; }
+# Zweite Kopie mit mcpb unpack, das die gespeicherten Rechte per chmod setzt wie die Clients.
+MCPB_UNPACK="$(/usr/bin/mktemp -d "$TEMP_BASE/mcpb-cli-unpack.XXXXXX")"
+npx -y "@anthropic-ai/mcpb@$MCPB_VERSION" unpack "$MCPB" "$MCPB_UNPACK" >&2
+[ -x "$MCPB_UNPACK/bin/$APP_NAME/Contents/MacOS/mail-helper" ] || { echo "build-mcpb: executable unpacked by mcpb unpack is not executable" >&2; FAILED=1; }
+/bin/rm -rf "$MCPB_UNPACK"
 OTHERS="$(/bin/ls -A "$UNPACK/bin" | /usr/bin/grep -vxF "$APP_NAME" || true)"
 [ -z "$OTHERS" ] || { echo "build-mcpb: unexpected entries under bin/: $OTHERS" >&2; FAILED=1; }
 [ "$FAILED" -eq 0 ] || exit 1

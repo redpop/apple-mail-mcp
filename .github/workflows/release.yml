@@ -27,6 +27,8 @@ jobs:
   release:
     runs-on: macos-14
     environment: release
+    # Grosszuegig ueber Build, Tests und Notarisierung (--timeout 30m); begrenzt, wie lange der Job laeuft.
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v5

@@ -2,7 +2,7 @@
 # Importiert das Developer-ID-Zertifikat in einen temporaeren Schluesselbund (Spec 16.2 Schritt 3, D4).
 # Die .p12 liegt nur waehrend dieses Skripts in $RUNNER_TEMP (umask 077) und wird per trap geloescht.
 # Den Schluesselbund entfernt cleanup-keychain.sh in einem Schritt mit "if: always()".
-# Schreibt RELEASE_KEYCHAIN nach $GITHUB_ENV.
+# Schreibt RELEASE_KEYCHAIN gleich nach dem Anlegen nach $GITHUB_ENV.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")" && /bin/pwd)"
@@ -18,6 +18,10 @@ trap '/bin/rm -f "$P12"' EXIT
 
 KEYCHAIN_PASSWORD="$(/usr/bin/uuidgen)"
 /usr/bin/security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+# Sofort bekanntgeben, damit cleanup-keychain.sh den Bund auch nach einem Abbruch weiter unten loescht.
+if [ -n "${GITHUB_ENV:-}" ]; then
+  echo "RELEASE_KEYCHAIN=$KEYCHAIN" >>"$GITHUB_ENV"
+fi
 /usr/bin/security set-keychain-settings -lut 21600 "$KEYCHAIN"
 /usr/bin/security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 /usr/bin/security import "$P12" -k "$KEYCHAIN" -f pkcs12 -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
@@ -37,7 +41,4 @@ if [ "$COUNT" != "1" ]; then
   exit 1
 fi
 
-if [ -n "${GITHUB_ENV:-}" ]; then
-  echo "RELEASE_KEYCHAIN=$KEYCHAIN" >>"$GITHUB_ENV"
-fi
 echo "Imported $IDENTITY into a temporary keychain."

@@ -28,8 +28,12 @@ environment it:
     (`scripts/publish-registry.sh`);
 12. runs `cleanup-keychain.sh` again as a fallback, also after a failure.
 
-`npm publish` from anywhere else fails: the `prepublishOnly` hook
+A local `npm publish` of the project directory fails: the `prepublishOnly` hook
 (`scripts/release/check-publish.mjs`) requires `CI=true` and exactly the release bundle in `bin/`.
+npm skips that hook for `npm publish <tarball>` and `--ignore-scripts`, and the release job itself
+publishes a tarball. In the release, `verify-npm-pack.sh` is the check that keeps a development
+bundle out of the package. Tags with a prerelease version such as `v0.1.0-rc.1` are refused;
+candidates come from the release candidate workflow.
 
 ## One-time setup
 

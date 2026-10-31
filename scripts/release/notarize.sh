@@ -22,8 +22,9 @@ trap '/bin/rm -f "$P8"; /bin/rm -rf "$WORK"' EXIT
 AUTH=(--key "$P8" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID")
 
 /usr/bin/ditto -c -k --keepParent "$BUNDLE" "$WORK/submit.zip"
+# --timeout: ein Ausfall bei Apple soll den Lauf beenden statt bis zum Job-Timeout zu warten.
 # notarytool endet bei "Invalid" je nach Version mit oder ohne Fehlercode; entscheidend ist der Status.
-RESULT="$(/usr/bin/xcrun notarytool submit "$WORK/submit.zip" "${AUTH[@]}" --wait --output-format json || true)"
+RESULT="$(/usr/bin/xcrun notarytool submit "$WORK/submit.zip" "${AUTH[@]}" --wait --timeout 30m --output-format json || true)"
 STATUS="$(printf '%s' "$RESULT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).status??""))}catch{}})')"
 SUBMISSION="$(printf '%s' "$RESULT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).id??""))}catch{}})')"
 

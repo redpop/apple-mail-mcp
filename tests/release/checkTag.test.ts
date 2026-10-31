@@ -57,6 +57,18 @@ describe('check-tag.sh', () => {
     expect(r.stderr).toContain('does not match package.json')
   })
 
+  test('refuses a prerelease version, which npm would publish as latest', () => {
+    const pkg = join(dir, 'work', 'package.json')
+    writeFileSync(pkg, JSON.stringify({ name: 'x', version: '0.1.0-rc.1' }, null, 2) + '\n')
+    try {
+      const r = checkTag('v0.1.0-rc.1')
+      expect(r.status).toBe(1)
+      expect(r.stderr).toContain('prerelease')
+    } finally {
+      git('checkout', '-q', '--', 'package.json')
+    }
+  })
+
   test('refuses a tag that is not on main', () => {
     git('checkout', '-q', 'v0.1.0-side')
     try {

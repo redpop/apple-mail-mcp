@@ -6,8 +6,10 @@ name: Release candidate
 on:
   workflow_dispatch:
 
+# Eigene Gruppe: GitHub haelt je Gruppe nur einen wartenden Lauf und bricht den aelteren ab.
+# Ein Kandidat soll keinen wartenden Release verdraengen.
 concurrency:
-  group: release
+  group: release-candidate
   cancel-in-progress: false
 
 permissions:
@@ -25,6 +27,8 @@ jobs:
   candidate:
     runs-on: macos-14
     environment: release
+    # Grosszuegig ueber Build, Tests und Notarisierung (--timeout 30m); begrenzt, wie lange der Job laeuft.
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v5
