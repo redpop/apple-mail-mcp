@@ -56,13 +56,15 @@ the mail in Mail.app. Details: [`docs/tools.md`](./docs/tools.md).
 
 ## Requirements
 
-- macOS. Tested on macOS 27; expected to work on macOS 14 and later. Support depends on the
-  layout of Mail's database, not on the version number: `doctor` checks it. Reports from other
-  versions are welcome, see [Reporting problems](#reporting-problems).
+- macOS 14 or later. Verified only on macOS 27.0.1 with Mail 16.0. The helper is built for
+  macOS 14 and later, but no Mail database from macOS 14 to 26 has been checked yet. Support
+  depends on the layout of Mail's database, not on the version number: `doctor` checks it.
+  Reports from other versions are welcome, see [Reporting problems](#reporting-problems).
 - Node.js 22 or newer.
 - Mail set up with at least one account.
-- Exchange accounts are untested. Message metadata should work; bodies of Exchange mail are
-  unverified.
+- Exchange accounts are untested. Mailboxes and message metadata are listed, but bodies of
+  Exchange mail are not read yet: `get_message` reports `file_not_found`. See
+  [`docs/exchange.md`](./docs/exchange.md).
 
 ## Security model in short
 
@@ -207,8 +209,9 @@ least one check failed.
 ## Reporting problems
 
 Open an issue at <https://github.com/redpop/apple-mail-mcp/issues> and attach the output of
-`doctor`. If you run it on a macOS version other than 27, say so: that is the most useful
-report we can get. Security problems go through GitHub Security Advisories, see
+`doctor`. If you run it on a macOS version other than 27, open a
+[Schema report](https://github.com/redpop/apple-mail-mcp/issues/new?template=schema-report.yml)
+with the output of `doctor --schema` instead: that is the most useful report we can get. Security problems go through GitHub Security Advisories, see
 [`SECURITY.md`](./SECURITY.md).
 
 ## More documentation
@@ -216,6 +219,7 @@ report we can get. Security problems go through GitHub Security Advisories, see
 - [`docs/tools.md`](./docs/tools.md): every tool, its parameters, results and errors
 - [`docs/architecture.md`](./docs/architecture.md): how it works and what was measured
 - [`docs/troubleshooting.md`](./docs/troubleshooting.md): permission and database problems
+- [`docs/exchange.md`](./docs/exchange.md): what is known about Exchange accounts
 - [`SECURITY.md`](./SECURITY.md): threat model and residual risks
 
 ## Not included, on purpose

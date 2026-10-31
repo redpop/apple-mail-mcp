@@ -386,8 +386,10 @@ Measured on macOS 27.0.1, Mail 16.0, arm64, one real mailbox (spike, 2026-10-25)
 Assumed, not measured:
 
 - macOS 14 through 26: the minimum deployment target is 14 and compatibility is decided by the
-  column check, but no schema from those versions was inspected;
-- Exchange accounts: not in the spike mailbox;
+  column check, but no schema from those versions was inspected. Collected schemas go to
+  `fixtures/schema/`, where a Swift test runs the column check against each one;
+- Exchange accounts: not in the spike mailbox; [`exchange.md`](./exchange.md) lists what the
+  code does and what to check;
 - whether macOS turns a grant off at `exec` or at first file access for an unexpected
   ad-hoc build with the release id;
 - latency on other machines, Intel Macs and mailboxes much larger than the one measured.

@@ -84,8 +84,10 @@ database on this macOS or Mail version looks different. Run:
 npx -y @redpop/apple-mail-mcp doctor --schema
 ```
 
-and attach the output to an issue, together with the macOS version. It lists the fingerprint and
-the missing columns and no mail data.
+and paste the output into a
+[Schema report](https://github.com/redpop/apple-mail-mcp/issues/new?template=schema-report.yml)
+issue, together with the macOS and Mail version. It lists the fingerprint, the missing columns
+and the `CREATE TABLE` statements, and no mail data.
 
 ## Other symptoms
 
