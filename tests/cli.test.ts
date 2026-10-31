@@ -389,6 +389,23 @@ describe('doctor privacy of error details', () => {
     leaks(s.text())
   })
 
+  it('--json --schema asks the helper for probe once', async () => {
+    const s = sink()
+    const runner = goodRunner()
+    await runDoctor(doctorDeps(s, runner, { json: true, schema: true }))
+    expect(runner.calls.filter((c) => c === 'probe')).toHaveLength(1)
+  })
+
+  it('--json --schema without schema information fails in exitCode and return value', async () => {
+    const s = sink()
+    const runner = goodRunner({ probe: () => { throw new HelperError('DATABASE_ERROR', 'x') } })
+    const code = await runDoctor(doctorDeps(s, runner, { json: true, schema: true }))
+    const o = JSON.parse(s.text()) as { exitCode: number; schema: string[] }
+    expect(o.schema).toHaveLength(1)
+    expect(o.exitCode).toBe(1)
+    expect(code).toBe(1)
+  })
+
   it('--json with --schema and --verbose stays one JSON object', async () => {
     const s = sink()
     await runDoctor(doctorDeps(s, goodRunner(), { json: true, schema: true, verbose: true }))
@@ -424,6 +441,14 @@ describe('runCli', () => {
     expect(o.checks.find((c) => c.id === 'config')?.status).toBe('fail')
     expect(code).toBe(1)
     expect(st.stops).toBe(1)
+  })
+
+  it('doctor names the override channel even when the config is invalid', async () => {
+    const { make } = mkRunner()
+    const s = sink()
+    await runCli('doctor', ['--json'], { env: { APPLE_MAIL_MAX_RESULTS: 'x', APPLE_MAIL_HELPER_PATH: '/dev/H.app' }, makeRunner: make as never, out: s.out, onSignal: () => {} })
+    const o = JSON.parse(s.text()) as { checks: Array<{ id: string; message: string }> }
+    expect(o.checks.find((c) => c.id === 'versions')?.message).toContain('install channel override')
   })
 
   it('signals stop the runner and exit 130 / 143', async () => {

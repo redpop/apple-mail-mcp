@@ -32,6 +32,11 @@ export interface DoctorDeps {
   /** `--schema`: nur Fingerabdruck, fehlende Spalten und CREATE-Zeilen. */
   schema?: boolean
   packageVersion?: string
+  /**
+   * APPLE_MAIL_HELPER_PATH ist gesetzt. runCli liest den Override auch bei ungueltiger Konfiguration;
+   * ohne Angabe gilt der Wert aus einer gueltigen Konfiguration.
+   */
+  override?: boolean
   /** Nur fuer Tests: Home-Verzeichnis, das in der Standardausgabe zu ~ wird. */
   home?: string
 }
@@ -90,7 +95,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
   // --schema ohne --json: eigener, minimaler Pfad.
   if (deps.schema && !deps.json) return runSchema(deps)
 
-  const override = deps.configResult.ok && deps.configResult.config.helperPath !== null
+  const override = deps.override ?? (deps.configResult.ok && deps.configResult.config.helperPath !== null)
   const channel = override ? 'override' : deps.bundlePath.includes('/Claude Extensions/') ? 'mcpb' : 'npm'
 
   let helperVersion = 'unknown'
@@ -110,10 +115,21 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
 
   let probe: ProbeResult | null = null
   let probeError: string | null = null
+  // Rohantwort bzw. Fehler bleiben fuer --json --schema erhalten: ein zweiter probe-Aufruf waere teuer und koennte abweichen.
+  let probeRaw: { raw: unknown } | { error: unknown }
   try {
-    probe = probeResult.parse(await runner.run('probe', {}))
+    probeRaw = { raw: await runner.run('probe', {}) }
   } catch (e) {
-    probeError = errText(e, deps.verbose)
+    probeRaw = { error: e }
+  }
+  if ('error' in probeRaw) {
+    probeError = errText(probeRaw.error, deps.verbose)
+  } else {
+    try {
+      probe = probeResult.parse(probeRaw.raw)
+    } catch (e) {
+      probeError = errText(e, deps.verbose)
+    }
   }
   add('system', 'ok', `macOS ${probe?.osVersion ?? 'unknown'}, ${osArch()}, Node ${process.versions.node}.`)
 
@@ -233,11 +249,13 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
   }
   if (!deps.configResult.ok) add('config', 'fail', `Configuration error in ${deps.configResult.key}: ${deps.configResult.error}`)
 
-  const exit = checks.some((c) => c.status === 'fail') ? 1 : 0
+  // --json --schema: ein fehlender Schemateil zaehlt wie in `doctor --schema` als Fehlschlag.
+  const schema = deps.json && deps.schema ? schemaLines(probeRaw, deps.verbose) : null
+  const exit = checks.some((c) => c.status === 'fail') || (schema !== null && !schema.ok) ? 1 : 0
   if (deps.json) {
     const body: Record<string, unknown> = { checks, exitCode: exit }
     if (deps.verbose) body.verbose = { warning: VERBOSE_WARNING, lines: verboseLines }
-    if (deps.schema) body.schema = (await schemaLines(deps)).lines
+    if (schema) body.schema = schema.lines
     out.write(JSON.stringify(body) + '\n')
   } else {
     if (deps.verbose) out.write(VERBOSE_WARNING + '\n')
@@ -247,14 +265,9 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
   return exit
 }
 
-async function schemaLines(deps: DoctorDeps): Promise<{ lines: string[]; ok: boolean }> {
-  let raw: unknown
-  try {
-    raw = await deps.runner.run('probe', {})
-  } catch (e) {
-    return { lines: [errText(e, deps.verbose)], ok: false }
-  }
-  const p = probeResult.safeParse(raw)
+function schemaLines(probe: { raw: unknown } | { error: unknown }, verbose: boolean): { lines: string[]; ok: boolean } {
+  if ('error' in probe) return { lines: [errText(probe.error, verbose)], ok: false }
+  const p = probeResult.safeParse(probe.raw)
   if (!p.success || !p.data.schema) return { lines: ['No schema information available.'], ok: false }
   const lines = [p.data.schema.fingerprint, ...p.data.schema.missing]
   // Nur Anweisungen, die mit CREATE beginnen, je eine Zeile (mehrzeiliges DDL zusammengezogen).
@@ -266,7 +279,13 @@ async function schemaLines(deps: DoctorDeps): Promise<{ lines: string[]; ok: boo
 
 /** `doctor --schema`: nur Fingerabdruck, fehlende Spalten und ggf. CREATE-Zeilen, sonst nichts. */
 async function runSchema(deps: DoctorDeps): Promise<number> {
-  const r = await schemaLines(deps)
+  let probe: { raw: unknown } | { error: unknown }
+  try {
+    probe = { raw: await deps.runner.run('probe', {}) }
+  } catch (e) {
+    probe = { error: e }
+  }
+  const r = schemaLines(probe, deps.verbose)
   deps.out.write(r.lines.join('\n') + '\n')
   return r.ok ? 0 : 1
 }
