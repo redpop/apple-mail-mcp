@@ -267,6 +267,36 @@ import Testing
         #expect(siblings == [f2.envelopeIndex.lastPathComponent], "\(path)")
     }
 
+    /// Wie bei Mail: ein Schreiber haelt den Index im WAL-Modus offen, die letzte Aenderung steht nur im
+    /// `-wal`. Die Lesekommandos sehen sie und aendern weder die Hauptdatei noch das `-wal`. Die `-shm`
+    /// aendert sich (Lesemarken der Verbindung); sie ist ein Index des WAL, keine Mail-Daten.
+    @Test func readCommandsInWalModeWriteNeitherMainFileNorWal() throws {
+        let f2 = try FixtureBuilder.build()
+        let writer = try SQLiteHandle(path: f2.envelopeIndex.path)
+        try writer.exec("PRAGMA journal_mode = WAL")
+        try writer.exec("PRAGMA wal_autocheckpoint = 0")
+        let small = try #require(f2.seed.messages.first { $0.name == "small" })
+        try writer.run("UPDATE subjects SET subject = 'Nur im Wal' WHERE ROWID = (SELECT subject FROM messages WHERE ROWID = ?)",
+                       [.int(small.rowid)])
+        let wal = URL(fileURLWithPath: f2.envelopeIndex.path + "-wal")
+        let mainBefore = try Data(contentsOf: f2.envelopeIndex)
+        let walBefore = try Data(contentsOf: wal)
+        #expect(!walBefore.isEmpty)
+
+        do {
+            let s = MailStore(config: f2.config)
+            let ids = f2.allMailboxIds
+            let hit = try s.search(.init(allowedMailboxIds: ids, subject: "nur im wal", limit: 10, countTotal: true))
+            #expect(hit.messages.map(\.gid) == [small.gid] && hit.totalMatched == 1)
+            _ = try s.search(.init(allowedMailboxIds: ids, query: "bob", hasAttachment: true, limit: 10, countTotal: true))
+            _ = try s.listMailboxes()
+            _ = try s.thread(.init(allowedMailboxIds: ids, gid: f2.gid(named: "thread1"), limit: 10, maxRecipients: 5))
+            _ = try s.getMessages(.init(allowedMailboxIds: ids, gids: [small.gid], maxBytesPerMessage: 1 << 20, maxBytesTotal: 1 << 20))
+        }   // Store und Verbindung sind hier freigegeben: auch das Schliessen schreibt nichts.
+        #expect(try Data(contentsOf: f2.envelopeIndex) == mainBefore)
+        #expect(try Data(contentsOf: wal) == walBefore)
+    }
+
     @Test func pageOnTenThousandRowsIsFast() throws {
         let big = try FixtureBuilder.build(extraMessages: 10_000)
         let s = MailStore(config: big.config)
