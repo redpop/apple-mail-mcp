@@ -68,10 +68,12 @@ import Testing
         let long = String(repeating: "k", count: 500)
         let out = d.handle(line: line(#"{"id":5,"command":"hello","payload":{"\#(long)":1}}"#))
         #expect(try errorCode(out) == "INVALID_INPUT")
-        let message = try #require(((try object(out))["error"] as? [String: Any])?["message"] as? String)
+        let outObject = try object(out)
+        let message = try #require((outObject["error"] as? [String: Any])?["message"] as? String)
         #expect(message == "Unknown field: " + String(repeating: "k", count: 64) + "...")
         let nested = d.handle(line: line(#"{"id":6,"command":"search","payload":{"limit":1,"maxRecipients":0,"countTotal":false,"allowedMailboxIds":[1],"after":{"\#(long)":1}}}"#))
-        let nestedMessage = try #require(((try object(nested))["error"] as? [String: Any])?["message"] as? String)
+        let nestedObject = try object(nested)
+        let nestedMessage = try #require((nestedObject["error"] as? [String: Any])?["message"] as? String)
         #expect(nestedMessage == "Unknown field: after." + String(repeating: "k", count: 64) + "...")
     }
 
