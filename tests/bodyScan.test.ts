@@ -60,6 +60,8 @@ interface World {
   mimes?: Record<number, string>
   onCall?: (command: string) => void
   budgetOnce?: boolean
+  /** Jeder get-messages-Abruf meldet budgetExhausted und liefert keinen Rohtext. */
+  budgetNever?: boolean
 }
 
 /** Fake-Helper: search blaettert ueber world.rows (absteigend nach gid-Reihenfolge), get-messages liefert Rohtexte. */
@@ -85,6 +87,7 @@ function fakeRunner(w: World) {
           const data = mime !== undefined ? rawMime(mime) : b === undefined ? null : raw(b)
           return { ...r, raw: r.file === 'none' ? null : data, rawSize: 10, rawTruncated: false }
         })
+        if (w.budgetNever) return { messages: messages.map((m) => ({ ...m, raw: null })), missing: [], budgetExhausted: true }
         let budgetExhausted = false
         if (w.budgetOnce && !budgetUsed && gids.length > 2) {
           budgetUsed = true
@@ -397,6 +400,25 @@ describe('scanBodies', () => {
     const gets = calls.filter((c) => c.command === 'get-messages')
     expect(gets).toHaveLength(2)
     expect(gets[1]!.payload.gids).toEqual([3, 4, 5])
+  })
+
+  it('stops re-requesting when budgetExhausted brings no progress', async () => {
+    const rows = rowsOf(60)
+    const bodies: Record<number, string> = {}
+    for (const r of rows) bodies[r.gid] = 'needle'
+    const { res, calls } = await scan({ rows, bodies, budgetNever: true })
+    expect(res.matches).toEqual([])
+    expect(res.scan).toEqual({ scanned: 60, unavailable: 60, stoppedBy: null, complete: true })
+    // Je Block ein Abruf: der zweite haette nichts Neues gebracht.
+    expect(calls.filter((c) => c.command === 'get-messages').map((c) => c.payload.gids.length)).toEqual([50, 10])
+  })
+
+  it('filters cannot override the allowed mailboxes', async () => {
+    const rows = rowsOf(2)
+    const { calls } = await scan({ rows, bodies: { 1: 'x', 2: 'x' } }, { filters: { allowedMailboxIds: [99], mailboxIds: [1] } })
+    const searches = calls.filter((c) => c.command === 'search')
+    expect(searches.length).toBeGreaterThan(0)
+    for (const c of searches) expect(c.payload.allowedMailboxIds).toEqual([1])
   })
 
   it('html with an unknown entity is still prefiltered and matches like html-to-text', async () => {

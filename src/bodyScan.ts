@@ -39,7 +39,7 @@ function collapse(s: string): string {
 /**
  * Faltet pro Codepoint und merkt sich, aus welcher Position des Originals jedes gefaltete
  * Zeichen stammt. So bleiben Fundstellen auch dort exakt, wo die Faltung die Laenge aendert
- * (ß wird zu ss). Pro Codepoint zu falten weicht bei kontextabhaengigen Faellen (griechisches
+ * (scharfes s wird zu ss). Pro Codepoint zu falten weicht bei kontextabhaengigen Faellen (griechisches
  * Schluss-Sigma) von der Faltung des ganzen Strings ab, und NFC kann pro Codepoint nichts
  * zusammensetzen: ein zerlegtes "o" + Trema bleibt zerlegt. Deshalb wird der Suchbegriff vorher
  * als Ganzes nach NFC gebracht (foldTerm); Mailtexte sind praktisch immer schon NFC.
@@ -226,8 +226,9 @@ export async function scanBodies(a: {
     }
     const page = searchResult.parse(
       await a.runner.run('search', {
-        allowedMailboxIds: a.policy.allowedMailboxIds,
         ...a.filters,
+        // Nach den Filtern, damit sie die Policy nie ueberschreiben.
+        allowedMailboxIds: a.policy.allowedMailboxIds,
         ...(cursor ? { after: { date: cursor.d, gid: cursor.g } } : {}),
         limit: CANDIDATE_PAGE,
         maxRecipients: 5,
