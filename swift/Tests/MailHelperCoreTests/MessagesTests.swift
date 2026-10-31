@@ -159,11 +159,16 @@ import Testing
     @Test func getMessagesReadsTheBestRowsFile() throws {
         let r = try store.getMessages(request(["dup3"]))
         let m = try #require(r.messages.first)
-        #expect(Data(base64Encoded: try #require(m.raw)) == (try Data(contentsOf: f.expectedEmlxPath(rowid: 4711))))
+        // Werfende Aufrufe ausserhalb von #expect: Swift 6.0 (Xcode 16) erlaubt kein try in dessen Autoclosure.
+        let raw = try #require(m.raw)
+        let file = try Data(contentsOf: f.expectedEmlxPath(rowid: 4711))
+        #expect(Data(base64Encoded: raw) == file)
         // Gleiche Auswahl mit nur partieller Kopie erlaubt (Archiv).
         let arch = try store.getMessages(request(["dup3"], allowed: [f.mailboxId(named: "archiv2024")]))
         #expect(arch.messages[0].row.file == .partial)
-        #expect(Data(base64Encoded: try #require(arch.messages[0].raw)) == (try Data(contentsOf: f.expectedEmlxPath(rowid: 123456))))
+        let archRaw = try #require(arch.messages[0].raw)
+        let archFile = try Data(contentsOf: f.expectedEmlxPath(rowid: 123456))
+        #expect(Data(base64Encoded: archRaw) == archFile)
     }
 
     @Test func wireShapeMatchesZod() throws {
