@@ -23,6 +23,7 @@ class Abort extends Error {}
 interface Headers {
   type: string | null
   boundary: string | null
+  charset: string | null
   disposition: string | null
   bodyStart: number
 }
@@ -56,6 +57,7 @@ function toHeaders(fields: string[], bodyStart: number): Headers {
   let type: string | null = null
   let disposition: string | null = null
   let boundary: string | null = null
+  let charset: string | null = null
   let types = 0
   for (const f of fields) {
     const colon = f.indexOf(':')
@@ -67,12 +69,13 @@ function toHeaders(fields: string[], bodyStart: number): Headers {
       type = value.split(';')[0]!.trim().toLowerCase()
       const b = /;\s*boundary\s*=\s*(?:"([^"]*)"|([^;\s]+))/i.exec(value)
       boundary = b === null ? null : (b[1] ?? b[2] ?? null)
+      charset = /;\s*charset\s*=\s*"?([A-Za-z0-9_.:-]+)/i.exec(value)?.[1] ?? null
     } else if (key === 'content-disposition') {
       disposition = value.split(';')[0]!.trim().toLowerCase()
     }
   }
   if (types > 1) throw new Abort()
-  return { type, boundary, disposition, bodyStart }
+  return { type, boundary, charset, disposition, bodyStart }
 }
 
 interface Delimiter {
@@ -121,11 +124,11 @@ interface Walk {
   parts: number
 }
 
-/** Geht die Teile eines Multipart-Koerpers durch, der bei `from` beginnt. */
-function walk(s: string, from: number, boundary: string, subtype: string, outer: string[], depth: number, w: Walk): void {
+/** Die Teile eines Multipart-Koerpers, der bei `from` beginnt, mit dem Ende ihres Koerpers. */
+function children(s: string, from: number, boundary: string, outer: string[], depth: number, w: Walk): Array<{ h: Headers; end: number }> {
   if (depth > MAX_DEPTH || boundary === '' || outer.includes(boundary)) throw new Abort()
   const active = [...outer, boundary]
-  const children: Array<{ h: Headers; end: number }> = []
+  const out: Array<{ h: Headers; end: number }> = []
   let d = nextDelimiter(s, from, active)
   // Vorspann bis zur ersten eigenen Grenze; endet sie vorher an einer aeusseren, gibt es keine Teile.
   while (d !== null && d.boundary === boundary && !d.terminator) {
@@ -133,11 +136,18 @@ function walk(s: string, from: number, boundary: string, subtype: string, outer:
     const next = nextDelimiter(s, d.next, active)
     const end = next === null ? s.length : next.start
     const h = readHeaders(s, d.next, end)
-    if (h !== null) children.push({ h, end })
+    if (h !== null) out.push({ h, end })
     d = next
   }
-  const hasPlain = subtype === 'alternative' && children.some(({ h }) => (h.type ?? 'text/plain') === 'text/plain' && h.disposition !== 'attachment')
-  for (const { h, end } of children) {
+  return out
+}
+
+/** Geht die Teile eines Multipart-Koerpers durch, der bei `from` beginnt. */
+function walk(s: string, from: number, boundary: string, subtype: string, outer: string[], depth: number, w: Walk): void {
+  const parts = children(s, from, boundary, outer, depth, w)
+  const active = [...outer, boundary]
+  const hasPlain = subtype === 'alternative' && parts.some(({ h }) => (h.type ?? 'text/plain') === 'text/plain' && h.disposition !== 'attachment')
+  for (const { h, end } of parts) {
     const type = h.type ?? 'text/plain'
     if (type.startsWith('multipart/')) {
       if (h.boundary === null) throw new Abort()
@@ -167,6 +177,46 @@ export function trimForScan(mime: Buffer): Buffer | null {
     }
     out += s.slice(at)
     return Buffer.from(out, 'latin1')
+  } catch (e) {
+    if (e instanceof Abort) return null
+    throw e
+  }
+}
+
+export interface TextPart {
+  type: 'text/plain' | 'text/html'
+  charset: string | null
+}
+
+function collectText(s: string, h: Headers, end: number, active: string[], depth: number, w: Walk, out: TextPart[]): void {
+  if (depth > MAX_DEPTH) throw new Abort()
+  const type = h.type ?? 'text/plain'
+  if (type.startsWith('multipart/')) {
+    if (h.boundary === null) throw new Abort()
+    for (const c of children(s, h.bodyStart, h.boundary, active, depth, w)) collectText(s, c.h, c.end, [...active, h.boundary], depth + 1, w, out)
+  } else if (type === 'message/rfc822') {
+    // postal-mime liest eine eingebettete Nachricht mit, solange sie kein Anhang ist.
+    if (h.disposition === 'attachment') return
+    const inner = readHeaders(s, h.bodyStart, end)
+    if (inner !== null) collectText(s, inner, end, active, depth + 1, w, out)
+  } else if ((type === 'text/plain' || type === 'text/html') && h.disposition !== 'attachment') {
+    out.push({ type, charset: h.charset })
+  }
+}
+
+/**
+ * Die Teile, aus denen postal-mime Text oder HTML macht, mit ihrem Zeichensatz (null = keiner
+ * angegeben). Liest nur echte Kopfbloecke, nie Kopfzeilen, die im Text einer Nachricht stehen.
+ * null, wenn die Struktur nicht sicher erkannt wird (wie bei trimForScan).
+ */
+export function textParts(mime: Buffer): TextPart[] | null {
+  const s = mime.toString('latin1')
+  try {
+    const root = readHeaders(s, 0, s.length)
+    if (root === null) return null
+    const out: TextPart[] = []
+    collectText(s, root, s.length, [], 0, { cuts: [], parts: 0 }, out)
+    return out
   } catch (e) {
     if (e instanceof Abort) return null
     throw e

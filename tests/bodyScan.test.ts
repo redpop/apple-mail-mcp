@@ -60,6 +60,8 @@ interface World {
   mimes?: Record<number, string>
   onCall?: (command: string) => void
   budgetOnce?: boolean
+  /** Jeder get-messages-Abruf meldet budgetExhausted und liefert keinen Rohtext. */
+  budgetNever?: boolean
 }
 
 /** Fake-Helper: search blaettert ueber world.rows (absteigend nach gid-Reihenfolge), get-messages liefert Rohtexte. */
@@ -85,6 +87,7 @@ function fakeRunner(w: World) {
           const data = mime !== undefined ? rawMime(mime) : b === undefined ? null : raw(b)
           return { ...r, raw: r.file === 'none' ? null : data, rawSize: 10, rawTruncated: false }
         })
+        if (w.budgetNever) return { messages: messages.map((m) => ({ ...m, raw: null })), missing: [], budgetExhausted: true }
         let budgetExhausted = false
         if (w.budgetOnce && !budgetUsed && gids.length > 2) {
           budgetUsed = true
@@ -292,16 +295,16 @@ describe('scanBodies', () => {
   it('scan counters do not depend on the term when the full parse fails after the prefilter (E2)', async () => {
     // A: reines HTML, so tief verschachtelt, dass html-to-text scheitert; der schnelle Weg geht.
     const deep = html(`${'<div>'.repeat(30000)}Your verification code is 482913${'</div>'.repeat(30000)}`)
-    // B: unbekannter Zeichensatz nur im Anhang; gekuerzt ist er weg, ungekuerzt scheitert parseMessage.
+    // B: unbekannter Zeichensatz nur im Text eines Anhangs. Frueher scheiterte daran parseMessage
+    // (ungekuerzt), seit der Pruefung pro Teil nicht mehr; die Zaehler bleiben trotzdem gleich.
     const att = 'Content-Type: text/plain; charset=x-unknown-cs\r\n\r\nirrelevant\r\n'
     const unknown =
       'From: Anna <anna@example.com>\r\nSubject: x\r\nContent-Type: multipart/mixed; boundary="m"\r\n\r\n' +
       '--m\r\nContent-Type: text/plain\r\n\r\nYour one-time code is 482913\r\n' +
       `--m\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename="x.eml"\r\n\r\n${att}--m--\r\n`
-    for (const mime of [deep, unknown]) {
-      expect((await parseMessage(Buffer.from(rawMime(mime), 'base64'))).ok).toBe(false)
-      expect((await parseForScan(Buffer.from(rawMime(mime), 'base64'))).ok).toBe(true)
-    }
+    expect((await parseMessage(Buffer.from(rawMime(deep), 'base64'))).ok).toBe(false)
+    expect((await parseMessage(Buffer.from(rawMime(unknown), 'base64'))).ok).toBe(true)
+    for (const mime of [deep, unknown]) expect((await parseForScan(Buffer.from(rawMime(mime), 'base64'))).ok).toBe(true)
     const rows = rowsOf(3, () => ({ subject: 'Hello' }))
     const mimes = { 1: deep, 2: unknown }
     const results = []
@@ -399,6 +402,46 @@ describe('scanBodies', () => {
     expect(gets[1]!.payload.gids).toEqual([3, 4, 5])
   })
 
+  it('stops re-requesting when budgetExhausted brings no progress', async () => {
+    const rows = rowsOf(60)
+    const bodies: Record<number, string> = {}
+    for (const r of rows) bodies[r.gid] = 'needle'
+    const { res, calls } = await scan({ rows, bodies, budgetNever: true })
+    expect(res.matches).toEqual([])
+    expect(res.scan).toEqual({ scanned: 60, unavailable: 60, stoppedBy: null, complete: true })
+    // Je Block ein Abruf: der zweite haette nichts Neues gebracht.
+    expect(calls.filter((c) => c.command === 'get-messages').map((c) => c.payload.gids.length)).toEqual([50, 10])
+  })
+
+  it('filters cannot override the allowed mailboxes', async () => {
+    const rows = rowsOf(2)
+    const { calls } = await scan({ rows, bodies: { 1: 'x', 2: 'x' } }, { filters: { allowedMailboxIds: [99], mailboxIds: [1] } })
+    const searches = calls.filter((c) => c.command === 'search')
+    expect(searches.length).toBeGreaterThan(0)
+    for (const c of searches) expect(c.payload.allowedMailboxIds).toEqual([1])
+  })
+
+  it('html with an unknown entity is still prefiltered and matches like html-to-text', async () => {
+    const rows = rowsOf(3)
+    const mimes = {
+      1: html('<p>I &hearts; the Rechnung-2026 &check; today</p>'),
+      2: html('<p>Nothing &hearts; here</p>'),
+      3: html('<p>Gru&szlig; &star; Ende</p>'),
+    }
+    for (const gid of [1, 2, 3]) {
+      const body = await parseForScan(Buffer.from(rawMime(mimes[gid as 1]), 'base64'))
+      expect(body).toMatchObject({ ok: true, exact: false, sure: false })
+    }
+    const a = await scan({ rows, bodies: {}, mimes }, { term: 'rechnung-2026' })
+    expect(a.res.matches.map((m) => m.row.gid)).toEqual([1])
+    expect(a.res.matches[0]!.matchContext).toContain('I \u2665 the Rechnung-2026 \u2713 today')
+    // Ein Begriff mit dem Zeichen des Entities geht ueber den vollen Text.
+    const b = await scan({ rows, bodies: {}, mimes }, { term: '\u2665 here' })
+    expect(b.res.matches.map((m) => m.row.gid)).toEqual([2])
+    const c = await scan({ rows, bodies: {}, mimes }, { term: 'GRUSS \u2606' })
+    expect(c.res.matches.map((m) => m.row.gid)).toEqual([3])
+  })
+
   it('helper crash mid-scan surfaces HELPER_CRASHED and the next call works', async () => {
     const rows = rowsOf(3)
     let crash = true
@@ -492,5 +535,49 @@ describe('search_messages bodyContains', () => {
     expect(next.structuredContent.messages.map((m: any) => m.id)).toEqual(['4', '5', '6'])
     const other = await call({ bodyContains: 'other', limit: 3, cursor: s.nextCursor })
     expect(other.isError).toBe(true)
+  })
+
+  it('search_messages note on a follow-up page says where the scan continued', async () => {
+    const rows = rowsOf(10)
+    const bodies: Record<number, string> = {}
+    for (const r of rows) bodies[r.gid] = 'a needle'
+    const { call } = setup({ rows, bodies })
+    const first = await call({ bodyContains: 'needle', limit: 3 })
+    const next = await call({ bodyContains: 'needle', limit: 3, cursor: first.structuredContent.nextCursor })
+    expect(next.structuredContent.note).toContain('Scanned the next 3 candidate messages after the previous page and found 3 matches')
+    expect(next.structuredContent.note).not.toContain('newest')
+    let cursor = next.structuredContent.nextCursor
+    let last = next
+    while (cursor !== null) {
+      last = await call({ bodyContains: 'needle', limit: 3, cursor })
+      cursor = last.structuredContent.nextCursor
+    }
+    expect(last.structuredContent.note).toBe('Scanned the remaining 1 candidate messages and found 1 match.')
+  })
+
+  it('the cap and time budget in the note come from the constants', async () => {
+    const rows = rowsOf(CANDIDATE_CAP + 1)
+    const bodies: Record<number, string> = {}
+    for (const r of rows) bodies[r.gid] = 'x'
+    const { call } = setup({ rows, bodies })
+    const res = await call({ bodyContains: 'needle' })
+    expect(res.structuredContent.note).toContain(`the limit of ${CANDIDATE_CAP.toLocaleString('en-US')} scanned messages per call was reached`)
+  })
+
+  it('a cursor from a plain search is rejected by a body search and vice versa', async () => {
+    const rows = rowsOf(10)
+    const bodies: Record<number, string> = {}
+    for (const r of rows) bodies[r.gid] = 'a needle'
+    const { call } = setup({ rows, bodies })
+    const plain = await call({ limit: 3 })
+    expect(plain.structuredContent.nextCursor).toEqual(expect.any(String))
+    const body = await call({ bodyContains: 'needle', limit: 3 })
+    expect(body.structuredContent.nextCursor).toEqual(expect.any(String))
+    const a = await call({ bodyContains: 'needle', limit: 3, cursor: plain.structuredContent.nextCursor })
+    expect(a.isError).toBe(true)
+    expect(a.content[0].text).toContain('cursor')
+    const b = await call({ limit: 3, cursor: body.structuredContent.nextCursor })
+    expect(b.isError).toBe(true)
+    expect(b.content[0].text).toContain('cursor')
   })
 })

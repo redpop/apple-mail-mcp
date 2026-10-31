@@ -7,5 +7,8 @@ test('fold matches swift', () => {
 })
 
 test('fold normalises to NFC', () => {
-  expect(fold('Ä')).toBe('ä')
+  // A plus kombinierendes Trema, als Escape, damit kein Editor es zusammensetzt.
+  const decomposed = 'A\u0308'
+  expect(decomposed).toHaveLength(2)
+  expect(fold(decomposed)).toBe('\u00e4')
 })

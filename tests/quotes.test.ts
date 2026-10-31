@@ -39,3 +39,28 @@ test('a lone From: line is not a quote header', () => {
 test('Ursprüngliche Nachricht cuts', () => {
   expect(stripQuotes('Ok\n-----Ursprüngliche Nachricht-----\nalt').removed).toBe(true)
 })
+
+test('an intro wrapped before wrote: or inside the address cuts', () => {
+  expect(stripQuotes('Thanks\n\nOn Mon, 20 Oct 2025 at 10:00, Anna Beispiel <anna@example.com>\nwrote:\n\nold')).toEqual({ text: 'Thanks', removed: true })
+  expect(stripQuotes('Thanks\nOn Mon, Oct 20, 2025 at 10:00 AM Anna Beispiel <\nanna@example.com> wrote:\nold')).toEqual({ text: 'Thanks', removed: true })
+  expect(stripQuotes('Danke\nAm 20.10.2025 um 10:00 schrieb Anna Beispiel\n<anna@example.com>:\nalt')).toEqual({ text: 'Danke', removed: true })
+})
+
+test('two ordinary lines that happen to join into an intro stay', () => {
+  const t = 'On Monday we met at the station.\nShe wrote: see you soon'
+  expect(stripQuotes(t)).toEqual({ text: t, removed: false })
+  const u = 'On the train home\nI wrote:'
+  expect(stripQuotes(u)).toEqual({ text: u, removed: false })
+})
+
+test('Apple Mail forward headers cut, in English and German', () => {
+  const en = 'FYI\n\nBegin forwarded message:\n\nFrom: Anna Beispiel <anna@example.com>\nSubject: Termin\nDate: 20 October 2025 at 10:00:00 CEST\nTo: Bob <bob@example.org>\n\nold'
+  expect(stripQuotes(en)).toEqual({ text: 'FYI', removed: true })
+  const de = 'Zur Info\n\nAnfang der weitergeleiteten Nachricht:\n\nVon: Anna Beispiel <anna@example.com>\nBetreff: Termin\nDatum: 20. Oktober 2025 um 10:00:00 MESZ\nAn: Bob <bob@example.org>\n\nalt'
+  expect(stripQuotes(de)).toEqual({ text: 'Zur Info', removed: true })
+  // Ohne Einleitungszeile reicht der Kopfblock aus From:, Subject: und Date:.
+  expect(stripQuotes('Ok\nFrom: Anna <anna@example.com>\nSubject: Termin\nDate: 20 October 2025\n\nold')).toEqual({ text: 'Ok', removed: true })
+  // From: mit nur einer Kopfzeile danach ist kein Block.
+  const lone = 'From: the team\nTo: everyone\nthanks'
+  expect(stripQuotes(lone)).toEqual({ text: lone, removed: false })
+})

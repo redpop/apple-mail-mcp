@@ -7,9 +7,9 @@
 //   node scripts/bench-mime.mjs [runden]
 import PostalMime from 'postal-mime'
 import { performance } from 'node:perf_hooks'
-import { declaredCharsets, htmlToText, normalise, parseMessage, stripEmlxFrame } from '../dist/mime.js'
+import { htmlToText, normalise, parseMessage, stripEmlxFrame } from '../dist/mime.js'
 import { quickHtmlText } from '../dist/quickHtml.js'
-import { trimForScan } from '../dist/mimeTrim.js'
+import { textParts, trimForScan } from '../dist/mimeTrim.js'
 import { classify } from '../dist/securityMail.js'
 import { examine, findMatch, foldFast } from '../dist/bodyScan.js'
 
@@ -60,13 +60,13 @@ function qp(text) {
 }
 const b64 = (buf) => buf.toString('base64').replace(/.{76}/g, '$&\r\n')
 
-function newsletter(bytes) {
+function newsletter(bytes, extra = '') {
   let s = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Newsletter</title><style>'
   for (let i = 0; i < 40; i++) s += `.c${i}{font-family:Arial,sans-serif;color:#333;padding:${i}px;margin:0 auto}`
   s += '</style><script>var x = 1;</script></head><body><table width="100%" cellpadding="0" cellspacing="0" border="0">'
   while (s.length < bytes) {
     s += `<tr><td class="c${Math.floor(rand() * 40)}" style="padding:16px;font-size:14px;line-height:20px;color:#333333;">`
-    s += `<h2 style="margin:0">${words(5)}</h2><p>${words(30)} &nbsp;&amp; ${words(8)} &auml;&ouml;&uuml; &euro;12,99</p>`
+    s += `<h2 style="margin:0">${words(5)}</h2><p>${words(30)} &nbsp;&amp; ${words(8)} &auml;&ouml;&uuml; &euro;12,99${extra}</p>`
     s += `<a href="https://example.com/track?id=${Math.floor(rand() * 1e9)}&amp;u=abc" style="color:#0066cc">${words(3)}</a>`
     s += `<img src="https://example.com/img/${Math.floor(rand() * 1e6)}.png" alt="${words(2)}" width="600" height="200">`
     s += `<!-- spacer --><div style="height:8px"><span>${words(4)}</span></div></td></tr>\n`
@@ -105,6 +105,8 @@ function makeMessages() {
       '\r\n--alt--\r\n',
   )
   m['html only qp 100 KB'] = emlx(HEAD('text/html; charset=utf-8', 'Content-Transfer-Encoding: quoted-printable\r\n') + '\r\n' + qp(newsletter(100 * 1024)))
+  // Ein Entity, das die Tabelle von quickHtmlText nicht kennt (wie &hearts; oder &check; in Newslettern).
+  m['html only qp 100 KB, unknown entity'] = emlx(HEAD('text/html; charset=utf-8', 'Content-Transfer-Encoding: quoted-printable\r\n') + '\r\n' + qp(newsletter(100 * 1024, ' &hearts;')))
   const attachment = Buffer.alloc(200 * 1024)
   for (let i = 0; i < attachment.length; i++) attachment[i] = Math.floor(rand() * 256)
   m['mixed text + 200 KB attachment (cut)'] = emlx(
@@ -159,7 +161,7 @@ for (const [name, raw] of Object.entries(messages)) {
   const s = {
     b64: await per([base64], (x) => Buffer.from(x, 'base64')),
     strip: await per(one, (x) => stripEmlxFrame(x)),
-    charset: await per([stripped], (x) => declaredCharsets(x)),
+    charset: await per([stripped], (x) => textParts(x)),
     postal: await per([stripped], (x) => PostalMime.parse(x)),
     trim: await per([stripped], (x) => trimForScan(x)),
     postalTrimmed: await per([trimForScan(stripped) ?? stripped], (x) => PostalMime.parse(x)),
