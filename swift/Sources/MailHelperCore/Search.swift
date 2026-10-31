@@ -1,6 +1,6 @@
 import Foundation
 
-/// Spec 7.3 `search`. Strikte Ablehnung unbekannter Schluessel kommt in Task 8.
+/// Spec 7.3 `search`. Unbekannte Schluessel lehnt der Dispatcher ab (Protocol.swift).
 public struct SearchRequest: Codable, Equatable, Sendable {
     public struct After: Codable, Equatable, Sendable {
         public var date: Int64

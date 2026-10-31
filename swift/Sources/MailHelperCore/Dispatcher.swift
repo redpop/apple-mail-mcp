@@ -100,11 +100,26 @@ public struct Dispatcher {
         return n.int64Value
     }
 
-    /// Fremde Schluessel: die Meldung nennt nur den Schluessel, nie einen Wert.
+    /// Laengster Schluesselname, der in einer Meldung erscheint; der Rest wird abgeschnitten.
+    static let maxEchoedKeyLength = 64
+
+    /// Fremde Schluessel, auch in verschachtelten Objekten: die Meldung nennt nur den
+    /// (gekuerzten) Schluessel, nie einen Wert.
     private static func checkKeys<P: StrictPayload>(_ payload: [String: Any], _: P.Type) throws(HelperFailure) {
         if let key = payload.keys.filter({ !P.allowedKeys.contains($0) }).min() {
-            throw invalid("Unknown field: \(key)")
+            throw invalid("Unknown field: \(echo(key))")
         }
+        for (field, allowed) in P.nestedKeys.sorted(by: { $0.key < $1.key }) {
+            // Kein Objekt (null, falscher Typ): das entscheidet der Decoder.
+            guard let nested = payload[field] as? [String: Any] else { continue }
+            if let key = nested.keys.filter({ !allowed.contains($0) }).min() {
+                throw invalid("Unknown field: \(field).\(echo(key))")
+            }
+        }
+    }
+
+    private static func echo(_ key: String) -> String {
+        key.count > maxEchoedKeyLength ? key.prefix(maxEchoedKeyLength) + "..." : key
     }
 
     private static func decode<P: StrictPayload>(_ line: Data, _ payload: [String: Any]) throws(HelperFailure) -> P {

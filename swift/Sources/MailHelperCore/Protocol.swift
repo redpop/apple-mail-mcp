@@ -12,6 +12,12 @@ public struct HelloResult: Codable, Equatable, Sendable {
 /// Erlaubte Payload-Schluessel je Request-Typ (Spec 7.1: unbekannte Felder sind ein Fehler).
 protocol StrictPayload: Decodable {
     static var allowedKeys: Set<String> { get }
+    /// Erlaubte Schluessel verschachtelter Objekte, je Feldname (z. B. `search.after`).
+    static var nestedKeys: [String: Set<String>] { get }
+}
+
+extension StrictPayload {
+    static var nestedKeys: [String: Set<String>] { [:] }
 }
 
 extension SearchRequest: StrictPayload {
@@ -19,6 +25,7 @@ extension SearchRequest: StrictPayload {
         "allowedMailboxIds", "mailboxIds", "from", "to", "subject", "query", "since", "before", "unread",
         "flagged", "hasAttachment", "after", "limit", "maxRecipients", "countTotal",
     ]
+    static let nestedKeys: [String: Set<String>] = ["after": ["date", "gid"]]
 }
 
 extension GetMessagesRequest: StrictPayload {

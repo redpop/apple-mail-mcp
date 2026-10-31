@@ -51,6 +51,30 @@ import Testing
         }
     }
 
+    @Test func unknownNestedFieldIsInvalidInput() throws {
+        let d = Dispatcher(store: store, signing: .trusted)
+        let out = d.handle(line: line(#"{"id":5,"command":"search","payload":{"limit":1,"maxRecipients":0,"countTotal":false,"allowedMailboxIds":[1],"after":{"date":1,"gid":1,"zz":"geheim-wert"}}}"#))
+        #expect(try errorCode(out) == "INVALID_INPUT")
+        let text = String(decoding: out, as: UTF8.self)
+        #expect(text.contains("after.zz"))
+        #expect(!text.contains("geheim-wert"))
+        // Ein gueltiges after geht durch.
+        let ok = d.handle(line: line(#"{"id":6,"command":"search","payload":{"limit":1,"maxRecipients":0,"countTotal":false,"allowedMailboxIds":[\#(allowed)],"after":{"date":1,"gid":1}}}"#))
+        #expect(try object(ok)["ok"] as? Bool == true)
+    }
+
+    @Test func unknownFieldNameIsTruncated() throws {
+        let d = Dispatcher(store: store, signing: .trusted)
+        let long = String(repeating: "k", count: 500)
+        let out = d.handle(line: line(#"{"id":5,"command":"hello","payload":{"\#(long)":1}}"#))
+        #expect(try errorCode(out) == "INVALID_INPUT")
+        let message = try #require(((try object(out))["error"] as? [String: Any])?["message"] as? String)
+        #expect(message == "Unknown field: " + String(repeating: "k", count: 64) + "...")
+        let nested = d.handle(line: line(#"{"id":6,"command":"search","payload":{"limit":1,"maxRecipients":0,"countTotal":false,"allowedMailboxIds":[1],"after":{"\#(long)":1}}}"#))
+        let nestedMessage = try #require(((try object(nested))["error"] as? [String: Any])?["message"] as? String)
+        #expect(nestedMessage == "Unknown field: after." + String(repeating: "k", count: 64) + "...")
+    }
+
     @Test func badPayloadShapesAreInvalidInput() throws {
         let d = Dispatcher(store: store, signing: .trusted)
         for s in [#"{"id":1,"command":"search"}"#, #"{"id":1,"command":"search","payload":[1]}"#,
