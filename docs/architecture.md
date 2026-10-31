@@ -178,6 +178,7 @@ the rows before it reads files. In WAL mode, which Mail uses, that is one snapsh
 Mail in between cannot drop a found id from the page or make `totalMatched` disagree with it.
 The transaction lasts as long as the request (milliseconds to a few hundred). In WAL mode a
 reader blocks no writer; it only keeps a checkpoint from passing its snapshot until it ends.
+
 - `id` stays valid until Mail rebuilds its index. After that, an old id answers
   `MESSAGE_NOT_FOUND`.
 
@@ -262,24 +263,28 @@ with each other, not with real-store numbers.
 Measured on the maintainer's real mailbox (macOS 27.0.1, arm64, 238,642 message rows, 120,904
 distinct mails, 221 mailboxes of which 190 allowed) with `scripts/measure-latency.mjs`, Dev
 bundle (release build), warm helper, median of five runs, one 20-row page with `countTotal`
-unless noted, 2026-10-26:
+unless noted, 2026-10-26; repeated on the same mailbox on 2026-10-31 after the search hardening
+(single read transaction, `mailboxIds` prefilter):
 
-| Request | Median | First call |
-|---|---|---|
-| `list-mailboxes` | 1 ms | 1 ms |
-| search, no filter | 89 ms | 92 ms |
-| search, no filter, no count | 61 ms | 62 ms |
-| search, subject | 25 ms | 225 ms (builds the fold cache) |
-| search, from | 7 ms | 16 ms |
-| search, to | 4 ms | 9 ms |
-| search, query | 30 ms | 32 ms |
-| search, unread | 71 ms | 71 ms |
-| search, `hasAttachment: true` | 27 ms | 30 ms |
-| `get-messages`, 1 / 20 messages | 2 / 13 ms | 3 / 13 ms |
-| `thread` | 2 ms | 2 ms |
-| body scan, one term, 20 matches | 1,267 ms for 981 examined candidates | |
+| Request | Median 10-26 | Median 10-31 | First call 10-31 |
+|---|---|---|---|
+| `list-mailboxes` | 1 ms | 1 ms | 1 ms |
+| search, no filter | 89 ms | 95 ms | 249 ms (cold start) |
+| search, no filter, no count | 61 ms | 69 ms | 69 ms |
+| search, subject | 25 ms | 25 ms | 253 ms (builds the fold cache) |
+| search, from | 7 ms | 7 ms | 32 ms |
+| search, to | 4 ms | 4 ms | 16 ms |
+| search, query | 30 ms | 32 ms | 32 ms |
+| search, unread | 71 ms | 72 ms | 75 ms |
+| search, `hasAttachment: true` | 27 ms | 28 ms | 31 ms |
+| search, broad query `"e"` | | 457 ms | 503 ms |
+| search, broad to `"@"` | | 268 ms | 275 ms |
+| search, `mailboxIds` smallest / largest mailbox | about 220 ms (smallest) | 1 / 43 ms | 4 / 53 ms |
+| `get-messages`, 1 / 20 messages | 2 / 13 ms | 1 / 12 ms | 2 / 15 ms |
+| `thread` | 2 ms | 1 ms | 2 ms |
+| body scan, one term, 20 matches | 1,267 ms for 981 examined candidates | 1,588 ms for 1,043 | |
 
-Before the fold cache and the planner hints the same run gave subject 476 ms, query 534 ms,
+Before the fold cache and the planner hints the first run gave subject 476 ms, query 534 ms,
 `hasAttachment` 223 ms and a body scan of 6.5 s that broke its 3-second budget. The numbers are
 for helper requests through the pipe; a tool call adds the Node work (summaries, MIME for
 `get_message`). They are one mailbox on one machine, not a guarantee.
