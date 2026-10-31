@@ -297,6 +297,50 @@ import Testing
         #expect(try Data(contentsOf: wal) == walBefore)
     }
 
+    /// Mail schreibt zwischen Seitenabfrage und Zeilenaufbau: die Suche liest trotzdem einen Stand, die
+    /// gefundene gid fehlt nicht in `messages`, und totalMatched passt zur Seite.
+    @Test func searchReadsOneSnapshotWhileMailWrites() throws {
+        let f2 = try FixtureBuilder.build()
+        let writer = try SQLiteHandle(path: f2.envelopeIndex.path)
+        try writer.exec("PRAGMA journal_mode = WAL")
+        // Eine Schreibtransaktion legt -wal und -shm an, wie bei laufendem Mail; ohne sie kann eine
+        // READONLY-Verbindung die Datenbank im WAL-Modus nicht oeffnen.
+        try writer.exec("UPDATE mailboxes SET total_count = total_count")
+        let small = try #require(f2.seed.messages.first { $0.name == "small" })
+        let s = MailStore(config: f2.config)
+        var writes = 0
+        s.testHookAfterPageQuery = {
+            writes += 1
+            try? writer.run("UPDATE messages SET deleted = 1 WHERE ROWID = ?", [.int(small.rowid)])
+        }
+        let r = try s.search(.init(allowedMailboxIds: f2.allMailboxIds, subject: "willkommen", limit: 10, countTotal: true))
+        #expect(writes == 1)
+        #expect(r.messages.map(\.gid) == [small.gid] && r.totalMatched == 1)
+        s.testHookAfterPageQuery = nil
+        // Die naechste Suche sieht den neuen Stand.
+        #expect(try s.search(.init(allowedMailboxIds: f2.allMailboxIds, subject: "willkommen", limit: 10)).messages.isEmpty)
+    }
+
+    /// Scheitert eine Lesetransaktion nach dem Falten, verschwinden die TEMP-Zeilen mit dem Rollback; der
+    /// Cache darf sie dann nicht als gefaltet fuehren.
+    @Test func failedReadTransactionForgetsFoldedRows() throws {
+        let db = try Database(readOnlyAt: f.envelopeIndex)
+        do {
+            _ = try db.readTransaction { () throws(HelperFailure) -> Int in
+                try db.refreshFoldedDictionaries()
+                throw HelperFailure(code: .databaseError, message: "test")
+            }
+            Issue.record("expected failure")
+        } catch {
+            #expect(error.code == .databaseError)
+        }
+        #expect(db.foldedMax == nil)
+        try db.refreshFoldedDictionaries()
+        var n: Int64 = 0
+        try db.query("SELECT count(*) FROM temp.fold_subjects") { n = $0.int(0) }
+        #expect(n > 0)
+    }
+
     @Test func pageOnTenThousandRowsIsFast() throws {
         let big = try FixtureBuilder.build(extraMessages: 10_000)
         let s = MailStore(config: big.config)

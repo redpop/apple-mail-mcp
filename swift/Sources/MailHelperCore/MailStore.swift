@@ -11,6 +11,9 @@ public final class MailStore {
 
     private var locator: (name: String, locator: EmlxLocator)?
 
+    /// Nur fuer Tests: laeuft in `search` zwischen Seitenabfrage und Zeilenaufbau (simuliert Mails Schreiben).
+    var testHookAfterPageQuery: (() -> Void)?
+
     /// Ein Locator je Mail-Verzeichnis `V<n>`; sein Store-UUID-Cache lebt so lange wie der Helper.
     func emlxLocator() throws(HelperFailure) -> EmlxLocator {
         let located = try MailRoot.locate(root: config.mailRoot)

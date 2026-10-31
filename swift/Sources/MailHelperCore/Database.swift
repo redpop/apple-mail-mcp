@@ -88,6 +88,13 @@ final class Database {
         }
         db = handle
         sqlite3_busy_timeout(handle, 2000)
+        // TEMP-Tabellen (FoldCache.swift) im Arbeitsspeicher. Hier und nicht beim Anlegen der Tabellen, weil
+        // das Pragma innerhalb einer Transaktion nicht geaendert werden darf (readTransaction).
+        guard sqlite3_exec(handle, "PRAGMA temp_store = MEMORY", nil, nil, nil) == SQLITE_OK else {
+            sqlite3_close(handle)
+            db = nil
+            throw Database.failure(SQLITE_ERROR, "The Mail database cannot be opened.")
+        }
 
         let frc = sqlite3_create_function_v2(handle, "mcp_fold", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, nil, { ctx, argc, argv in
             guard argc == 1, let argv, let value = argv[0], sqlite3_value_type(value) != SQLITE_NULL else {
@@ -117,6 +124,25 @@ final class Database {
             return HelperFailure(code: .databaseBusy, message: "The Mail database is busy.")
         default:
             return HelperFailure(code: .databaseError, message: text)
+        }
+    }
+
+    /// Fuehrt `body` in einer Lesetransaktion aus, damit alle Abfragen darin denselben Stand sehen (im
+    /// WAL-Modus ein Snapshot, sonst haelt die Verbindung bis zum Ende die SHARED-Sperre). Laeuft schon eine
+    /// Transaktion, wird `body` nur ausgefuehrt. Bei einem Fehler wird zurueckgerollt; dabei verschwinden
+    /// auch die in `body` gefalteten TEMP-Zeilen, deshalb wird `foldedMax` auf den Stand davor gesetzt.
+    func readTransaction<T>(_ body: () throws(HelperFailure) -> T) throws(HelperFailure) -> T {
+        guard sqlite3_get_autocommit(db) != 0 else { return try body() }
+        let saved = foldedMax
+        try execute("BEGIN")
+        do {
+            let value = try body()
+            try execute("COMMIT")
+            return value
+        } catch {
+            try? execute("ROLLBACK")
+            foldedMax = saved
+            throw error
         }
     }
 

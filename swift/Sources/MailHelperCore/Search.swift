@@ -183,6 +183,13 @@ extension MailStore {
         }
 
         let db = try envelopeDatabase()
+        // Eine Lesetransaktion fuer Fold-Nachtrag, Seitenabfrage und Zeilenaufbau: sonst koennte Mail
+        // dazwischen schreiben, und eine gefundene gid fehlte in `messages` oder totalMatched passte nicht
+        // zur Seite. Die Transaktion dauert so lange wie die Suche (Millisekunden bis wenige hundert).
+        return try db.readTransaction { () throws(HelperFailure) in try searchPage(r, db) }
+    }
+
+    private func searchPage(_ r: SearchRequest, _ db: Database) throws(HelperFailure) -> SearchResult {
         if [r.from, r.to, r.subject, r.query].contains(where: { Self.term($0) != nil }) {
             try db.refreshFoldedDictionaries()
         }
@@ -208,6 +215,7 @@ extension MailStore {
         }
         let hasMore = gids.count > r.limit
         if hasMore { gids.removeLast() }
+        testHookAfterPageQuery?()
 
         var result = SearchResult(messages: try loadRows(gids: gids, allowed: r.allowedMailboxIds, maxRecipients: r.maxRecipients),
                                   hasMore: hasMore)
