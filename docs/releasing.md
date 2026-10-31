@@ -58,7 +58,7 @@ On the runner, the `.p12` and the `.p8` exist only inside the script that uses t
    workflow artifacts for 14 days.
 2. On a Mac with real mail, check the candidate:
    - first Full Disk Access grant through the `.mcpb` in Claude Desktop and through
-     `npx <tarball> setup`;
+     `npx --package=<tarball> apple-mail-mcp setup`;
    - update from one candidate to the next: the grant stays and no second entry appears;
    - `doctor` with and without `--verbose`;
    - record the measurements in [`architecture.md`](./architecture.md).

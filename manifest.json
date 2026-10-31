@@ -17,6 +17,7 @@
   "documentation": "https://github.com/redpop/apple-mail-mcp#readme",
   "support": "https://github.com/redpop/apple-mail-mcp/issues",
   "license": "MIT",
+  "icon": "icon.png",
   "keywords": ["mail", "email", "apple-mail", "macos", "read-only"],
   "server": {
     "type": "node",
