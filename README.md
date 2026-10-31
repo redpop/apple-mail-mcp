@@ -157,6 +157,10 @@ They cannot be changed through tool parameters. Booleans accept `true`, `false`,
 An empty value counts as not set. An invalid value does not stop the server; every tool call
 then fails with `CONFIG_INVALID` naming the setting, and nothing falls back to "allow all".
 
+The server reads these settings once, at startup. After changing them, restart the client. In
+Claude Desktop, quit the app (Cmd-Q) and open it again: switching the extension off and on, or
+saving its settings, keeps the running server and its old settings.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `APPLE_MAIL_ACCOUNTS` | empty (all accounts) | Comma-separated allowlist. An entry matches an account's UUID, address or name, ignoring case. A name shared by two accounts matches both; use the address or UUID to pick one. |
