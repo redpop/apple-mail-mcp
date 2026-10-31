@@ -54,3 +54,16 @@ test('exclude list and helper path and debug', () => {
 test.each(['APPLE_MAIL_ACCOUNTS', 'APPLE_MAIL_EXCLUDE_MAILBOXES'])('%s with only separators is invalid', (key) => {
   for (const v of [',', ' , ', ',,']) expect(loadConfig({ [key]: v })).toMatchObject({ ok: false, key })
 })
+
+// Claude Desktop laesst ${user_config.x} stehen, wenn das Feld keinen Wert und keinen Default hat
+// (und bei Array-Werten). Ein Platzhalter ist nie ein Kontoname und nie "alle Konten".
+test.each([
+  ['APPLE_MAIL_ACCOUNTS', '${user_config.accounts}'],
+  ['APPLE_MAIL_EXCLUDE_MAILBOXES', '${user_config.exclude_mailboxes}'],
+  ['APPLE_MAIL_INCLUDE_JUNK', '${user_config.include_junk}'],
+  ['APPLE_MAIL_MAX_RESULTS', '${user_config.max_results}'],
+])('unreplaced MCPB placeholder in %s is CONFIG_INVALID', (key, value) => {
+  const r = loadConfig({ [key]: value })
+  expect(r).toMatchObject({ ok: false, key })
+  if (!r.ok) expect(r.error).toContain('not replaced')
+})

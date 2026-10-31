@@ -53,8 +53,8 @@
     "accounts": {
       "type": "string",
       "title": "Accounts",
-      "description": "Accounts to include, by address, name or UUID. Empty means all accounts.",
-      "multiple": true,
+      "description": "Comma-separated accounts to include, by address, name or UUID. Empty means all accounts.",
+      "default": "",
       "required": false
     },
     "include_junk": {
@@ -75,6 +75,7 @@
       "type": "string",
       "title": "Excluded mailboxes",
       "description": "Comma-separated mailboxes to hide, by name or by path with /.",
+      "default": "",
       "required": false
     },
     "show_security_mails": {
