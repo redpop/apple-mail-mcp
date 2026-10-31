@@ -101,6 +101,12 @@ accounts with the same name (the description set in System Settings, for example
 both called "Work") are therefore both allowed by one entry with that name. Use the address or the
 account UUID (`doctor --verbose` lists the UUIDs) to allow only one of them.
 
+**An account is named by its UUID.**
+macOS has no description for it. Usually it is an account that was removed from Mail while its
+mailboxes stayed in Mail's index; `doctor` counts these as "mail accounts without a match".
+Their messages have no files any more, so bodies come back as `file_not_found`. To keep them
+out, list the accounts you want in `APPLE_MAIL_ACCOUNTS`.
+
 **A message has no body.**
 `bodyUnavailableReason` tells why: `not_downloaded` (Mail never fetched it; open it in Mail),
 `file_not_found`, `withheld_security` (looks like a verification or reset mail; see

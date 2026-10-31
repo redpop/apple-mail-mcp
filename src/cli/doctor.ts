@@ -191,7 +191,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
       'account-names',
       an.status === 'available' && an.unmatchedAccounts === 0 ? 'ok' : 'warn',
       an.status === 'available'
-        ? `Account names available; ${an.unmatchedAccounts} mail accounts without a match.`
+        ? `Account names available; ${an.unmatchedAccounts} mail accounts without a match${an.unmatchedAccounts > 0 ? ' (usually removed accounts; they are listed by UUID)' : ''}.`
         : `Account names unavailable${deps.verbose && an.reason ? ` (${an.reason})` : ''}; ${an.unmatchedAccounts} mail accounts without a match.`,
     )
   }

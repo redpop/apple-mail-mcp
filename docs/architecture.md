@@ -135,6 +135,27 @@ Mail writes the WAL). `PRAGMA user_version` is 0, so compatibility comes from co
 introspection: if every column the queries need exists, it runs. `doctor --schema` prints the
 database fingerprint and any missing columns.
 
+### Account names
+
+A mailbox URL carries only the account UUID (`imap://<uuid>/INBOX`). The helper reads names
+from `~/Library/Accounts/Accounts4.sqlite`, opened read-only for one fixed query bound to the
+UUIDs found in `mailboxes.url`: `ZIDENTIFIER`, `ZACCOUNTDESCRIPTION` and `ZUSERNAME`. If a row
+has no description, the description of its parent account (`ZPARENTACCOUNT`) is used; the
+parent's user name is never read. An account without a description is named by its UUID. A
+missing database or column makes names `unavailable`, never an error; without
+`ZPARENTACCOUNT` there is just no parent fallback.
+
+Checked on 2026-10-31 with `scripts/check-account-names.py` (counters only): of 14 account
+UUIDs, 6 have a row. The other 8 are removed accounts. None has a `V<n>/<uuid>` directory or
+an `.emlx` file, yet 7 still have message rows, because Mail does not purge the index. No other
+source names them: no other Accounts4 column, no other Envelope Index table, no plist under
+`MailData`; `com.apple.mail.plist` mentions 4 of them only in ordering lists without a name.
+They keep their UUID as name, and `doctor` counts them as accounts without a match. One of them
+is a stale `local://` account with one empty mailbox; the active local account has a row of
+type `com.apple.account.OnMyDevice` with its localized name, so no "On My Mac" fallback is
+needed. Two matched IMAP accounts had no description but a parent account (iCloud, Google)
+with one, hence the parent fallback.
+
 ### Deduplication
 
 The table `messages` holds about twice as many rows as there are distinct mails, because a mail
