@@ -128,8 +128,16 @@ extension MailStore {
         }
 
         if let ids = r.mailboxIds {
-            having.append("max(CASE WHEN m.mailbox IN (\(placeholders(ids.count))) THEN 1 ELSE 0 END) = 1")
-            havingBind += ids.map { .int($0) }
+            // Vorfilter statt HAVING: die gids mit einer nicht geloeschten Kopie in einer der Mailboxen, ueber
+            // messages_mailbox_date_received_index (das + nimmt deleted die Indexnutzung). Als HAVING las die
+            // Suche alle erlaubten Zeilen, auch fuer eine kleine Mailbox (rund 220 ms auf 242000 Zeilen).
+            // ids ist Teilmenge der erlaubten Mailboxen (geprueft in search), die Bedeutung bleibt gleich.
+            wherePre.append("""
+                m.global_message_id IN (SELECT m2.global_message_id FROM messages m2
+                    WHERE +m2.deleted = 0 AND m2.mailbox IN (\(placeholders(ids.count))))
+                """)
+            whereBind += ids.map { .int($0) }
+            driveByGid = true
         }
         if let since = r.since { having.append("max(m.date_received) >= ?"); havingBind.append(.int(since)) }
         if let before = r.before { having.append("max(m.date_received) < ?"); havingBind.append(.int(before)) }

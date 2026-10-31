@@ -138,6 +138,18 @@ can sit in several mailboxes. Identity is `global_message_id`, exposed as `id`.
 - A mail counts as unread or flagged if any copy is; its mailboxes are all allowed mailboxes
   that hold a copy.
 - For the body, the best copy wins: a complete file before `.partial` before none.
+- Recipients come from `recipients.type`: 0 is `to`, 1 is `cc`, everything else is `bcc`. The
+  column is nullable in the schema; a `NULL` reads as 0 and therefore as `to`. The `to` filter
+  ignores the type and matches all three.
+
+### One snapshot per request
+
+`search` runs the fold refresh, the page query and the row lookup (`loadRows`) inside one read
+transaction; `thread` does the same for the conversation lookup and its rows, `get-messages` for
+the rows before it reads files. In WAL mode, which Mail uses, that is one snapshot: a write by
+Mail in between cannot drop a found id from the page or make `totalMatched` disagree with it.
+The transaction lasts as long as the request (milliseconds to a few hundred). In WAL mode a
+reader blocks no writer; it only keeps a checkpoint from passing its snapshot until it ends.
 - `id` stays valid until Mail rebuilds its index. After that, an old id answers
   `MESSAGE_NOT_FOUND`.
 
@@ -178,7 +190,12 @@ statistics picked `messages_deleted_mailbox_index` and probed every allowed mail
 message with an attachment: about 1.1 s per page at real size, against 0.3 s for the old
 per-row `EXISTS`.
 
-Whenever a prefilter yields a set of group ids (a text filter or `hasAttachment: true`), the
+`mailboxIds` is a prefilter too: the set of groups with a non-deleted copy in one of the given
+mailboxes, read through `messages_mailbox_date_received_index`. As a `HAVING` condition it read
+every allowed row even for a small mailbox: at real size 220 ms for a mailbox with 851 mails, now
+3 ms; 230 ms against 100 ms now for the large mailbox that holds 60 % of the mails.
+
+Whenever a prefilter yields a set of group ids (a text filter, `mailboxIds` or `hasAttachment: true`), the
 outer query marks `deleted` and `mailbox` with a unary `+`. SQLite then fetches the groups through
 `messages_global_message_id_mailbox_index` instead of reading every allowed row. The text filter
 subqueries get the same `+`, so they use the subject, sender or ROWID index. The `+` does not
@@ -199,6 +216,8 @@ without `ANALYZE`:
 | subject | 100 ms |
 | subject and `hasAttachment: true` | 86 ms |
 | from, to, query | 8 to 19 ms |
+| query `e`, to `example` (almost every mail matches) | 440 ms, 320 ms |
+| `mailboxIds`, small / large mailbox | 3 ms / 100 ms |
 
 Run it with `PERF_REAL_SIZE=1 swift test -c release --package-path swift --filter realSize`. The
 no-filter case is slower here than on the maintainer's real store (112 ms), so compare the rows

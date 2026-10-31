@@ -170,6 +170,13 @@ import Testing
             ("from", page(.init(allowedMailboxIds: allowed, from: "jürgen größe 1", limit: 20)), nil),
             ("to", page(.init(allowedMailboxIds: allowed, to: "person12", limit: 20)), nil),
             ("query", page(.init(allowedMailboxIds: allowed, query: "straße 4", limit: 20)), nil),
+            // Breite Textfilter: fast alle Zeilen treffen, die gid-Menge ist so gross wie die Ablage.
+            ("query broad", page(.init(allowedMailboxIds: allowed, query: "e", limit: 20)), nil),
+            ("to broad", page(.init(allowedMailboxIds: allowed, to: "example", limit: 20)), nil),
+            // Eine kleine Mailbox (rund 0,4 % der Zeilen) und die grosse (60 % der ersten Kopien).
+            ("mailboxIds small", page(.init(allowedMailboxIds: allowed, mailboxIds: [1003], limit: 20)), .milliseconds(150)),
+            ("mailboxIds small + read", page(.init(allowedMailboxIds: allowed, mailboxIds: [1003], unread: false, limit: 20)), nil),
+            ("mailboxIds large", page(.init(allowedMailboxIds: allowed, mailboxIds: [1000], limit: 20)), nil),
         ]
         // Erst ohne ANALYZE-Statistik (wie der frisch gebaute Index), dann mit; ob Mails Index sqlite_stat1
         // fuehrt, ist nicht belegt, und der Planer entscheidet je nach Statistik anders.
@@ -185,13 +192,6 @@ import Testing
                 print("real size search, stats \(stats), \(c.name): median \(m), total \(first.totalMatched ?? -1)")
                 #expect(first.messages.count == 20 && first.hasMore, "\(c.name)")
                 if let limit = c.limit { #expect(m < limit, "\(c.name)") }
-            }
-            // Breite Textfilter, nur Zeitausgabe ohne Pruefung (fast alle Zeilen treffen).
-            for (name, req) in [("query broad", page(.init(allowedMailboxIds: allowed, query: "e", limit: 20))),
-                                ("to broad", page(.init(allowedMailboxIds: allowed, to: "example", limit: 20)))] {
-                var total = -1
-                let m = try median { total = try s.search(req).totalMatched ?? -1 }
-                print("real size search, stats \(stats), \(name): median \(m), total \(total)")
             }
             // Vergleichsformen, nur die Kandidatenseite mit Zaehlung (ohne Zeilenaufbau), eigene Verbindung.
             let db = try SQLiteHandle(path: f.envelopeIndex.path, readOnly: true)
