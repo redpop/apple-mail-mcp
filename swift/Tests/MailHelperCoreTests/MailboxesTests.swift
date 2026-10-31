@@ -140,4 +140,54 @@ import Testing
         let r = try store.listMailboxes()
         #expect(Set(r.accounts.map(\.uuid)) == [f.accountUUID("A"), newUUID])
     }
+    // Kindkonten (IMAP unter Google/iCloud) haben oft keine eigene Beschreibung; Mail zeigt die des Elternkontos.
+    @Test func childAccountWithoutDescriptionUsesParentDescription() throws {
+        let f = try FixtureBuilder.build()
+        let child = "D0000000-0000-4000-8000-00000000000E"
+        let acc = try SQLiteHandle(path: f.accountsDB.path)
+        try acc.run("INSERT INTO ZACCOUNT (Z_PK, ZIDENTIFIER, ZACCOUNTDESCRIPTION, ZUSERNAME, ZOWNINGBUNDLEID) VALUES (?, ?, ?, ?, ?)",
+                    [.int(50), .text("E0000000-0000-4000-8000-00000000000F"), .text("Google"), .text("eltern@example.org"), .null])
+        try acc.run("INSERT INTO ZACCOUNT (Z_PK, ZIDENTIFIER, ZACCOUNTDESCRIPTION, ZUSERNAME, ZOWNINGBUNDLEID, ZPARENTACCOUNT) VALUES (?, ?, ?, ?, ?, ?)",
+                    [.int(51), .text(child), .null, .null, .text("com.apple.mail"), .int(50)])
+        let env = try SQLiteHandle(path: f.envelopeIndex.path)
+        try env.run("INSERT INTO mailboxes (ROWID, url, total_count, unread_count) VALUES (?, ?, ?, ?)",
+                    [.int(903), .text("imap://\(child)/INBOX"), .int(0), .int(0)])
+        let r = try MailStore(config: f.config).listMailboxes()
+        // Das Elternkonto selbst hat keine Mailbox und erscheint nicht; sein ZUSERNAME wird nicht gelesen.
+        #expect(Set(r.accounts.map(\.uuid)) == [f.accountUUID("A"), child])
+        let c = try #require(r.accounts.first { $0.uuid == child })
+        #expect(c.description == "Google")
+        #expect(c.username == nil)
+    }
+
+    @Test func ownDescriptionWinsAndEmptyCountsAsMissing() throws {
+        let f = try FixtureBuilder.build()
+        let own = "D0000000-0000-4000-8000-000000000010"
+        let empty = "D0000000-0000-4000-8000-000000000011"
+        let acc = try SQLiteHandle(path: f.accountsDB.path)
+        try acc.run("INSERT INTO ZACCOUNT (Z_PK, ZIDENTIFIER, ZACCOUNTDESCRIPTION, ZUSERNAME) VALUES (?, ?, ?, ?)",
+                    [.int(60), .text("E0000000-0000-4000-8000-000000000012"), .text("iCloud"), .null])
+        try acc.run("INSERT INTO ZACCOUNT (Z_PK, ZIDENTIFIER, ZACCOUNTDESCRIPTION, ZUSERNAME, ZPARENTACCOUNT) VALUES (?, ?, ?, ?, ?)",
+                    [.int(61), .text(own), .text("Eigene"), .null, .int(60)])
+        try acc.run("INSERT INTO ZACCOUNT (Z_PK, ZIDENTIFIER, ZACCOUNTDESCRIPTION, ZUSERNAME) VALUES (?, ?, ?, ?)",
+                    [.int(62), .text(empty), .text(""), .null])
+        let env = try SQLiteHandle(path: f.envelopeIndex.path)
+        for (rowid, uuid) in [(904, own), (905, empty)] {
+            try env.run("INSERT INTO mailboxes (ROWID, url, total_count, unread_count) VALUES (?, ?, ?, ?)",
+                        [.int(Int64(rowid)), .text("imap://\(uuid)/INBOX"), .int(0), .int(0)])
+        }
+        let r = try MailStore(config: f.config).listMailboxes()
+        #expect(r.accounts.first { $0.uuid == own }?.description == "Eigene")
+        let e = try #require(r.accounts.first { $0.uuid == empty })
+        #expect(e.description == nil)
+    }
+
+    @Test func accountsDbWithoutParentColumnStillNamesAccounts() throws {
+        let f = try FixtureBuilder.build()
+        let h = try SQLiteHandle(path: f.accountsDB.path)
+        try h.exec("ALTER TABLE ZACCOUNT DROP COLUMN ZPARENTACCOUNT")
+        let r = try MailStore(config: f.config).listMailboxes()
+        #expect(r.accountNames == .available)
+        #expect(r.accounts.map(\.description) == ["Privat"])
+    }
 }

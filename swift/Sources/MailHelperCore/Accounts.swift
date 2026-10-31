@@ -34,8 +34,20 @@ enum Accounts {
     static let notChecked = "Account names were not checked"
 
     static let requiredColumns: Set<String> = ["ZIDENTIFIER", "ZACCOUNTDESCRIPTION", "ZUSERNAME"]
+    /// Optional: ohne sie gibt es keinen Rueckfall auf die Beschreibung des Elternkontos.
+    static let parentColumns: Set<String> = ["Z_PK", "ZPARENTACCOUNT"]
 
-    /// Oeffnet Accounts4 schreibgeschuetzt, fuehrt genau eine Abfrage aus und schliesst die Verbindung
+    /// Die zwei festen Abfragen; nur die "?"-Liste haengt an der Zahl der UUIDs.
+    /// Leere Beschreibung zaehlt als fehlend. Mit Elternkonto: dessen Beschreibung, nie dessen ZUSERNAME
+    /// (IMAP-Konten unter Google oder iCloud haben oft keine eigene Beschreibung).
+    static func query(marks: String, withParent: Bool) -> String {
+        withParent
+            ? "SELECT a.ZIDENTIFIER, COALESCE(NULLIF(a.ZACCOUNTDESCRIPTION, ''), NULLIF(p.ZACCOUNTDESCRIPTION, '')), a.ZUSERNAME "
+                + "FROM ZACCOUNT a LEFT JOIN ZACCOUNT p ON p.Z_PK = a.ZPARENTACCOUNT WHERE a.ZIDENTIFIER IN (\(marks))"
+            : "SELECT ZIDENTIFIER, NULLIF(ZACCOUNTDESCRIPTION, ''), ZUSERNAME FROM ZACCOUNT WHERE ZIDENTIFIER IN (\(marks))"
+    }
+
+    /// Oeffnet Accounts4 schreibgeschuetzt, fuehrt genau eine Datenabfrage aus und schliesst die Verbindung
     /// (die lokale `db` wird beim Verlassen der Funktion freigegeben). Wirft nie.
     static func lookup(at url: URL, uuids: [String]) -> AccountNamesLookup {
         let db: Database
@@ -53,7 +65,7 @@ enum Accounts {
             // Nur "?"-Platzhalter werden zusammengesetzt, die Werte sind gebunden.
             let marks = Array(repeating: "?", count: uuids.count).joined(separator: ", ")
             var found: [AccountInfo] = []
-            try db.query("SELECT ZIDENTIFIER, ZACCOUNTDESCRIPTION, ZUSERNAME FROM ZACCOUNT WHERE ZIDENTIFIER IN (\(marks))",
+            try db.query(query(marks: marks, withParent: parentColumns.isSubset(of: present)),
                          uuids.map { SQLValue.text($0) }) { row in
                 if let id = row.text(0) { found.append(AccountInfo(uuid: id, description: row.text(1), username: row.text(2))) }
             }
