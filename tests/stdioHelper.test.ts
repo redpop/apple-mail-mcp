@@ -82,6 +82,19 @@ describe('createStdioRunner', () => {
     await expect(make().run('garbage', {})).rejects.toMatchObject({ code: 'HELPER_CRASHED' })
   })
 
+  it('a response without a numeric id discards the helper instead of answering the oldest request', async () => {
+    const r = make()
+    const before = (await r.run('echo-pid', {})) as { pid: number }
+    // Die aelteste offene Anfrage (hang) darf die id-lose Antwort nicht bekommen; beide scheitern laut.
+    const results = await Promise.allSettled([r.run('hang', {}), r.run('null-id', {})])
+    for (const result of results) {
+      expect(result).toMatchObject({ status: 'rejected', reason: { code: 'HELPER_CRASHED' } })
+    }
+    await expect(r.run('string-id', {})).rejects.toMatchObject({ code: 'HELPER_CRASHED' })
+    const after = (await r.run('echo-pid', {})) as { pid: number }
+    expect(after.pid).not.toBe(before.pid)
+  })
+
   it('reports a missing binary as HELPER_MISSING', async () => {
     await expect(make('/nonexistent/mail-helper').run('echo-pid', {})).rejects.toMatchObject({ code: 'HELPER_MISSING' })
   })

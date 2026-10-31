@@ -44,6 +44,13 @@ function handle(request) {
     case 'garbage':
       process.stdout.write('das ist kein JSON\n')
       return
+    case 'null-id':
+      // Wie der echte Helper bei einer unlesbaren Anfragezeile: keine verwertbare id.
+      reply({ id: null, ok: false, error: { code: 'INVALID_INPUT', message: 'Request is not a JSON object.' } })
+      return
+    case 'string-id':
+      reply({ id: String(id), ok: true, result: { pid: process.pid } })
+      return
     case 'crash':
       process.exit(3)
       return
