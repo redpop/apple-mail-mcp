@@ -33,10 +33,18 @@ func reexecDisclaimed() {
     }
 
     var attributes: posix_spawnattr_t?
-    guard posix_spawnattr_init(&attributes) == 0 else { return }
+    let initResult = posix_spawnattr_init(&attributes)
+    guard initResult == 0 else {
+        serveLog("posix_spawnattr_init failed (\(String(cString: strerror(initResult)))), continuing without disclaim")
+        return
+    }
     defer { posix_spawnattr_destroy(&attributes) }
     // SETEXEC ersetzt das Prozessabbild an Ort und Stelle (kein Kindprozess).
-    guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETEXEC)) == 0 else { return }
+    let flagsResult = posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETEXEC))
+    guard flagsResult == 0 else {
+        serveLog("posix_spawnattr_setflags failed (\(String(cString: strerror(flagsResult)))), continuing without disclaim")
+        return
+    }
     let disclaimResult = setDisclaim(&attributes, 1)
     if disclaimResult != 0 {
         serveLog("setdisclaim failed (\(disclaimResult)), full disk access may be denied")
@@ -68,8 +76,12 @@ let maxLineBytes = 1_048_576
 let oversizedResponse = Data(
     #"{"id":null,"ok":false,"error":{"code":"INVALID_INPUT","message":"Request line exceeds 1 MiB."}}"#.utf8)
 
+/// Exit-Code, wenn stdout nicht mehr schreibbar ist (Leser weg, EPIPE): die Antwort ging verloren,
+/// das ist kein normales Ende.
+let stdoutClosedExitCode: Int32 = 3
+
 /// Schreibt Antwort plus Zeilenumbruch mit einem einzigen write-Aufruf (bei Teilschreibung Rest nachziehen).
-/// false, wenn stdout nicht mehr schreibbar ist.
+/// false, wenn stdout nicht mehr schreibbar ist; der Grund steht dann schon auf stderr.
 func writeLine(_ response: Data) -> Bool {
     var out = response
     out.append(0x0A)
@@ -79,6 +91,7 @@ func writeLine(_ response: Data) -> Bool {
             let n = write(STDOUT_FILENO, raw.baseAddress! + offset, raw.count - offset)
             if n < 0 {
                 if errno == EINTR { continue }
+                serveLog("stdout write failed (\(String(cString: strerror(errno)))), exiting")
                 return false
             }
             offset += n
@@ -107,7 +120,7 @@ func serve(dispatcher: Dispatcher) -> Int32 {
         }
         if count == 0 {
             // EOF: eine unvollstaendige letzte Zeile ohne Zeilenumbruch noch beantworten.
-            if !skipping, !line.isEmpty { _ = emit(line) }
+            if !skipping, !line.isEmpty, !emit(line) { return stdoutClosedExitCode }
             return 0
         }
         var start = 0
@@ -116,10 +129,10 @@ func serve(dispatcher: Dispatcher) -> Int32 {
                 if skipping {
                     skipping = false
                 } else if line.count + (newline - start) > maxLineBytes {
-                    if !writeLine(oversizedResponse) { return 0 }
+                    if !writeLine(oversizedResponse) { return stdoutClosedExitCode }
                 } else {
                     line.append(contentsOf: chunk[start..<newline])
-                    if !emit(line) { return 0 }
+                    if !emit(line) { return stdoutClosedExitCode }
                 }
                 line.removeAll(keepingCapacity: true)
                 start = newline + 1
@@ -127,7 +140,7 @@ func serve(dispatcher: Dispatcher) -> Int32 {
                 if !skipping {
                     if line.count + (count - start) > maxLineBytes {
                         // Zu lang, Zeilenende noch nicht gesehen: sofort antworten, Rest verwerfen.
-                        if !writeLine(oversizedResponse) { return 0 }
+                        if !writeLine(oversizedResponse) { return stdoutClosedExitCode }
                         line.removeAll(keepingCapacity: true)
                         skipping = true
                     } else {
