@@ -1,8 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs'
+import { BinTrieFlags, decodeHTMLStrict, determineBranch, htmlDecodeTree } from 'entities/lib/decode.js'
 import { expect, test } from 'vitest'
+import { fold } from '../src/fold.js'
 import { htmlToText, parseForScan, parseMessage, stripEmlxFrame, truncateText, type ParsedMessage } from '../src/mime.js'
 import { textParts } from '../src/mimeTrim.js'
-import { quickHtmlText } from '../src/quickHtml.js'
+import { decodeEntities, quickHtmlText, termSurvivesUnknownEntities } from '../src/quickHtml.js'
 
 const eml = (n: string) => readFileSync(new URL(`./fixtures/eml/${n}`, import.meta.url))
 const text = (m: ParsedMessage) => (m.ok ? m.text : '')
@@ -183,6 +185,46 @@ test('quickHtmlText is unsure about unknown named entities and decodes legacy on
   expect(quickHtmlText('<a href="https://example.com/?a&copy;">x</a>').text).toContain('?a\u00a9]')
 })
 
+/** Alle benannten Entities von HTML, aus der Tabelle des Pakets entities (die html-to-text nutzt). */
+function htmlEntityNames(): string[] {
+  const chars = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789;']
+  const names = new Set<string>()
+  const walk = (idx: number, name: string): void => {
+    const current = htmlDecodeTree[idx]!
+    const valueLength = (current & BinTrieFlags.VALUE_LENGTH) >> 14
+    if (valueLength !== 0 && name !== '') names.add(name.replace(/;$/, ''))
+    // Ein Wert in einem Wort ist ein Blatt; seine Bits sind keine Verzweigungen.
+    if (valueLength === 1) return
+    for (const c of chars) {
+      const next = determineBranch(htmlDecodeTree, current, idx + Math.max(1, valueLength), c.charCodeAt(0))
+      if (next >= 0) walk(next, name + c)
+    }
+  }
+  walk(0, '')
+  return [...names]
+}
+
+test('quickHtmlText decodes known entities like HTML and unknown ones never hide a surviving term', () => {
+  const names = htmlEntityNames()
+  expect(names.length).toBeGreaterThan(2000)
+  const wrong: string[] = []
+  for (const name of names) {
+    const want = decodeHTMLStrict(`&${name};`)
+    const got = decodeEntities(`&${name};`)
+    if (got.sure) {
+      if (got.text !== want) wrong.push(`${name}: decodes differently`)
+      continue
+    }
+    // Unbekannt: das Zeichen darf weder wegfallen (Leerraum) noch in einem Begriff stehen koennen.
+    const folded = fold(want).replace(/[\s\u200b]+/g, '')
+    if (folded === '' || [...folded].some((c) => termSurvivesUnknownEntities(c))) wrong.push(`${name}: must be in the table`)
+  }
+  expect(wrong).toEqual([])
+  expect(termSurvivesUnknownEntities('rechnung-2026@example.com')).toBe(true)
+  expect(termSurvivesUnknownEntities(fold('Grüße'))).toBe(true)
+  expect(termSurvivesUnknownEntities('\u2665')).toBe(false)
+})
+
 test('quickHtmlText renders link targets like html-to-text', () => {
   const cases = [
     '<a href="https://example.com/a"><img src="x.png" alt="Logo"></a> next',
@@ -220,8 +262,8 @@ test('quickHtmlText keeps every word of the html-to-text output', async () => {
   if (!parsed.ok) throw new Error('expected ok')
   const scan = await parseForScan(html)
   if (!scan.ok) throw new Error('expected ok')
-  const quick = (scan.quick ?? '').replace(/\s+/g, '')
-  expect(scan.quick).not.toBeNull()
+  expect(scan).toMatchObject({ exact: false, sure: true })
+  const quick = (scan.exact ? '' : scan.quick).replace(/\s+/g, '')
   for (const word of parsed.text.split(/[\s[\]]+/).filter((w) => w !== '')) expect(quick).toContain(word)
 })
 

@@ -7,8 +7,9 @@
  * bestaetigt; diese Fassung entscheidet also nie allein ueber Treffer oder Sicherheitsmails.
  *
  * `sure` ist false, wenn ein benanntes Entity mit Semikolon vorkommt, das die Tabelle nicht
- * kennt. Dann kann html-to-text dort ein Zeichen erzeugen, das hier fehlt, und der Scan prueft
- * die Nachricht ohne Vorfilter am vollen Text.
+ * kennt. Es bleibt dann unveraendert im Text, und html-to-text erzeugt dort ein Zeichen, das hier
+ * fehlt. Fuer Suchbegriffe, die termSurvivesUnknownEntities erfuellt, taugt die Fassung trotzdem
+ * als Vorfilter; fuer alle anderen prueft der Scan die Nachricht am vollen Text.
  *
  * Laeuft linear: jede Suche beginnt hinter der vorigen Fundstelle, es gibt keine Regex mit
  * Rueckverfolgung ueber den ganzen Text (die Eingabe ist nicht vertrauenswuerdig).
@@ -27,7 +28,7 @@ const LEGACY_EXTRA: Array<[string, number]> = [
 ]
 
 // Nur mit Semikolon gueltig.
-const OTHER: Array<[string, number]> = [
+const OTHER: Array<[string, number | string]> = [
   ['apos', 0x27], ['euro', 0x20ac], ['ndash', 0x2013], ['mdash', 0x2014], ['lsquo', 0x2018], ['rsquo', 0x2019],
   ['sbquo', 0x201a], ['ldquo', 0x201c], ['rdquo', 0x201d], ['bdquo', 0x201e], ['hellip', 0x2026],
   ['bull', 0x2022], ['trade', 0x2122], ['dagger', 0x2020], ['Dagger', 0x2021], ['permil', 0x2030],
@@ -35,6 +36,21 @@ const OTHER: Array<[string, number]> = [
   ['Scaron', 0x160], ['Yuml', 0x178], ['fnof', 0x192], ['circ', 0x2c6], ['tilde', 0x2dc],
   ['ensp', 0x2002], ['emsp', 0x2003], ['thinsp', 0x2009], ['zwnj', 0x200c], ['zwj', 0x200d],
   ['lrm', 0x200e], ['rlm', 0x200f], ['larr', 0x2190], ['rarr', 0x2192], ['uarr', 0x2191], ['darr', 0x2193],
+  // Alle uebrigen Entities, die druckbares ASCII, einen Latin-1-Buchstaben oder nur Leerraum
+  // ergeben (siehe termSurvivesUnknownEntities; tests/mime.test.ts prueft die volle Tabelle).
+  ['excl', 0x21], ['num', 0x23], ['dollar', 0x24], ['percnt', 0x25], ['lpar', 0x28], ['rpar', 0x29],
+  ['ast', 0x2a], ['midast', 0x2a], ['plus', 0x2b], ['comma', 0x2c], ['period', 0x2e], ['sol', 0x2f],
+  ['colon', 0x3a], ['semi', 0x3b], ['equals', 0x3d], ['quest', 0x3f], ['commat', 0x40],
+  ['lsqb', 0x5b], ['lbrack', 0x5b], ['bsol', 0x5c], ['rsqb', 0x5d], ['rbrack', 0x5d], ['Hat', 0x5e],
+  ['lowbar', 0x5f], ['UnderBar', 0x5f], ['grave', 0x60], ['DiacriticalGrave', 0x60],
+  ['lcub', 0x7b], ['lbrace', 0x7b], ['verbar', 0x7c], ['vert', 0x7c], ['VerticalLine', 0x7c],
+  ['rcub', 0x7d], ['rbrace', 0x7d], ['bne', '=\u20e5'], ['nvlt', '<\u20d2'], ['nvgt', '>\u20d2'],
+  ['fjlig', 'fj'], ['Idot', 0x130], ['angst', 0xc5],
+  ['Tab', 0x09], ['NewLine', 0x0a], ['NonBreakingSpace', 0xa0], ['numsp', 0x2007], ['puncsp', 0x2008],
+  ['emsp13', 0x2004], ['emsp14', 0x2005], ['ThinSpace', 0x2009], ['hairsp', 0x200a], ['VeryThinSpace', 0x200a],
+  ['MediumSpace', 0x205f], ['ThickSpace', '\u205f\u200a'], ['ZeroWidthSpace', 0x200b],
+  ['NegativeVeryThinSpace', 0x200b], ['NegativeThinSpace', 0x200b], ['NegativeMediumSpace', 0x200b],
+  ['NegativeThickSpace', 0x200b],
 ]
 
 const NAMED = new Map<string, string>()
@@ -47,8 +63,22 @@ for (const [name, cp] of LEGACY_EXTRA) {
   NAMED.set(name, String.fromCharCode(cp))
   LEGACY.add(name)
 }
-for (const [name, cp] of OTHER) NAMED.set(name, String.fromCharCode(cp))
+for (const [name, v] of OTHER) NAMED.set(name, typeof v === 'string' ? v : String.fromCharCode(v))
 const LEGACY_MAX = Math.max(...[...LEGACY].map((n) => n.length))
+
+// Zeichen, die nach Faltung kein unbekanntes Entity erzeugt: druckbares ASCII und die kleinen
+// Latin-1-Buchstaben. Kein Entity ausserhalb der Tabelle ergibt nur Leerraum.
+const SURVIVES = /^[\x21-\x7e\u00e0-\u00f6\u00f8-\u00ff]*$/
+
+/**
+ * Ob die Fassung trotz unbekannter Entities (`sure` false) jeden Treffer fuer diesen Begriff
+ * enthaelt. `looseTerm` ist gefaltet und ohne Leerraum. Ein unbekanntes Entity ergibt dann ein
+ * Zeichen, das nicht im Begriff vorkommen kann und auch nicht wegfaellt: ein Treffer liegt ganz
+ * davor oder dahinter, und dort gleichen sich beide Fassungen.
+ */
+export function termSurvivesUnknownEntities(looseTerm: string): boolean {
+  return SURVIVES.test(looseTerm)
+}
 
 // Numerische Verweise auf 0x80-0x9F meinen nach HTML-Spezifikation Windows-1252 (0 = undefiniert).
 const C1 = [

@@ -399,6 +399,27 @@ describe('scanBodies', () => {
     expect(gets[1]!.payload.gids).toEqual([3, 4, 5])
   })
 
+  it('html with an unknown entity is still prefiltered and matches like html-to-text', async () => {
+    const rows = rowsOf(3)
+    const mimes = {
+      1: html('<p>I &hearts; the Rechnung-2026 &check; today</p>'),
+      2: html('<p>Nothing &hearts; here</p>'),
+      3: html('<p>Gru&szlig; &star; Ende</p>'),
+    }
+    for (const gid of [1, 2, 3]) {
+      const body = await parseForScan(Buffer.from(rawMime(mimes[gid as 1]), 'base64'))
+      expect(body).toMatchObject({ ok: true, exact: false, sure: false })
+    }
+    const a = await scan({ rows, bodies: {}, mimes }, { term: 'rechnung-2026' })
+    expect(a.res.matches.map((m) => m.row.gid)).toEqual([1])
+    expect(a.res.matches[0]!.matchContext).toContain('I \u2665 the Rechnung-2026 \u2713 today')
+    // Ein Begriff mit dem Zeichen des Entities geht ueber den vollen Text.
+    const b = await scan({ rows, bodies: {}, mimes }, { term: '\u2665 here' })
+    expect(b.res.matches.map((m) => m.row.gid)).toEqual([2])
+    const c = await scan({ rows, bodies: {}, mimes }, { term: 'GRUSS \u2606' })
+    expect(c.res.matches.map((m) => m.row.gid)).toEqual([3])
+  })
+
   it('helper crash mid-scan surfaces HELPER_CRASHED and the next call works', async () => {
     const rows = rowsOf(3)
     let crash = true
