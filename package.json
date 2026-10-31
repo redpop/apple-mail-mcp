@@ -44,7 +44,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:swift": "swift test --package-path swift",
-    "version": "node scripts/sync-versions.mjs && git add server.json manifest.json swift/Sources/MailHelperCore/Version.generated.swift"
+    "version": "node scripts/sync-versions.mjs && git add server.json manifest.json swift/Sources/MailHelperCore/Version.generated.swift",
+    "prepublishOnly": "node scripts/release/check-publish.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",
