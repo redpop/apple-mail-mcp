@@ -27,7 +27,7 @@ trap '/bin/rm -rf "$UNPACK"' EXIT
 /bin/mkdir -p "$STAGING/bin"
 /usr/bin/ditto "$ROOT/dist" "$STAGING/dist"
 /usr/bin/ditto "$ROOT/bin/$APP_NAME" "$STAGING/bin/$APP_NAME"
-for f in manifest.json package.json package-lock.json README.md LICENSE SECURITY.md; do
+for f in manifest.json icon.png package.json package-lock.json README.md LICENSE SECURITY.md; do
   /bin/cp "$ROOT/$f" "$STAGING/$f"
 done
 (cd "$STAGING" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund >&2)

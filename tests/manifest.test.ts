@@ -59,6 +59,15 @@ describe('manifest.json', () => {
     expect(manifest.tools.map((t: { name: string }) => t.name).sort()).toEqual(registered.sort())
   })
 
+  test('has a 512 px PNG icon that the MCPB build ships', () => {
+    expect(manifest.icon).toBe('icon.png')
+    const png = readFileSync(new URL('../icon.png', import.meta.url))
+    expect(png.subarray(1, 4).toString('latin1')).toBe('PNG')
+    // IHDR: Breite und Hoehe ab Byte 16.
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([512, 512])
+    expect(read('scripts/release/build-mcpb.sh')).toMatch(/for f in [^\n]*icon\.png/)
+  })
+
   test('server entry and compatibility (Spec 16.3)', () => {
     expect(manifest.server.type).toBe('node')
     expect(manifest.server.entry_point).toBe('dist/index.js')
