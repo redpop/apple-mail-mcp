@@ -111,6 +111,11 @@ what remains.
 - If the helper crashes, the next request restarts it. End of input on stdin ends the helper;
   SIGINT and SIGTERM stop it before the server exits.
 - **stdout carries protocol only, on both legs.** Logs go to stderr.
+- At runtime Node parses helper responses with non-strict zod schemas (`src/schemas.ts`): a missing
+  or mistyped field is a contract break, an unknown extra field is dropped silently. A field Swift
+  sends that Node does not declare is caught at test time instead: the golden files in
+  `tests/fixtures/contract/` hold one response per helper command, produced by the Swift tests, and
+  `tests/contract.test.ts` parses them with strict variants of the same schemas.
 - The state file `~/Library/Application Support/apple-mail-mcp/state.json` (mode 0600) records
   when access last worked and which helper version was used (from the handshake). The hash field
   stays empty: the grant follows bundle id and signature, not the file hash, so a hash would not
