@@ -12,7 +12,8 @@ environment it:
    version agree, and that the tagged commit is on `main` (`scripts/release/check-tag.sh`);
 2. runs typecheck, vitest, Swift tests and the TypeScript build;
 3. imports the Developer ID certificate into a temporary keychain (`import-signing.sh`);
-4. builds the universal helper `bin/Mail MCP Helper.app` with the release bundle id;
+4. builds the universal helper `bin/Mail MCP Helper.app` with the release bundle id, then removes
+   the keychain at once, before any downloaded tool runs (`cleanup-keychain.sh`);
 5. notarizes and staples it with the App Store Connect API key (`notarize.sh`);
 6. verifies the bundle: both architectures, identifier, Developer ID authority, team, hardened
    runtime, the release requirement from `src/signing.ts`, the stapled ticket, Gatekeeper, no
@@ -25,7 +26,7 @@ environment it:
     `SHA256SUMS` (`publish.sh`);
 11. publishes `server.json` to the MCP Registry with the checksum of the released `.mcpb`
     (`scripts/publish-registry.sh`);
-12. removes the keychain, also after a failure (`cleanup-keychain.sh`).
+12. runs `cleanup-keychain.sh` again as a fallback, also after a failure.
 
 `npm publish` from anywhere else fails: the `prepublishOnly` hook
 (`scripts/release/check-publish.mjs`) requires `CI=true` and exactly the release bundle in `bin/`.
@@ -77,8 +78,13 @@ publish through OIDC.
 
 ## When a run fails halfway
 
-Re-run the failed job. `publish.sh` skips `npm publish` when the version is already on npm, and
-uploads the assets again when the GitHub release already exists.
+Re-run the failed job. A re-run builds and signs again, so its files differ byte for byte from
+the first run's. `publish.sh` therefore never replaces anything that was published:
+
+- a version already on npm is skipped;
+- an existing GitHub release without assets gets all of them; one with all assets stays as it is;
+- an existing release with only some assets stops the run. Delete those assets from the release
+  and re-run, so that the zip, the `.mcpb` and `SHA256SUMS` come from one build.
 
 If only the MCP Registry step failed, run the **MCP Registry** workflow (`registry.yml`) on the
 tag. It downloads the released `.mcpb`, computes its checksum and publishes `server.json`; it

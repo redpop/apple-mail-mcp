@@ -18,7 +18,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd)"
 cd "$REPO_ROOT"
 
-# Gepinnt statt "latest": ein neues Release des Publishers soll keinen Release-Lauf aendern.
+# Gepinnt statt "latest", mit Pruefsummen je Plattform (unten): ein neues oder ausgetauschtes
+# Release-Asset des Publishers soll keinen Release-Lauf aendern.
 MCP_PUBLISHER_VERSION="v1.8.1"
 PLACEHOLDER="0000000000000000000000000000000000000000000000000000000000000000"
 
@@ -69,14 +70,20 @@ fi
 fill_sha "$MCPB" "$WORK_DIR/server.json"
 
 case "$(/usr/bin/uname -s)/$(/usr/bin/uname -m)" in
-  Darwin/arm64) PUBLISHER="darwin_arm64" ;;
-  Darwin/x86_64) PUBLISHER="darwin_amd64" ;;
-  Linux/aarch64) PUBLISHER="linux_arm64" ;;
-  Linux/x86_64) PUBLISHER="linux_amd64" ;;
+  Darwin/arm64) PUBLISHER="darwin_arm64"; PUBLISHER_SHA256="e45e520892460732a4bdf37255576415d4a53ec171f8b913faf15bb1aef7cb77" ;;
+  Darwin/x86_64) PUBLISHER="darwin_amd64"; PUBLISHER_SHA256="88126981225e7714fcc6b7a10cdba4a80ae5901e9740a8c06d0d5195c8bc294c" ;;
+  Linux/aarch64) PUBLISHER="linux_arm64"; PUBLISHER_SHA256="8dd75a6cf6845688b5d4e46df58d3ca26d5c8d233bb0626606e1db82c5e883e4" ;;
+  Linux/x86_64) PUBLISHER="linux_amd64"; PUBLISHER_SHA256="a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc" ;;
   *) echo "publish-registry: no mcp-publisher build for $(/usr/bin/uname -s)/$(/usr/bin/uname -m)" >&2; exit 1 ;;
 esac
-curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION/mcp-publisher_${PUBLISHER}.tar.gz" \
-  | tar xz -C "$WORK_DIR" mcp-publisher
+curl -fsSL -o "$WORK_DIR/mcp-publisher.tar.gz" \
+  "https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION/mcp-publisher_${PUBLISHER}.tar.gz"
+ACTUAL_SHA256="$(/usr/bin/shasum -a 256 "$WORK_DIR/mcp-publisher.tar.gz" | /usr/bin/awk '{print $1}')"
+if [ "$ACTUAL_SHA256" != "$PUBLISHER_SHA256" ]; then
+  echo "publish-registry: mcp-publisher_${PUBLISHER}.tar.gz has checksum $ACTUAL_SHA256, expected $PUBLISHER_SHA256" >&2
+  exit 1
+fi
+tar xzf "$WORK_DIR/mcp-publisher.tar.gz" -C "$WORK_DIR" mcp-publisher
 
 # GitHub-OIDC statt eines langlebigen Tokens: der Namensraum io.github.redpop haengt an der
 # Identitaet des Workflow-Laufs. publish liest server.json aus dem Arbeitsverzeichnis.

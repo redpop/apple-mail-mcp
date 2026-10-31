@@ -32,6 +32,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # check-tag.sh braucht origin/main
+          # Kein Schreib-Token in .git/config fuer die spaeteren Schritte; gh bekommt GH_TOKEN gezielt.
+          persist-credentials: false
 
       # Wie in ci.yml: neueste Nicht-Beta-Version von Xcode 16.
       - name: Select Xcode
@@ -91,6 +93,12 @@ jobs:
         env:
           CI: 'true'
 
+      # Gleich nach dem Signieren: danach laeuft Fremdcode (mcpb per npx, Attestation, npm,
+      # mcp-publisher), der die Developer-ID-Identitaet nicht mehr erreichen soll. Notarisieren und
+      # Stapeln brauchen den Schluesselbund nicht.
+      - name: Remove keychain after signing
+        run: scripts/release/cleanup-keychain.sh
+
       - name: Notarize and staple
         run: scripts/release/notarize.sh "bin/Mail MCP Helper.app" "$RUNNER_TEMP/mail-helper.zip"
         env:
@@ -136,6 +144,7 @@ jobs:
       - name: Publish to the MCP Registry
         run: scripts/publish-registry.sh "${{ steps.mcpb.outputs.path }}"
 
+      # Rueckfall, falls ein Schritt davor gescheitert ist.
       - name: Remove keychain
         if: always()
         run: scripts/release/cleanup-keychain.sh
