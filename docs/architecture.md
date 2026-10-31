@@ -153,6 +153,14 @@ folds ASCII, so the helper registers a function that applies Unicode case foldin
 accent-sensitive: "a with umlaut" does not match plain "a". Wildcard characters typed by the
 user have no special meaning.
 
+Node folds the same way for body search and for matching settings, with one known difference:
+the Greek capital sigma. JavaScript lowercases a word-final capital sigma to the final form
+(U+03C2), Swift always to the medial form (U+03C3). Each comparison folds both sides in the same
+process, so the difference never mixes the two. It shows only in one case: a search term written
+with a final sigma does not match the same word written in capitals in a subject or address
+(helper), while body search (Node) does match it. A term ending in the medial form behaves the
+other way round.
+
 To keep this fast, search is **dictionary-first**: subject and address text lives in lookup
 tables with far fewer rows than `messages`. The helper folds and matches each distinct string
 once, then selects messages by the matching ids.

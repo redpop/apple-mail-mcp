@@ -51,7 +51,8 @@ the mail in Mail.app. Details: [`docs/tools.md`](./docs/tools.md).
 - **Settings come from configuration, never from tool parameters**, so a malicious mail cannot
   ask the model to switch them off.
 - **Works with [apple-calendar-mcp](https://github.com/redpop/apple-calendar-mcp)**: "find the
-  mail about Thursday's meeting". Same conventions (ISO 8601 with offset, error shape).
+  mail about Thursday's meeting". Same conventions: timestamps in ISO 8601 with offset, and
+  errors as an `isError` result with one plain-English sentence per error code.
 
 ## Requirements
 
@@ -158,7 +159,7 @@ then fails with `CONFIG_INVALID` naming the setting, and nothing falls back to "
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `APPLE_MAIL_ACCOUNTS` | empty (all accounts) | Comma-separated allowlist. An entry matches an account's UUID, address or name, ignoring case. |
+| `APPLE_MAIL_ACCOUNTS` | empty (all accounts) | Comma-separated allowlist. An entry matches an account's UUID, address or name, ignoring case. A name shared by two accounts matches both; use the address or UUID to pick one. |
 | `APPLE_MAIL_INCLUDE_JUNK` | `false` | Include mailboxes with the junk role. |
 | `APPLE_MAIL_INCLUDE_TRASH` | `false` | Include mailboxes with the trash role. |
 | `APPLE_MAIL_EXCLUDE_MAILBOXES` | empty | Comma-separated mailboxes to hide. An entry matches a mailbox name (exact, ignoring case) or a path with `/`. |
