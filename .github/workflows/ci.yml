@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  # Gepinnt, gleiche Version wie in release.yml und release-candidate.yml.
+  MCPB_VERSION: 2.1.2
+
 jobs:
   build:
     runs-on: macos-14
@@ -42,6 +46,9 @@ jobs:
 
       - name: Swift tests
         run: npm run test:swift
+
+      - name: Validate MCPB manifest
+        run: npx -y "@anthropic-ai/mcpb@$MCPB_VERSION" validate manifest.json
 
       - name: TypeScript build
         run: npm run build
