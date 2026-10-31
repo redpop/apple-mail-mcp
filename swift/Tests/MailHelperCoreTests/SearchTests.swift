@@ -175,6 +175,17 @@ import Testing
         #expect(thread.messageIdHeader == "<thread1-1007@example.com>")
     }
 
+    @Test func nullRecipientTypeReadsAsToAndUnknownAsBcc() throws {
+        let f2 = try FixtureBuilder.build()
+        let h = try SQLiteHandle(path: f2.envelopeIndex.path)
+        let rowid = try #require(f2.seed.messages.first { $0.name == "invoice" }?.rowid)
+        try h.run("UPDATE recipients SET type = NULL WHERE message = ? AND position = 0", [.int(rowid)])
+        try h.run("UPDATE recipients SET type = 7 WHERE message = ? AND position = 1", [.int(rowid)])
+        let r = try MailStore(config: f2.config).search(.init(allowedMailboxIds: f2.allMailboxIds, limit: 50, maxRecipients: 10))
+        let m = try #require(r.messages.first { $0.gid == f2.gid(named: "invoice") })
+        #expect(m.recipients.map(\.type) == [.to, .bcc, .bcc])
+    }
+
     @Test func attachmentNamesAreCappedAtTwenty() throws {
         let f2 = try FixtureBuilder.build()
         let h = try SQLiteHandle(path: f2.envelopeIndex.path)

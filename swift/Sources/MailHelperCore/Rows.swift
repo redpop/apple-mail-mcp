@@ -197,6 +197,8 @@ extension MailStore {
                         WHERE r.message IN (\(ph)))
                     WHERE rn <= ? ORDER BY message, rn
                     """, binds + [.int(Int64(maxRecipients))]) { r in
+                    // recipients.type: 0 = to, 1 = cc, sonst bcc. Die Spalte ist nullable; NULL liest
+                    // sqlite3_column_int64 als 0, also als to. Unbekannte Werte landen bei bcc.
                     let type: RecipientType = switch r.int(1) { case 0: .to; case 1: .cc; default: .bcc }
                     let comment = r.text(3) ?? ""
                     recipients[r.int(0), default: []].append(
