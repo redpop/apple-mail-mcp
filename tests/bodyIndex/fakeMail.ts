@@ -107,16 +107,29 @@ export class FakeMail {
         }
         return { messages, missing, budgetExhausted: false }
       }
-      case 'search': {
-        const want = new Set(p.gids as number[])
-        const seen = new Set<number>()
-        const messages = []
-        for (const r of this.visible(allowed)) {
-          if (!want.has(r.gid) || seen.has(r.gid)) continue
-          seen.add(r.gid)
-          messages.push(this.messageRow(r))
+      case 'list-mailboxes': {
+        const ids = [...new Set([1, ...this.rows.map((r) => r.mailbox)])].sort((a, b) => a - b)
+        return {
+          mailboxes: ids.map((id) => ({ id, url: id === 1 ? 'imap://ACC1/INBOX' : `imap://ACC1/Folder${id}`, total: 0, unread: 0 })),
+          accounts: [{ uuid: 'ACC1', description: 'Privat', username: 'a@example.com' }],
+          accountNames: 'available',
         }
-        return { messages, hasMore: false }
+      }
+      case 'search': {
+        // Wie der Helper: optional nur diese gids, Reihenfolge (date DESC, gid DESC), Keyset `after`, limit.
+        const want = p.gids === undefined ? null : new Set(p.gids as number[])
+        const after = p.after as { date: number; gid: number } | undefined
+        const seen = new Set<number>()
+        const rows = []
+        for (const r of this.visible(allowed)) {
+          if ((want !== null && !want.has(r.gid)) || seen.has(r.gid)) continue
+          seen.add(r.gid)
+          rows.push(this.messageRow(r))
+        }
+        rows.sort((a, b) => b.dateReceived - a.dateReceived || b.gid - a.gid)
+        const page = rows.filter((m) => after === undefined || m.dateReceived < after.date || (m.dateReceived === after.date && m.gid < after.gid))
+        const limit = p.limit as number
+        return { messages: page.slice(0, limit), hasMore: page.length > limit }
       }
       default:
         throw new Error(`unexpected ${command}`)

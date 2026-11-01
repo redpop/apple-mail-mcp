@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { foldFast } from '../../src/bodyScan.js'
-import { indexDir, loadSqlite, openStore, removeIndexFiles, SCHEMA_VERSION } from '../../src/bodyIndex/store.js'
+import { indexDir, loadSqlite, openReader, openStore, removeIndexFiles, SCHEMA_VERSION } from '../../src/bodyIndex/store.js'
 
 const sqlite = (await loadSqlite())!
 const tmp = () => indexDir(mkdtempSync(join(tmpdir(), 'mailmcp-idx-')))
@@ -82,5 +82,57 @@ describe('store', () => {
     removeIndexFiles(dir)
     expect(existsSync(join(dir, 'index.sqlite'))).toBe(false)
     expect(existsSync(join(dir, 'writer.lock'))).toBe(true)
+  })
+
+  test('reader: texts by gid, skipped gids by reason, counts', () => {
+    const s = openStore(sqlite, tmp(), { exclude: () => {} })
+    s.tx(() => {
+      s.addDoc(10, 'Ihre Stromrechnung')
+      s.addDoc(11, 'Grüße')
+      s.addSkipped(12, 'security')
+      s.addSkipped(13, 'unavailable')
+    })
+    expect(s.texts([10, 11, 99])).toEqual(new Map([[10, 'Ihre Stromrechnung'], [11, 'Grüße']]))
+    expect(s.skippedGids('security')).toEqual([12])
+    s.close()
+  })
+})
+
+describe('openReader', () => {
+  test('reads without creating anything; null without an index file', () => {
+    const dir = tmp()
+    expect(openReader(sqlite, dir)).toBeNull()
+    expect(existsSync(dir)).toBe(false)
+  })
+
+  test('sees what the writer commits, and leaves every file at 0600', () => {
+    const dir = tmp()
+    const s = openStore(sqlite, dir, { exclude: () => {} })
+    s.tx(() => s.addDoc(10, 'Ihre Stromrechnung'))
+    const r = openReader(sqlite, dir)!
+    expect(r.matchGids(foldFast('rechnung'))).toEqual([10])
+    s.tx(() => s.addDoc(11, 'noch eine Rechnung'))
+    expect(r.matchGids(foldFast('rechnung')).sort()).toEqual([10, 11])
+    expect(r.texts([11]).get(11)).toBe('noch eine Rechnung')
+    expect(r.counts()).toEqual({ docs: 2, skipped: 0 })
+    expect((r as unknown as { setMeta?: unknown }).setMeta).toBeUndefined()
+    s.close()
+    r.close()
+    // Nach dem Schliessen des Schreibers legt ein Leser -wal und -shm neu an.
+    const again = openReader(sqlite, dir)!
+    expect(again.meta('schemaVersion')).toBe(String(SCHEMA_VERSION))
+    for (const f of ['index.sqlite', 'index.sqlite-wal', 'index.sqlite-shm']) if (existsSync(join(dir, f))) expect(mode(join(dir, f)), f).toBe(0o600)
+    again.close()
+  })
+
+  test('null for a file with another schema version or that is no database', () => {
+    const dir = tmp()
+    const s = openStore(sqlite, dir, { exclude: () => {} })
+    s.tx(() => s.setMeta('schemaVersion', '999'))
+    s.close()
+    expect(openReader(sqlite, dir)).toBeNull()
+    removeIndexFiles(dir)
+    writeFileSync(join(dir, 'index.sqlite'), 'not a database')
+    expect(openReader(sqlite, dir)).toBeNull()
   })
 })

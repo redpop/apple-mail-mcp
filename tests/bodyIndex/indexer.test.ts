@@ -344,4 +344,46 @@ describe('indexer', () => {
     indexer.stop()
     expect(createLease(dir).acquire()).toBe(true)
   })
+
+  test('catchUp reports whether it reached the end of the feed', async () => {
+    const mail = new FakeMail()
+    mail.add(1, 'eins')
+    const { indexer } = make(mail)
+    // Ohne Lease (vor dem ersten Durchgang) gibt es nichts nachzuziehen.
+    expect(await indexer.catchUp(1000)).toBe(false)
+    await indexer.runCycle()
+    mail.add(2, 'zwei')
+    expect(await indexer.catchUp(1000)).toBe(true)
+    let t = 0
+    const slow = make(mail, { now: () => (t += 600) })
+    await slow.indexer.runCycle()
+    mail.add(3, 'drei')
+    expect(await slow.indexer.catchUp(500)).toBe(false)
+    indexer.stop()
+    slow.indexer.stop()
+  })
+
+  test('reader: only for a complete index built for this configuration', async () => {
+    const mail = new FakeMail()
+    mail.add(1, 'Ihre Stromrechnung')
+    mail.add(2, SECURITY_BODY, { subject: 'Sign in' })
+    const { indexer, dir } = make(mail)
+    expect(indexer.reader()).toBeNull()
+    await indexer.runCycle()
+    const r = indexer.reader()!
+    expect(r.matchGids(foldFast('rechnung'))).toEqual([1])
+    expect(r.skippedGids('security')).toEqual([2])
+    r.close()
+    // Eine zweite Instanz mit gleicher Konfiguration liest mit, ohne Lease.
+    const same = make(mail, { dir })
+    expect(same.indexer.reader()).not.toBeNull()
+    same.indexer.reader()!.close()
+    // Mit anderer Konfiguration nicht: ihre Treffer waeren andere.
+    const other = make(mail, { dir, config: config({ APPLE_MAIL_INCLUDE_JUNK: 'true' }) })
+    expect(other.indexer.reader()).toBeNull()
+    indexer.stop()
+    expect(same.indexer.reader()).not.toBeNull()
+    same.indexer.stop()
+    expect(same.indexer.reader()).toBeNull()
+  })
 })
