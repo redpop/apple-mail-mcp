@@ -25,7 +25,9 @@ environment it:
 10. publishes to npm and creates the GitHub release with `mail-helper.zip`, the `.mcpb` and
     `SHA256SUMS` (`publish.sh`);
 11. publishes `server.json` to the MCP Registry with the checksum of the released `.mcpb`
-    (`scripts/publish-registry.sh`);
+    (`scripts/publish-registry.sh`), after waiting up to ten minutes until npm serves the new
+    version: the Registry checks the npm package, and a new package shows only a
+    `0.0.0-stage` placeholder for a while after its first publish;
 12. runs `cleanup-keychain.sh` again as a fallback, also after a failure.
 
 A local `npm publish` of the project directory fails: the `prepublishOnly` hook
