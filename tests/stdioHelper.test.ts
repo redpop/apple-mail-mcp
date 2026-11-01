@@ -56,7 +56,7 @@ describe('createStdioRunner', () => {
   })
 
   it('version mismatch rejects requests', async () => {
-    process.env.FAKE_PROTOCOL_VERSION = '2'
+    process.env.FAKE_PROTOCOL_VERSION = '1'
     const r = make()
     await expect(r.run('echo-pid', {})).rejects.toMatchObject({ code: 'HELPER_VERSION_MISMATCH' })
     await expect(r.run('echo-pid', {})).rejects.toMatchObject({ code: 'HELPER_VERSION_MISMATCH' })

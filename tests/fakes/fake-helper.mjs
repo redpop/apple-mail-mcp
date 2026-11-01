@@ -3,7 +3,7 @@
 // Verhalten ueber Umgebungsvariablen: FAKE_PROTOCOL_VERSION, FAKE_LOG (Datei, eine Zeile je Kommando).
 import { appendFileSync } from 'node:fs'
 
-const protocolVersion = Number(process.env.FAKE_PROTOCOL_VERSION ?? '1')
+const protocolVersion = Number(process.env.FAKE_PROTOCOL_VERSION ?? '2')
 const log = process.env.FAKE_LOG
 
 let buffer = ''

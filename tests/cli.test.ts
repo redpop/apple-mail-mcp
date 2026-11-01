@@ -10,6 +10,7 @@ import { loadConfig } from '../src/config.js'
 import { HelperError } from '../src/errors.js'
 import { FDA_SETTINGS_URL } from '../src/fdaPrompt.js'
 import { readState } from '../src/state.js'
+import { PROTOCOL_VERSION } from '../src/stdioRunner.js'
 
 const BUNDLE = '/opt/x/bin/Mail MCP Helper.app'
 
@@ -241,7 +242,7 @@ function doctorDeps(s: ReturnType<typeof sink>, runner: ReturnType<typeof fakeRu
 
 const goodRunner = (over: Record<string, () => unknown> = {}) =>
   fakeRunner({
-    hello: () => ({ protocolVersion: 1, helperVersion: '0.1.0' }),
+    hello: () => ({ protocolVersion: PROTOCOL_VERSION, helperVersion: '0.1.0' }),
     probe: () => probe('granted'),
     'list-mailboxes': () => mailboxes(),
     search: () => searchRes(),

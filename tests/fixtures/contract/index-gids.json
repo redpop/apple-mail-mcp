@@ -1,0 +1,21 @@
+{
+  "id" : 9,
+  "ok" : true,
+  "result" : {
+    "gids" : [
+      [
+        1017,
+        true
+      ],
+      [
+        1018,
+        false
+      ],
+      [
+        1019,
+        true
+      ]
+    ],
+    "hasMore" : true
+  }
+}

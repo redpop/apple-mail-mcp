@@ -3,6 +3,6 @@
   "ok" : true,
   "result" : {
     "helperVersion" : "0.0.0",
-    "protocolVersion" : 1
+    "protocolVersion" : 2
   }
 }

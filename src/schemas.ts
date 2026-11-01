@@ -64,6 +64,18 @@ export const probeResult = z.object({
   accountNames: z.object({ status: z.enum(['available', 'unavailable']), unmatchedAccounts: z.number().int(), reason: z.string().nullable().optional() }),
 })
 
+// Body-Index (Spec 5.3): `index-feed` liefert Zeilen nach ROWID, `index-gids` Paare [gid, hasFile].
+export const indexFeedResult = z.object({
+  rows: z.array(z.object({ rowid: z.number().int(), gid: z.number().int(), date: z.number().int() })),
+  maxRowid: z.number().int(),
+  hasMore: z.boolean(),
+})
+
+export const indexGidsResult = z.object({
+  gids: z.array(z.tuple([z.number().int(), z.boolean()])),
+  hasMore: z.boolean(),
+})
+
 export const helloResult = z.object({ protocolVersion: z.number().int(), helperVersion: z.string() })
 
 export type MessageRow = z.infer<typeof messageRow>
@@ -73,3 +85,5 @@ export type ThreadResult = z.infer<typeof threadResult>
 export type ListMailboxesResult = z.infer<typeof listMailboxesResult>
 export type ProbeResult = z.infer<typeof probeResult>
 export type HelloResult = z.infer<typeof helloResult>
+export type IndexFeedResult = z.infer<typeof indexFeedResult>
+export type IndexGidsResult = z.infer<typeof indexGidsResult>
