@@ -5,6 +5,7 @@ export interface Config {
   excludeMailboxes: string[]
   showSecurityMails: boolean
   bodySearch: boolean
+  bodyIndex: boolean
   maxResults: number
   maxBodyChars: number
   helperPath: string | null
@@ -68,6 +69,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ConfigResult {
       excludeMailboxes: list(env, 'APPLE_MAIL_EXCLUDE_MAILBOXES'),
       showSecurityMails: bool(env, 'APPLE_MAIL_SHOW_SECURITY_MAILS', false),
       bodySearch: bool(env, 'APPLE_MAIL_BODY_SEARCH', true),
+      bodyIndex: bool(env, 'APPLE_MAIL_BODY_INDEX', false),
       maxResults: int(env, 'APPLE_MAIL_MAX_RESULTS', 50, 1, 100),
       maxBodyChars: int(env, 'APPLE_MAIL_MAX_BODY_CHARS', 20000, 1000, 100000),
       helperPath: raw(env, 'APPLE_MAIL_HELPER_PATH') ?? null,

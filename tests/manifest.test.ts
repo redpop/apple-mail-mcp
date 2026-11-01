@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 const read = (name: string) => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8')
 const manifest = JSON.parse(read('manifest.json'))
+const pkg = JSON.parse(read('package.json'))
 
 // Nur Entwicklung bzw. Diagnose, nicht ueber MCPB einstellbar (Spec 11).
 const NOT_IN_MCPB = ['APPLE_MAIL_HELPER_PATH', 'APPLE_MAIL_MCP_DEBUG']
@@ -15,6 +16,7 @@ const KEYS: Record<string, string> = {
   APPLE_MAIL_EXCLUDE_MAILBOXES: 'exclude_mailboxes',
   APPLE_MAIL_SHOW_SECURITY_MAILS: 'show_security_mails',
   APPLE_MAIL_BODY_SEARCH: 'body_search',
+  APPLE_MAIL_BODY_INDEX: 'body_index',
   APPLE_MAIL_MAX_RESULTS: 'max_results',
   APPLE_MAIL_MAX_BODY_CHARS: 'max_body_chars',
 }
@@ -39,6 +41,7 @@ describe('manifest.json', () => {
     expect(uc.include_trash).toMatchObject({ type: 'boolean', default: false })
     expect(uc.show_security_mails).toMatchObject({ type: 'boolean', default: false })
     expect(uc.body_search).toMatchObject({ type: 'boolean', default: true })
+    expect(uc.body_index).toMatchObject({ type: 'boolean', default: false })
     expect(uc.max_results).toMatchObject({ type: 'number', min: 1, max: 100, default: 50 })
     expect(uc.max_body_chars).toMatchObject({ type: 'number', min: 1000, max: 100000, default: 20000 })
     const config = read('src/config.ts')
@@ -48,6 +51,7 @@ describe('manifest.json', () => {
     expect(config).toContain("bool(env, 'APPLE_MAIL_INCLUDE_TRASH', false)")
     expect(config).toContain("bool(env, 'APPLE_MAIL_SHOW_SECURITY_MAILS', false)")
     expect(config).toContain("bool(env, 'APPLE_MAIL_BODY_SEARCH', true)")
+    expect(config).toContain("bool(env, 'APPLE_MAIL_BODY_INDEX', false)")
   })
 
   // Claude Desktop ersetzt ${user_config.x} nur, wenn ein Wert oder Default existiert, und nie mit
@@ -83,6 +87,7 @@ describe('manifest.json', () => {
     expect(manifest.server.mcp_config.command).toBe('node')
     expect(manifest.server.mcp_config.args).toEqual(['${__dirname}/dist/index.js'])
     expect(manifest.compatibility.platforms).toEqual(['darwin'])
-    expect(manifest.compatibility.runtimes.node).toBe('>=22')
+    expect(manifest.compatibility.runtimes.node).toBe('^22.16 || >=24')
+    expect(pkg.engines.node).toBe('^22.16 || >=24')
   })
 })

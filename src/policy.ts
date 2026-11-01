@@ -35,9 +35,17 @@ function stableJson(v: unknown): string {
   return JSON.stringify(v)
 }
 
+const hash16 = (v: unknown): string => createHash('sha256').update(stableJson(v)).digest('hex').slice(0, 16)
+
+// bodyIndex aendert die Treffermenge nicht (Index und Live-Scan finden dasselbe), Cursor bleiben gueltig.
 export function fingerprintOf(config: Config): string {
-  const { helperPath: _h, debug: _d, ...effective } = config
-  return createHash('sha256').update(stableJson(effective)).digest('hex').slice(0, 16)
+  const { helperPath: _h, debug: _d, bodyIndex: _b, ...effective } = config
+  return hash16(effective)
+}
+
+/** Nur was bestimmt, welche Mails in den Body-Index duerfen (Spec AMM-12 5.1). */
+export function indexFingerprintOf(config: Config): string {
+  return hash16({ accounts: config.accounts, includeJunk: config.includeJunk, includeTrash: config.includeTrash, excludeMailboxes: config.excludeMailboxes })
 }
 
 export function computePolicy(config: Config, raw: ListMailboxesResult): Policy {

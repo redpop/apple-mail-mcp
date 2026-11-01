@@ -12,7 +12,7 @@ test('defaults are fail-closed and documented', () => {
     ok: true,
     config: {
       accounts: [], includeJunk: false, includeTrash: false, excludeMailboxes: [],
-      showSecurityMails: false, bodySearch: true, maxResults: 50, maxBodyChars: 20000,
+      showSecurityMails: false, bodySearch: true, bodyIndex: false, maxResults: 50, maxBodyChars: 20000,
       helperPath: null, debug: false,
     },
   })
@@ -66,4 +66,9 @@ test.each([
   const r = loadConfig({ [key]: value })
   expect(r).toMatchObject({ ok: false, key })
   if (!r.ok) expect(r.error).toContain('not replaced')
+})
+test('APPLE_MAIL_BODY_INDEX is a boolean, default false', () => {
+  expect(cfg({}).bodyIndex).toBe(false)
+  expect(cfg({ APPLE_MAIL_BODY_INDEX: 'true' }).bodyIndex).toBe(true)
+  expect(loadConfig({ APPLE_MAIL_BODY_INDEX: 'yes' })).toMatchObject({ ok: false, key: 'APPLE_MAIL_BODY_INDEX' })
 })
