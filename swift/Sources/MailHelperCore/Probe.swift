@@ -70,7 +70,7 @@ extension MailStore {
         do {
             // Nutzt die gecachte Verbindung samt Schemabericht (Spec 5.2, 5.3); Fehlschlaege werden nicht
             // gecacht, der FDA-Zustand bleibt aktuell.
-            let (db, schema) = try envelopeConnection()
+            let (db, schema, _) = try envelopeConnection()
             guard schema.compatible else { return result(.granted, dir: located.name, schema: schema) }
             var counts: Counts?
             try db.query("""

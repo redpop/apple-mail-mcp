@@ -88,6 +88,31 @@ import Testing
         }
     }
 
+    /// macOS 15 (Mail 16.0) hat message_global_data.message_id_header nicht (Schema-Probe, AMM-11). Die
+    /// Spalte ist optional: das Schema bleibt kompatibel, Lese-Kommandos liefern messageIdHeader null.
+    @Test func missingMessageIdHeaderIsOptional() throws {
+        let f = try FixtureBuilder.build(dropping: ("message_global_data", "message_id_header"))
+        let store = MailStore(config: f.config)
+        let p = store.probe()
+        #expect(p.schema?.compatible == true)
+        #expect(p.schema?.missing == [])
+        let allowed = f.allMailboxIds.map(String.init).joined(separator: ",")
+        let gid = f.gid(named: "thread1")
+        let commands: [(String, String)] = [
+            ("search", #"{"allowedMailboxIds":[\#(allowed)],"limit":5,"maxRecipients":0,"countTotal":false}"#),
+            ("get-messages", #"{"allowedMailboxIds":[\#(allowed)],"gids":[\#(gid)],"maxBytesPerMessage":1024,"maxBytesTotal":1024}"#),
+            ("thread", #"{"allowedMailboxIds":[\#(allowed)],"gid":\#(gid),"limit":5,"maxRecipients":0}"#),
+        ]
+        for (command, payload) in commands {
+            let out = Dispatcher(store: store, signing: .trusted).handle(line: Data(#"{"id":1,"command":"\#(command)","payload":\#(payload)}"#.utf8))
+            let o = try #require(try JSONSerialization.jsonObject(with: out) as? [String: Any])
+            #expect(o["ok"] as? Bool == true, "\(command): \(o["error"] ?? "")")
+            let messages = try #require((o["result"] as? [String: Any])?["messages"] as? [[String: Any]], "\(command)")
+            #expect(!messages.isEmpty, "\(command)")
+            #expect(messages.allSatisfy { $0["messageIdHeader"] is NSNull }, "\(command)")
+        }
+    }
+
     @Test func probeCarriesTheFingerprintDDL() throws {
         let f = try FixtureBuilder.build()
         let p = MailStore(config: f.config).probe()

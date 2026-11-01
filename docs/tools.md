@@ -24,7 +24,7 @@ Conventions:
 | Field | Meaning |
 |---|---|
 | `id` | Message id. Stable until Mail rebuilds its index. |
-| `link` | `message://` link that opens the mail in Mail.app, or `null` if the mail has no Message-ID. |
+| `link` | `message://` link that opens the mail in Mail.app, or `null` if the mail has no Message-ID (always on macOS 15, where Mail does not store it). |
 | `subject` | Subject. For security mails the digit runs of 4 to 8 characters are replaced by `••••` and `subjectRedacted` is `true`. |
 | `from` | `{address, name}` or `null`. `name` is `null` when there is no display name. |
 | `to`, `cc` | Up to 5 recipients each in lists; `recipientCount` is the total. |

@@ -24,8 +24,8 @@ The main use is "find the mail about X":
 
 Four tools: `list_mailboxes`, `search_messages`, `get_message`, `get_thread`. Search covers
 sender, recipient, subject, free text, mailbox, date range, unread, flagged and attachments,
-and can also look inside message bodies. Every result carries a `message://` link that opens
-the mail in Mail.app. Details: [`docs/tools.md`](./docs/tools.md).
+and can also look inside message bodies. Results carry a `message://` link that opens the
+mail in Mail.app, where Mail stores the Message-ID (not on macOS 15). Details: [`docs/tools.md`](./docs/tools.md).
 
 ## Why this one
 
@@ -42,8 +42,8 @@ the mail in Mail.app. Details: [`docs/tools.md`](./docs/tools.md).
 - **Mail.app does not have to be running** and no Automation prompt appears. Your data is
   only as fresh as Mail's last sync, though, and a message that Mail never downloaded has no
   body.
-- **Threads and deep links.** `get_thread` returns a conversation; every message has a
-  `message://` link.
+- **Threads and deep links.** `get_thread` returns a conversation; messages carry a
+  `message://` link (not on macOS 15).
 - **Security mails are withheld by default.** Messages that look like verification codes,
   password resets or sign-in links are shown without their body, with digits in the subject
   masked, and cannot be found by body search. Detection is best effort, not a guarantee.
@@ -55,9 +55,11 @@ the mail in Mail.app. Details: [`docs/tools.md`](./docs/tools.md).
 
 ## Requirements
 
-- macOS 14 or later. Verified only on macOS 27.0.1 with Mail 16.0. The helper is built for
-  macOS 14 and later, but no Mail database from macOS 14 to 26 has been checked yet. Support
-  depends on the layout of Mail's database, not on the version number: `doctor` checks it.
+- macOS 15 or later. Verified with a real mailbox only on macOS 27.0.1 with Mail 16.0. The
+  database layout of macOS 15.8 and 26.6 passes the helper's column check, taken from runners
+  without a mail account. On macOS 15 Mail stores no Message-ID header, so results there carry
+  no `message://` link. Support depends on the layout of Mail's database, not on the version
+  number: `doctor` checks it.
   Reports from other versions are welcome, see [Reporting problems](#reporting-problems).
 - Node.js 22 or newer.
 - Mail set up with at least one account.
