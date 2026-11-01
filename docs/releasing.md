@@ -88,8 +88,8 @@ tokens, maintainers or trusted publishing, and from around January 2027 it can n
 directly, only stage a version that a maintainer then approves with 2FA. A first publish after
 that date needs `npm stage publish`, which `publish.sh` does not do yet.
 
-Later runs publish through OIDC. Add the repository and `release.yml` as a trusted publisher on
-npmjs.com, interactively with 2FA. An unvalidated trusted publisher expires 48 hours after it is
+Later runs publish through OIDC; `release.yml` no longer passes a token. Add the repository and
+`release.yml` as a trusted publisher on npmjs.com, interactively with 2FA. An unvalidated trusted publisher expires 48 hours after it is
 created and becomes validated with its first successful publish. Add it shortly before the next
 release, not right after the first one; if it expired, delete it and add it again.
 

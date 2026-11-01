@@ -140,8 +140,8 @@ jobs:
         run: scripts/release/publish.sh "${{ steps.npm.outputs.tarball }}" "${{ steps.mcpb.outputs.path }}" "$RUNNER_TEMP/mail-helper.zip"
         env:
           GH_TOKEN: ${{ github.token }}
-          # Nur fuer den ersten Publish (AMM-9); danach Trusted Publishing ueber OIDC, Secret geloescht.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Kein NODE_AUTH_TOKEN: seit 0.1.1 Trusted Publishing ueber OIDC (id-token: write). Der erste
+          # Publish (AMM-9) lief mit NPM_TOKEN, das Secret ist geloescht.
 
       # Zuletzt: scheitert die Registry, sind npm und Release trotzdem draussen; registry.yml holt nach.
       - name: Publish to the MCP Registry
