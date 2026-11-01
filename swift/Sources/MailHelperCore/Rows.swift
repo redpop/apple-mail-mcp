@@ -130,9 +130,11 @@ extension MailStore {
     func loadDetailed(gids: [Int64], allowed: [Int64], maxRecipients: Int) throws(HelperFailure)
         -> [(row: MessageRow, located: Located?)] {
         guard !gids.isEmpty, !allowed.isEmpty else { return [] }
-        let db = try envelopeDatabase()
+        let (db, optional) = try envelopeDatabaseWithColumns()
         let locator = try emlxLocator()
         locator.beginRequest()
+        // Fester Ausdruck, nie aus Eingaben: ohne die Spalte (macOS 15) liefert die Abfrage NULL.
+        let messageIdHeader = optional.messageIdHeader ? "g.message_id_header" : "NULL"
 
         // 1. Kopien in erlaubten Mailboxen.
         var copiesByGid: [Int64: [MessageCopy]] = [:]
@@ -145,7 +147,7 @@ extension MailStore {
             // Seite) statt der wenigen Kopien ueber messages_global_message_id_mailbox_index.
             let sql = """
                 SELECT m.ROWID, m.global_message_id, m.mailbox, m.read, m.flagged, m.date_received, m.date_sent,
-                       m.conversation_id, m.subject_prefix, s.subject, a.address, a.comment, g.message_id_header
+                       m.conversation_id, m.subject_prefix, s.subject, a.address, a.comment, \(messageIdHeader)
                 FROM messages m
                 LEFT JOIN subjects s ON s.ROWID = m.subject
                 LEFT JOIN addresses a ON a.ROWID = m.sender

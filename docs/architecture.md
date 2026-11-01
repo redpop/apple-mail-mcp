@@ -410,9 +410,11 @@ Measured on macOS 27.0.1, Mail 16.0, arm64, one real mailbox (spike, 2026-10-25)
 
 Assumed, not measured:
 
-- macOS 14 through 26: the minimum deployment target is 14 and compatibility is decided by the
-  column check, but no schema from those versions was inspected. Collected schemas go to
-  `fixtures/schema/`, where a Swift test runs the column check against each one;
+- macOS 15 and 26 with a real mailbox: the minimum deployment target is 15. The schemas of
+  macOS 15.8.2 and 26.6.2 come from the schema probe on GitHub runners without an account and
+  pass the column check; macOS 15 lacks `message_global_data.message_id_header`, which is
+  therefore optional and read as NULL. Collected schemas go to `fixtures/schema/`, where a
+  Swift test runs the column check against each one;
 - Exchange accounts: not in the spike mailbox; [`exchange.md`](./exchange.md) lists what the
   code does and what to check;
 - whether macOS turns a grant off at `exec` or at first file access for an unexpected

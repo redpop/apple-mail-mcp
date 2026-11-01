@@ -58,7 +58,7 @@ if [ "$(/bin/cat "$VERSION_FILE" 2>/dev/null || true)" != "$VERSION_BODY" ]; the
 fi
 
 # --- Universal bauen: je Architektur einzeln, dann lipo ---
-export MACOSX_DEPLOYMENT_TARGET="14.0"
+export MACOSX_DEPLOYMENT_TARGET="15.0"
 SLICE_DIR="$(/usr/bin/mktemp -d)"
 trap '/bin/rm -rf "$SLICE_DIR"' EXIT
 for arch in arm64 x86_64; do

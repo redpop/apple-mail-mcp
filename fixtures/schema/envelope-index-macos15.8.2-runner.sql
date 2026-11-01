@@ -1,4 +1,3 @@
--- expect-missing: message_global_data.message_id_header
 CREATE TABLE message_references (ROWID INTEGER PRIMARY KEY,
 message INTEGER NOT NULL REFERENCES messages(ROWID) ON DELETE CASCADE,
 reference INTEGER NOT NULL DEFAULT 0,

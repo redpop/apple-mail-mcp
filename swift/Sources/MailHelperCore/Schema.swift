@@ -16,13 +16,27 @@ enum Schema {
     static let required: [(table: String, columns: [String])] = [
         ("messages", ["ROWID", "global_message_id", "conversation_id", "sender", "subject", "subject_prefix",
                       "date_received", "date_sent", "mailbox", "read", "flagged", "deleted", "size"]),
-        ("message_global_data", ["ROWID", "message_id_header"]),
+        ("message_global_data", ["ROWID"]),
         ("mailboxes", ["ROWID", "url", "total_count", "unread_count"]),
         ("subjects", ["ROWID", "subject"]),
         ("addresses", ["ROWID", "address", "comment"]),
         ("recipients", ["message", "address", "type", "position"]),
         ("attachments", ["message", "name"]),
     ]
+
+    /// Spalten, die nicht jede Mail-Version hat. Fehlen sie, bleibt das Schema kompatibel und die Abfragen
+    /// liefern NULL. macOS 15 (Mail 16.0) hat message_id_header nicht (Schema-Probe, AMM-11).
+    struct OptionalColumns: Equatable, Sendable {
+        var messageIdHeader: Bool
+    }
+
+    static func optionalColumns(_ db: Database) throws(HelperFailure) -> OptionalColumns {
+        var present = Set<String>()
+        try db.query("PRAGMA table_info(message_global_data)") { row in
+            if let name = row.text(1) { present.insert(name) }
+        }
+        return OptionalColumns(messageIdHeader: present.contains("message_id_header"))
+    }
 
     static func check(_ db: Database) throws(HelperFailure) -> SchemaReport {
         var missing: [String] = []
