@@ -76,9 +76,20 @@ On the runner, the `.p12` and the `.p8` exist only inside the script that uses t
 ## First publish to npm
 
 The package does not exist on npm before the first release, so trusted publishing cannot be set
-up yet. The first run publishes with `NPM_TOKEN`. Afterwards, add the repository and
-`release.yml` as a trusted publisher on npmjs.com and delete the `NPM_TOKEN` secret; later runs
-publish through OIDC.
+up yet. The first run publishes with `NPM_TOKEN`: a granular access token with "Read and write
+(publish and stage)" for the `@redpop` scope, "Bypass two-factor authentication" checked, no IP
+ranges (hosted runners have no fixed address) and the shortest expiry. Delete the token on
+npmjs.com and the `NPM_TOKEN` secret after the run.
+
+npm is phasing these tokens out: since August 2026 a bypass-2FA token can no longer manage
+tokens, maintainers or trusted publishing, and from around January 2027 it can no longer publish
+directly, only stage a version that a maintainer then approves with 2FA. A first publish after
+that date needs `npm stage publish`, which `publish.sh` does not do yet.
+
+Later runs publish through OIDC. Add the repository and `release.yml` as a trusted publisher on
+npmjs.com, interactively with 2FA. An unvalidated trusted publisher expires 48 hours after it is
+created and becomes validated with its first successful publish. Add it shortly before the next
+release, not right after the first one; if it expired, delete it and add it again.
 
 ## When a run fails halfway
 
