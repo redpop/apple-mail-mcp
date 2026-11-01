@@ -7,6 +7,8 @@ code change.
 | File | Source | Verified |
 | --- | --- | --- |
 | `envelope-index-macos27.sql` | macOS 27.0.1, Mail 16.0, spike 2026-10-25 | yes, against a real mailbox |
+| `envelope-index-macos15.8.2-runner.sql` | macOS 15.8.2 (24H232), Mail 16.0, schema probe run 41308193940 on `macos-15`, no account | DDL only; lacks `message_global_data.message_id_header` |
+| `envelope-index-macos26.6.2-runner.sql` | macOS 26.6.2 (25G83), Mail 16.0, schema probe run 41308193940 on `macos-26`, no account | DDL only |
 | `accounts4-min.sql` | minimal `Accounts4.sqlite` for the fixture builder | not a collected schema |
 
 ## Adding a schema
