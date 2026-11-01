@@ -9,9 +9,8 @@ search and read the mail in Apple Mail.
 claude mcp add apple-mail -- npx -y @redpop/apple-mail-mcp
 ```
 
-> **Not published yet.** The npm package `@redpop/apple-mail-mcp` and the MCPB bundle do not
-> exist yet; the command above is what installation will look like. Until then, build from
-> source: see [Install from source](#install-from-source).
+Then grant Full Disk Access once with `npx -y @redpop/apple-mail-mcp setup`. For Claude
+Desktop there is a one-click bundle: see [Install](#install).
 
 ## What it does
 
@@ -81,11 +80,32 @@ model that can also reach the internet.
 
 The full threat model and both residual risks: [`SECURITY.md`](./SECURITY.md).
 
+## Install
+
+**Claude Code** (or any client that starts a command):
+
+```bash
+claude mcp add apple-mail -- npx -y @redpop/apple-mail-mcp
+npx -y @redpop/apple-mail-mcp setup
+```
+
+`setup` walks you through the [Full Disk Access grant](#grant-full-disk-access). Settings are
+environment variables, see [Configuration](#configuration).
+
+**Claude Desktop:** download `apple-mail-mcp-<version>.mcpb` from the
+[latest release](https://github.com/redpop/apple-mail-mcp/releases/latest) and open it. Claude
+Desktop installs the extension and shows its settings page; the settings there are the same as
+the environment variables. The first tool call without access opens System Settings and the
+Finder window for the grant.
+
+Each release lists `SHA256SUMS` and carries build provenance attestations for the bundle and
+the helper zip.
+
 ## Install from source
 
-This is the path that works today. You need the Xcode Command Line Tools (for Swift) and an
-Apple Development certificate in your keychain for a build that keeps its permission across
-rebuilds; without one the build is ad hoc and gets its own, weaker identity.
+For development, or to run unreleased changes. You need the Xcode Command Line Tools (for
+Swift) and an Apple Development certificate in your keychain for a build that keeps its
+permission across rebuilds; without one the build is ad hoc and gets its own, weaker identity.
 
 ```bash
 git clone https://github.com/redpop/apple-mail-mcp.git
@@ -111,24 +131,13 @@ they never disturb the permission of the release app.
 
 The build script never signs with a Developer ID certificate outside CI.
 
-## Install with npx or MCPB (coming soon)
-
-Once published:
-
-```bash
-claude mcp add apple-mail -- npx -y @redpop/apple-mail-mcp
-```
-
-For Claude Desktop a one-click MCPB bundle is planned. Settings will then be available in the
-extension's settings page instead of environment variables.
-
 ## Grant Full Disk Access
 
 macOS protects `~/Library/Mail` and offers no dialog to ask for access. You grant it once, to
 the helper app:
 
 1. Run `setup` (from source: `APPLE_MAIL_HELPER_PATH="$PWD/bin/Mail MCP Helper (Dev).app" node dist/index.js setup`;
-   after publication: `npx -y @redpop/apple-mail-mcp setup`). It opens System Settings at
+   from npm: `npx -y @redpop/apple-mail-mcp setup`). It opens System Settings at
    Privacy & Security > Full Disk Access, shows the helper in Finder, and waits until access
    works.
 2. Drag **Mail MCP Helper** from the Finder window into the list and switch it on. (For a local
