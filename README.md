@@ -61,7 +61,7 @@ mail in Mail.app, where Mail stores the Message-ID (not on macOS 15). Details: [
   no `message://` link. Support depends on the layout of Mail's database, not on the version
   number: `doctor` checks it.
   Reports from other versions are welcome, see [Reporting problems](#reporting-problems).
-- Node.js 22 or newer.
+- Node.js 22.16 or newer in the 22 line, or 24 and newer.
 - Mail set up with at least one account.
 - Exchange accounts are untested. Mailboxes and message metadata are listed, but bodies of
   Exchange mail are not read yet: `get_message` reports `file_not_found`. See
