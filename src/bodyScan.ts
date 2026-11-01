@@ -32,7 +32,7 @@ export interface ScanResult {
 const isSpace = (c: string): boolean => /^\s$/u.test(c)
 
 /** Zieht jede Leerraumfolge zu einem Leerzeichen zusammen und trimmt. */
-function collapse(s: string): string {
+export function collapse(s: string): string {
   return s.replace(/\s+/gu, ' ').trim()
 }
 
@@ -90,7 +90,7 @@ export function foldFast(text: string): string {
 }
 
 /** Suchbegriff: erst als Ganzes NFC (zerlegte Umlaute aus der Eingabe), dann wie der Text falten. */
-function foldTerm(term: string): string {
+export function foldTerm(term: string): string {
   return collapse(foldWithMap(collapse(term.normalize('NFC'))).folded)
 }
 
@@ -124,7 +124,7 @@ export function findMatch(rawText: string, foldedTerm: string): string | null {
 }
 
 /** Holt die Rohtexte eines Blocks (base64, null = nicht verfuegbar). Geparst wird erst im Scan. */
-async function fetchBatch(runner: HelperRunner, policy: Policy, batch: MessageRow[]): Promise<Map<number, string | null>> {
+export async function fetchBatch(runner: HelperRunner, policy: Policy, batch: MessageRow[]): Promise<Map<number, string | null>> {
   const out = new Map<number, string | null>()
   let pending = batch.filter((r) => r.file !== 'none').map((r) => r.gid)
   for (const r of batch) if (r.file === 'none') out.set(r.gid, null)
