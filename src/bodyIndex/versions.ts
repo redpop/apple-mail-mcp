@@ -27,6 +27,11 @@ function packageVersion(name: string): string {
   }
 }
 
+/** Module, deren Quelltext nicht gefunden wurde (Tests: muss leer sein, sonst waere der Hash konstant). */
+export function missingSources(): string[] {
+  return ['securityMail.data', 'securityMail', 'fold', 'mime', 'mimeTrim', 'quickHtml'].filter((n) => moduleSource(n).startsWith('missing:'))
+}
+
 const hash = (parts: string[]): string => createHash('sha256').update(parts.join('\0')).digest('hex').slice(0, 16)
 
 let classifier: string | null = null
