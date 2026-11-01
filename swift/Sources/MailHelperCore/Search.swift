@@ -1,5 +1,8 @@
 import Foundation
 
+/// Hoechstzahl der gids, auf die `search` eingeschraenkt werden kann (Body-Index-Spec 5.3).
+public let searchMaxGids = 200_000
+
 /// Spec 7.3 `search`. Unbekannte Schluessel lehnt der Dispatcher ab (Protocol.swift).
 public struct SearchRequest: Codable, Equatable, Sendable {
     public struct After: Codable, Equatable, Sendable {
@@ -22,6 +25,8 @@ public struct SearchRequest: Codable, Equatable, Sendable {
     public var unread: Bool?
     public var flagged: Bool?
     public var hasAttachment: Bool?
+    /// Nur diese gids (Treffer des Body-Index); alle uebrigen Filter wirken weiter. Leer: keine Kandidaten.
+    public var gids: [Int64]?
     public var after: After?
     public var limit: Int
     public var maxRecipients: Int
@@ -29,7 +34,8 @@ public struct SearchRequest: Codable, Equatable, Sendable {
 
     public init(allowedMailboxIds: [Int64], mailboxIds: [Int64]? = nil, from: String? = nil, to: String? = nil,
                 subject: String? = nil, query: String? = nil, since: Int64? = nil, before: Int64? = nil,
-                unread: Bool? = nil, flagged: Bool? = nil, hasAttachment: Bool? = nil, after: After? = nil,
+                unread: Bool? = nil, flagged: Bool? = nil, hasAttachment: Bool? = nil, gids: [Int64]? = nil,
+                after: After? = nil,
                 limit: Int, maxRecipients: Int = 5, countTotal: Bool = false) {
         self.allowedMailboxIds = allowedMailboxIds
         self.mailboxIds = mailboxIds
@@ -42,6 +48,7 @@ public struct SearchRequest: Codable, Equatable, Sendable {
         self.unread = unread
         self.flagged = flagged
         self.hasAttachment = hasAttachment
+        self.gids = gids
         self.after = after
         self.limit = limit
         self.maxRecipients = maxRecipients
@@ -127,6 +134,14 @@ extension MailStore {
             textFilter("\(subjectDict) OR \(senderDict) OR \(recipientDict)", [.text(t), .text(t), .text(t), .text(t), .text(t)])
         }
 
+        if r.gids != nil {
+            // Vom Aufrufer gegebene gids, in searchPage in temp.search_gids geschrieben (eine TEMP-Tabelle statt
+            // IN (...), weil bis zu 200000 Werte das Variablenlimit von SQLite sprengten). Der Primaerschluessel
+            // liefert die Menge sortiert; die Gruppen kommen wie bei den Textfiltern ueber
+            // messages_global_message_id_mailbox_index.
+            wherePre.append("m.global_message_id IN (SELECT gid FROM temp.search_gids)")
+            driveByGid = true
+        }
         if let ids = r.mailboxIds {
             // Vorfilter statt HAVING: die gids mit einer nicht geloeschten Kopie in einer der Mailboxen, ueber
             // messages_mailbox_date_received_index (das + nimmt deleted die Indexnutzung). Als HAVING las die
@@ -189,6 +204,7 @@ extension MailStore {
         if let ids = r.mailboxIds {
             guard !ids.isEmpty, Set(ids).isSubset(of: Set(r.allowedMailboxIds)) else { throw Self.invalid("mailboxIds") }
         }
+        if let gids = r.gids { guard gids.count <= searchMaxGids else { throw Self.invalid("gids") } }
 
         let db = try envelopeDatabase()
         // Eine Lesetransaktion fuer Fold-Nachtrag, Seitenabfrage und Zeilenaufbau: sonst koennte Mail
@@ -201,6 +217,7 @@ extension MailStore {
         if [r.from, r.to, r.subject, r.query].contains(where: { Self.term($0) != nil }) {
             try db.refreshFoldedDictionaries()
         }
+        if let gids = r.gids { try db.fillSearchGids(gids) }
         let cte = candidateCTE(r)
 
         // Gesamtzahl nur auf der ersten Seite, per Fensterfunktion in derselben Abfrage: die Kandidaten
@@ -227,6 +244,8 @@ extension MailStore {
 
         var result = SearchResult(messages: try loadRows(gids: gids, allowed: r.allowedMailboxIds, maxRecipients: r.maxRecipients),
                                   hasMore: hasMore)
+        // Speicher freigeben; die naechste Suche mit gids fuellt die Tabelle ohnehin neu.
+        if r.gids != nil { try db.execute("DELETE FROM temp.search_gids") }
         if counting {
             // Folgeseiten zaehlen nicht; dort fehlen beide Felder. totalMatchedCapped bleibt fuer den Vertrag
             // mit Node erhalten und ist immer false.

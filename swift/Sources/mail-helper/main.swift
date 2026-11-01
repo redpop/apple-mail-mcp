@@ -70,11 +70,12 @@ func reexecDisclaimed() {
 
 // MARK: - Serve
 
-/// Hoechstlaenge einer Anfragezeile (Spec 7.1).
-let maxLineBytes = 1_048_576
+/// Hoechstlaenge einer Anfragezeile (Spec 7.1). 8 MiB, weil `search` bis zu 200000 gids tragen kann
+/// (Body-Index-Spec 5.3): mit hoechstens 20 Zeichen je gid rund 4 MB, dazu Spielraum fuer die Filter.
+let maxLineBytes = 8 * 1_048_576
 
 let oversizedResponse = Data(
-    #"{"id":null,"ok":false,"error":{"code":"INVALID_INPUT","message":"Request line exceeds 1 MiB."}}"#.utf8)
+    #"{"id":null,"ok":false,"error":{"code":"INVALID_INPUT","message":"Request line exceeds 8 MiB."}}"#.utf8)
 
 /// Exit-Code, wenn stdout nicht mehr schreibbar ist (Leser weg, EPIPE): die Antwort ging verloren,
 /// das ist kein normales Ende.

@@ -1,0 +1,25 @@
+{
+  "id" : 8,
+  "ok" : true,
+  "result" : {
+    "hasMore" : true,
+    "maxRowid" : 123456,
+    "rows" : [
+      {
+        "date" : 1700000600,
+        "gid" : 1005,
+        "rowid" : 22
+      },
+      {
+        "date" : 1700000600,
+        "gid" : 1006,
+        "rowid" : 23
+      },
+      {
+        "date" : 1700001000,
+        "gid" : 1007,
+        "rowid" : 24
+      }
+    ]
+  }
+}

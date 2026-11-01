@@ -52,3 +52,14 @@ extension Database {
         return n
     }
 }
+
+/// gids fuer `search` mit `gids` (Body-Index-Spec 5.3), wie die Woerterbuecher eine TEMP-Tabelle der
+/// Verbindung im Arbeitsspeicher, nie in Mails Dateien. Wird je Suche geleert und neu gefuellt; laeuft in
+/// der Lesetransaktion der Suche, ein Fehler rollt die Zeilen mit zurueck.
+extension Database {
+    func fillSearchGids(_ gids: [Int64]) throws(HelperFailure) {
+        try execute("CREATE TEMP TABLE IF NOT EXISTS search_gids (gid INTEGER PRIMARY KEY)")
+        try execute("DELETE FROM temp.search_gids")
+        try insertEach("INSERT OR IGNORE INTO temp.search_gids (gid) VALUES (?)", gids)
+    }
+}

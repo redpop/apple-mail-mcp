@@ -51,7 +51,7 @@ Consequences:
 
 **stdout is protocol-only, on both legs.** Between client and Node it carries MCP messages; between Node and the helper it carries NDJSON. Logging goes to stderr. A stray `console.log` in `src/` corrupts the first leg; a stray `print()` in the helper corrupts the second. `setup` and `doctor` are separate CLI modes (`src/cli/`) and may write to stdout; the server mode may not.
 
-**No free SQL, no path parameters in the helper.** The helper has a fixed command set (`hello`, `probe`, `list-mailboxes`, `search`, `get-messages`, `thread`), parameterised queries only, and derives `.emlx` paths itself (checked with `realpath` under `~/Library/Mail`). A path or SQL fragment from the caller would turn it into a file or database oracle for any local process. Tests pass the mail root through the library API; the executable knows only `~/Library/Mail`. There is deliberately no `APPLE_MAIL_ROOT`.
+**No free SQL, no path parameters in the helper.** The helper has a fixed command set (`hello`, `probe`, `list-mailboxes`, `search`, `get-messages`, `thread`, `index-feed`, `index-gids`), parameterised queries only, and derives `.emlx` paths itself (checked with `realpath` under `~/Library/Mail`). A path or SQL fragment from the caller would turn it into a file or database oracle for any local process. Tests pass the mail root through the library API; the executable knows only `~/Library/Mail`. There is deliberately no `APPLE_MAIL_ROOT`.
 
 **Node parses untrusted MIME, never Swift.** The helper does not even strip the `.emlx` length frame. A parser bug must hit a process without special rights.
 

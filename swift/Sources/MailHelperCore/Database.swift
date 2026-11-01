@@ -151,6 +151,24 @@ final class Database {
         try query(sql, bind) { _ in }
     }
 
+    /// Fuehrt eine Anweisung mit genau einem Parameter je Wert aus, einmal vorbereitet (TEMP-Tabellen mit
+    /// vielen Zeilen, z. B. temp.search_gids). Je Wert ein eigenes `query` bereitete bis zu 200000 Mal vor.
+    func insertEach(_ sql: String, _ values: [Int64]) throws(HelperFailure) {
+        var stmt: OpaquePointer?
+        let prc = sqlite3_prepare_v2(db, sql, -1, &stmt, nil)
+        guard prc == SQLITE_OK, let stmt else {
+            sqlite3_finalize(stmt)
+            throw Database.failure(prc, "The database query cannot be prepared.")
+        }
+        defer { sqlite3_finalize(stmt) }
+        for v in values {
+            sqlite3_bind_int64(stmt, 1, v)
+            let rc = sqlite3_step(stmt)
+            guard rc == SQLITE_DONE else { throw Database.failure(rc, "The database query failed.") }
+            sqlite3_reset(stmt)
+        }
+    }
+
     func query(_ sql: String, _ bind: [SQLValue] = [], row: (Row) -> Void) throws(HelperFailure) {
         var stmt: OpaquePointer?
         let prc = sqlite3_prepare_v2(db, sql, -1, &stmt, nil)

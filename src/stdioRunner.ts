@@ -5,7 +5,7 @@ import type { HelperRunner } from './helper.js'
 import { helloResult } from './schemas.js'
 
 /** Protokollversion, die dieser Node-Teil spricht (Spec 7.3 hello). */
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 /** Laengste erlaubte Antwortzeile (Spec 7.1). */
 export const MAX_LINE_BYTES = 32 * 1024 * 1024
 

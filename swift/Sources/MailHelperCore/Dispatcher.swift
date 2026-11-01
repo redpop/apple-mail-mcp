@@ -68,6 +68,14 @@ public struct Dispatcher {
                 let r: ThreadRequest = try Self.decode(line, payload)
                 try requireTrusted()
                 return respond(id: id, result: try store.thread(r))
+            case "index-feed":
+                let r: IndexFeedRequest = try Self.decode(line, payload)
+                try requireTrusted()
+                return respond(id: id, result: try store.indexFeed(r))
+            case "index-gids":
+                let r: IndexGidsRequest = try Self.decode(line, payload)
+                try requireTrusted()
+                return respond(id: id, result: try store.indexGids(r))
             default:
                 return respond(id: id, failure: Self.invalid("Unknown command."))
             }

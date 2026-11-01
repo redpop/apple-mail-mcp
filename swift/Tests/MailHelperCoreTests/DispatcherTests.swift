@@ -25,7 +25,7 @@ import Testing
 
     @Test func helloAnswersProtocolVersion() throws {
         let out = Dispatcher(store: store, signing: .trusted).handle(line: line(#"{"id":1,"command":"hello","payload":{}}"#))
-        #expect(String(decoding: out, as: UTF8.self).contains(#""protocolVersion":1"#))
+        #expect(String(decoding: out, as: UTF8.self).contains(#""protocolVersion":2"#))
         let o = try object(out)
         #expect(o["id"] as? Int == 1 && o["ok"] as? Bool == true)
         let r = try #require(o["result"] as? [String: Any])
