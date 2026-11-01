@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
@@ -6,7 +6,10 @@ import { describe, expect, it } from 'vitest'
 import { runCli } from '../src/cli/main.js'
 import { runDoctor, type DoctorExec } from '../src/cli/doctor.js'
 import { runSetup } from '../src/cli/setup.js'
-import { loadConfig } from '../src/config.js'
+import { createLease } from '../src/bodyIndex/lease.js'
+import { indexDir, loadSqlite, openStore } from '../src/bodyIndex/store.js'
+import { loadConfig, type Config } from '../src/config.js'
+import { indexFingerprintOf } from '../src/policy.js'
 import { HelperError } from '../src/errors.js'
 import { FDA_SETTINGS_URL } from '../src/fdaPrompt.js'
 import { readState } from '../src/state.js'
@@ -358,6 +361,100 @@ describe('doctor', () => {
       expect(s.text()).toContain('sha256:abc123')
       expect(s.text()).not.toContain('CREATE TABLE')
     }
+  })
+})
+
+describe('doctor body index', () => {
+  const ON = { APPLE_MAIL_BODY_INDEX: 'true' }
+  const cfg = (env: Record<string, string>): Config => (loadConfig(env) as { ok: true; config: Config }).config
+  const tmExec = (excluded: boolean): DoctorExec => (file, args) =>
+    file === '/usr/bin/tmutil'
+      ? { stdout: `[${excluded ? 'Excluded' : 'Included'}]    ${args[1]}\n`, stderr: '', status: 0 }
+      : makeExec()(file, args)
+
+  async function check(env: Record<string, string>, opts: { stateDir?: string; exec?: DoctorExec; loadSqlite?: () => Promise<null> } = {}) {
+    const s = sink()
+    const stateDir = opts.stateDir ?? mkdtempSync(join(tmpdir(), 'amm-bi-'))
+    const code = await runDoctor(doctorDeps(s, goodRunner(), { json: true, configResult: loadConfig(env), stateDir, exec: opts.exec ?? tmExec(true), ...(opts.loadSqlite ? { loadSqlite: opts.loadSqlite } : {}) }))
+    const checks = JSON.parse(s.text()).checks as { id: string; status: string; message: string }[]
+    return { code, check: checks.find((c) => c.id === 'body-index')!, text: s.text() }
+  }
+
+  /** Index wie ihn der Server hinterlaesst. */
+  async function seed(stateDir: string, over: { complete?: boolean; fingerprint?: string; total?: number } = {}) {
+    const sqlite = (await loadSqlite())!
+    const s = openStore(sqlite, indexDir(stateDir), { exclude: () => {} })
+    s.tx(() => {
+      s.addDoc(1, 'Rechnung von alice@example.com')
+      s.addDoc(2, 'zweiter Text')
+      s.addSkipped(3, 'security')
+      s.setMeta('indexFingerprint', over.fingerprint ?? indexFingerprintOf(cfg(ON)))
+      s.setMeta('buildComplete', over.complete === false ? '0' : '1')
+      s.setMeta('total', String(over.total ?? 3))
+      s.setMeta('lastUpdated', String(Date.UTC(2026, 10, 1, 12, 0, 0)))
+    })
+    s.close()
+  }
+
+  it('disabled: ok, and warns about a leftover directory', async () => {
+    expect((await check({})).check).toEqual({ id: 'body-index', status: 'ok', message: 'Body index disabled.' })
+    const stateDir = mkdtempSync(join(tmpdir(), 'amm-bi-'))
+    mkdirSync(indexDir(stateDir))
+    const { check: c } = await check({}, { stateDir })
+    expect(c.status).toBe('warn')
+    expect(c.message).toMatch(/^Body index disabled, but an index directory is still on disk/)
+    expect(existsSync(indexDir(stateDir))).toBe(true)
+  })
+
+  it('enabled without node:sqlite: fail', async () => {
+    const { check: c, code } = await check(ON, { loadSqlite: async () => null })
+    expect(c.status).toBe('fail')
+    expect(c.message).toMatch(/node:sqlite with FTS5 trigram/)
+    expect(code).toBe(1)
+  })
+
+  it('enabled, nothing built yet: warn', async () => {
+    const { check: c } = await check(ON)
+    expect(c).toMatchObject({ status: 'warn', message: expect.stringMatching(/not built yet/) })
+  })
+
+  it('complete: ok with counts, size, update time and Time Machine; no mail content; reads only', async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), 'amm-bi-'))
+    await seed(stateDir)
+    const before = readFileSync(join(indexDir(stateDir), 'index.sqlite'))
+    const { check: c, text } = await check(ON, { stateDir })
+    expect(c.status).toBe('ok')
+    expect(c.message).toMatch(/^Complete: 2 messages indexed, 1 skipped, [\d.]+ (KiB|MiB|GiB) on disk, last updated 2026-11-01T13:00:00\+01:00; excluded from Time Machine\.$/)
+    expect(text).not.toContain('alice')
+    expect(text).not.toContain('Rechnung')
+    expect(readFileSync(join(indexDir(stateDir), 'index.sqlite'))).toEqual(before)
+    expect(readdirSync(indexDir(stateDir))).toContain('index.sqlite')
+  })
+
+  it('building: warn with percent', async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), 'amm-bi-'))
+    await seed(stateDir, { complete: false, total: 10 })
+    const { check: c } = await check(ON, { stateDir })
+    expect(c.status).toBe('warn')
+    expect(c.message).toMatch(/^Building, 30% done: 2 messages indexed, 1 skipped/)
+  })
+
+  it('missing Time Machine exclusion: warn', async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), 'amm-bi-'))
+    await seed(stateDir)
+    const { check: c } = await check(ON, { stateDir, exec: tmExec(false) })
+    expect(c.status).toBe('warn')
+    expect(c.message).toMatch(/not excluded from Time Machine/)
+  })
+
+  it('another server with a different configuration holds the index: warn', async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), 'amm-bi-'))
+    await seed(stateDir, { fingerprint: 'other' })
+    const { check: stale } = await check(ON, { stateDir })
+    expect(stale).toMatchObject({ status: 'warn', message: expect.stringMatching(/built for a different configuration/) })
+    expect(createLease(indexDir(stateDir)).acquire()).toBe(true)
+    const { check: c } = await check(ON, { stateDir })
+    expect(c).toMatchObject({ status: 'warn', message: expect.stringMatching(/Another server with a different configuration/) })
   })
 })
 

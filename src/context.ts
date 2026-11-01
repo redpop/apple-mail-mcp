@@ -1,3 +1,4 @@
+import type { Indexer } from './bodyIndex/indexer.js'
 import type { Config, ConfigResult } from './config.js'
 import { HelperError } from './errors.js'
 import { defaultOpen, openFdaOnce, type OpenFn } from './fdaPrompt.js'
@@ -19,6 +20,8 @@ export interface ToolContext {
   /** Liefert true, wenn dabei gerade Einstellungen und Finder fuer FDA geoeffnet wurden. */
   onHelperError(e: unknown): boolean
   onHelperSuccess(): void
+  /** Body-Index, wenn eingeschaltet und gestartet; sonst null (dann sucht bodyContains live). */
+  bodyIndex(): Indexer | null
 }
 
 const POLICY_TTL_MS = 60_000
@@ -32,6 +35,8 @@ export function createContext(deps: {
   open?: OpenFn
   stateDir?: string
   now?: () => number
+  /** Der Indexer startet asynchron (src/index.ts); bis dahin null. */
+  bodyIndex?: () => Indexer | null
 }): ToolContext {
   const now = deps.now ?? Date.now
   const open = deps.open ?? defaultOpen
@@ -70,5 +75,7 @@ export function createContext(deps: {
     return p
   }
 
-  return { runner, config, policy, bundlePath: deps.bundlePath, helperName, onHelperError, onHelperSuccess }
+  const bodyIndex = deps.bodyIndex ?? (() => null)
+
+  return { runner, config, policy, bundlePath: deps.bundlePath, helperName, onHelperError, onHelperSuccess, bodyIndex }
 }

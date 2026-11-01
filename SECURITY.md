@@ -11,10 +11,11 @@ What the server does to limit damage:
 
 - **Read-only by construction.** No code sends, drafts, moves, deletes or flags mail. No code
   opens the Mail database for writing or writes under `~/Library/Mail`. No code opens a network
-  connection.
+  connection. The only mail data the server writes is the optional body index (below), and only
+  when you turn it on.
 - **Policy comes from configuration, never from tool parameters.** The account allowlist,
   junk and trash exclusion, excluded mailboxes, the security-mail setting, the body-search
-  switch and the result and body limits are set by the user in the server's environment. The
+  and body-index switches and the result and body limits are set by the user in the server's environment. The
   model cannot change them, so an injected mail cannot either.
 - **Policy is enforced in the helper's queries.** The server sends the set of allowed mailbox
   ids with every read command, and the helper restricts each query to it before it applies
@@ -81,6 +82,35 @@ To keep this out of normal use, local builds carry their own bundle ids
 (`...mail-helper.dev`, `...mail-helper.adhoc`), the build script produces the release id only
 in CI, and the server refuses to start a bundle with the release id unless its signature
 verifies against the project's Developer ID requirement.
+
+### The body index is a plain-text copy of your mail
+
+With `APPLE_MAIL_BODY_INDEX=true` the server keeps the text of every visible message in a
+SQLite file under `~/Library/Application Support/apple-mail-mcp/body-index/`, so that
+`bodyContains` can search all of it at once. That file is a plain-text copy of your mail
+bodies, outside `~/Library/Mail`.
+
+macOS protects `~/Library/Mail` with Full Disk Access; it does not protect this directory. Any
+program running as your user can read the index without Full Disk Access, so turning it on
+bypasses the boundary the helper exists for. The permissions (directory 0700, files 0600) only
+keep out other users of the Mac. FileVault protects the file at rest like the rest of the
+disk.
+
+What limits the copy:
+
+- It is off by default and can only be turned on in the server's environment, never by the
+  model.
+- Turning it off deletes it: a server that starts with the index off removes the directory,
+  unless another server is using it at that moment (then the next start without the index
+  removes it).
+- It holds only what the configuration lets the tools see: the account allowlist, junk, trash
+  and excluded mailboxes apply. When the configuration narrows, the server removes messages
+  that are no longer visible.
+- Security mails are never written to it, not even with `APPLE_MAIL_SHOW_SECURITY_MAILS=true`.
+- The directory is excluded from Time Machine, so the copy does not end up in backups;
+  `doctor` warns when the exclusion is missing.
+
+Turn it on only if you accept that every program you run can read your mail text.
 
 ## Security-mail detection is best effort
 

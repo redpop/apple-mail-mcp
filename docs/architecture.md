@@ -376,8 +376,8 @@ mail; on the development machine the scan path handles about 2,400 messages per 
 the full path about 600.
 
 A raw grep over 2,000 random files took 2.5 s in the spike, and a scan of the whole mailbox
-takes minutes, which is why the scan is bounded. An opt-in full-text index is planned (AMM-12);
-the spike below measured it, it is not built yet.
+takes minutes, which is why the scan is bounded. The opt-in body index (below) lifts the bound
+once it is built.
 
 ### Body index spike (AMM-14)
 
@@ -449,6 +449,70 @@ What follows from it:
   100 ms per block of 50 mails. A tool call can wait that long behind one block, unless the
   indexer uses smaller blocks or a `worker_thread` (spec section 7 leaves that open).
 - Disk use is about 1.7 GiB for 121,000 mails; the README should give about 14 KiB per mail.
+
+### Body index
+
+`APPLE_MAIL_BODY_INDEX=true` (effective only together with `APPLE_MAIL_BODY_SEARCH`) turns on a
+full-text index of the message bodies, in `src/bodyIndex/`. Node writes it with `node:sqlite`;
+the helper only supplies rows and raw bytes, as for the scan, and never writes or parses
+anything.
+
+**Storage.** `~/Library/Application Support/apple-mail-mcp/body-index/index.sqlite` in WAL mode,
+directory 0700, files including `-wal` and `-shm` 0600, directory excluded from Time Machine
+with `/usr/bin/tmutil addexclusion` when it is created. Tables: `meta` (schema version,
+fingerprints, high-water mark, build state), `docs` (one row per message: `gid`, `part`, the
+whitespace-collapsed text for `matchContext`), `skipped` (`gid` and a reason: `security`,
+`unavailable`, `parse_failed`, `empty`, never text) and the contentless FTS5 table `fts` with
+`tokenize = 'trigram case_sensitive 1'` over `foldFast(text)`. Folding before indexing gives the
+same folding as the scan, `ss` for `ß` included; the built-in folding of FTS5 differs.
+
+**Building.** The indexer starts after the first successful helper call of a tool, so nothing
+happens without Full Disk Access. It walks `messages` by `ROWID` with `index-feed` in pages of
+500, fetches bodies with `get-messages` in blocks of 50 (256 KiB per message, 16 MiB per
+request, as the scan), parses them with `parseForScan` and always the full text, classifies
+them, and writes each block in one transaction together with the new high-water mark. Between
+blocks it yields, so tool calls get into the helper queue. After the build it catches up from
+the high-water mark every 60 seconds and, for at most one second, before each body search.
+Every 30 minutes it reconciles with `index-gids`: messages that are deleted or no longer
+allowed leave the index, newly allowed ones and bodies Mail loaded later are fetched. Only then
+is the build complete and the index serves searches.
+
+**Consistency.** The index is a cache and is rebuilt rather than repaired: when the Envelope
+Index fingerprint or the `V<n>` directory changes, when `max(ROWID)` falls below the high-water
+mark (Mail rebuilt its index), when the schema version differs, or when SQLite reports the file
+as damaged. A new security-mail classifier re-checks the stored texts; a new MIME parser
+retries `parse_failed` and `empty`. A changed configuration (accounts, junk, trash, excluded
+mailboxes: the index fingerprint) marks the build incomplete and reconciles.
+
+**Searching** (`src/bodyIndex/search.ts`). The term is folded like the scan's. Terms shorter
+than three characters are scanned, because a trigram index cannot find them. Otherwise:
+
+1. FTS returns every `gid` whose folded text contains the term as a phrase, without order.
+2. With `APPLE_MAIL_SHOW_SECURITY_MAILS=true`, the security mails in `skipped` are scanned live
+   and their matches join the set, because the scan would find them.
+3. One `search` with these `gids` (at most 200,000; above that the request is scanned live), the
+   other filters, the cursor keyset and `limit`. The helper applies the current policy and
+   returns the page in the scan's order, `(date DESC, gid DESC)`.
+4. Each row is confirmed with `findMatch` on the stored text, which also yields `matchContext`.
+   A row that fails is skipped and the search reads on from its keyset.
+
+Order and keyset come only from the helper; the index stores no date, because the group date
+depends on the policy. The cursor is the scan's cursor, and `bodyIndex` is not part of the
+policy fingerprint, so cursors stay valid when the index is switched on or off. No count in the
+answer depends on the term: `totalMatched` is omitted and `bodyIndex.indexed` counts the whole
+index.
+
+**Two servers.** Claude Desktop and Claude Code can each run a server. One of them writes: the
+lease is `body-index/writer.lock` with pid and heartbeat, created exclusively, renewed every
+10 seconds and free after 60 seconds or when the process is gone. Others open the index read
+only and use it if its index fingerprint matches their configuration and the build is
+complete; otherwise they scan.
+
+**Turning it off.** A server that starts with a valid configuration and the index off deletes
+the directory, unless another server holds a valid lease. An invalid configuration deletes
+nothing, nor does a missing `node:sqlite` with the index on. `doctor` opens the index read only
+and reports counts, size, last update, build progress and the Time Machine exclusion, never
+content.
 
 ### Policy enforcement
 

@@ -1,9 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod/v4'
 import type { ToolContext } from '../context.js'
-import { CANDIDATE_CAP, scanBodies, TIME_BUDGET_MS, type ScanInfo } from '../bodyScan.js'
+import { CATCH_UP_BUDGET_MS, INDEX_MAX_HITS, INDEX_MIN_TERM, indexProgressNote, searchIndex } from '../bodyIndex/search.js'
+import { CANDIDATE_CAP, foldTerm, scanBodies, TIME_BUDGET_MS, type ScanInfo } from '../bodyScan.js'
 import { decodeCursor, encodeCursor, queryHash } from '../cursor.js'
-import { parseDateInput } from '../dates.js'
+import { formatLocal, parseDateInput } from '../dates.js'
 import { HelperError } from '../errors.js'
 import { searchResult } from '../schemas.js'
 import { MessageSummary, toSummary } from '../summary.js'
@@ -42,6 +43,7 @@ const Output = z.object({
   totalMatchedCapped: z.boolean().optional(),
   nextCursor: z.string().nullable(),
   scan: ScanInfoSchema.optional(),
+  bodyIndex: z.object({ indexed: z.number().int(), lastUpdated: z.string().nullable() }).optional(),
   note: z.string().optional(),
 })
 
@@ -63,6 +65,14 @@ function scanNote(scan: ScanInfo, matches: number, followUp: boolean): string {
   }[scan.stoppedBy!]
   const what = followUp ? `the next ${n} candidate messages after the previous page` : `the ${n} newest candidate messages`
   return `Scanned ${what} and found ${found}; stopped because ${why}.${noBody} Call again with nextCursor to continue, or narrow the search with from, since or mailboxIds.`
+}
+
+/** note einer Suche ueber den Index; die Zahl indizierter Mails haengt nicht vom Begriff ab. */
+function indexNote(indexed: number, matches: number, more: boolean, caughtUp: boolean): string {
+  const found = `${matches} ${matches === 1 ? 'match' : 'matches'}`
+  const next = more ? ' Call again with nextCursor for more.' : ''
+  const late = caughtUp ? '' : ' Mail that arrived in the last minute may not be in the index yet.'
+  return `Searched the body index of ${fmt(indexed)} messages and found ${found}.${next}${late}`
 }
 
 function defined(o: Record<string, unknown>): Record<string, unknown> {
@@ -126,22 +136,59 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
         const after = input.cursor !== undefined ? decodeCursor(input.cursor, hash) : undefined
 
         if (input.bodyContains !== undefined) {
+          const term = foldTerm(input.bodyContains)
+          if (term === '') throw new HelperError('INVALID_INPUT', 'bodyContains must contain a visible character.')
+          const helperFilters = defined({ ...filters, mailboxIds })
+          // Body-Index (Spec 5.4): nur fertig und fuer diese Konfiguration, sonst live wie bisher.
+          let liveNote: string | null = null
+          const indexer = ctx.bodyIndex()
+          const index = indexer === null || [...term].length < INDEX_MIN_TERM ? null : indexer.reader()
+          if (indexer !== null) {
+            if ([...term].length < INDEX_MIN_TERM) {
+              liveNote = `Terms shorter than ${INDEX_MIN_TERM} characters are not looked up in the body index, so this search scanned live.`
+            } else if (index === null) {
+              liveNote = indexProgressNote(indexer.status())
+            } else {
+              try {
+                const caughtUp = await indexer.catchUp(CATCH_UP_BUDGET_MS)
+                const res = await searchIndex({ runner: ctx.runner, policy, config, filters: helperFilters, term, after: after ?? null, limit, index })
+                if (res.kind === 'ok') {
+                  const indexed = index.counts().docs
+                  const updated = index.meta('lastUpdated')
+                  const messages = res.matches.map((m) => ({ ...toSummary(m.row, policy, config, 5), matchContext: m.matchContext }))
+                  return {
+                    structured: Output.parse({
+                      messages,
+                      nextCursor: res.resumeAfter ? encodeCursor(res.resumeAfter, hash) : null,
+                      bodyIndex: { indexed, lastUpdated: updated === null ? null : formatLocal(Number(updated) / 1000) },
+                      note: indexNote(indexed, messages.length, res.resumeAfter !== null, caughtUp),
+                    }),
+                  }
+                }
+                liveNote = `The term occurs in more than ${fmt(INDEX_MAX_HITS)} indexed messages, so this search scanned live; narrow it with from, since or mailboxIds.`
+              } finally {
+                index.close()
+              }
+            }
+          }
+
           const res = await scanBodies({
             runner: ctx.runner,
             policy,
             config,
-            filters: defined({ ...filters, mailboxIds }),
+            filters: helperFilters,
             term: input.bodyContains,
             after: after ?? null,
             limit,
           })
           const messages = res.matches.map((m) => ({ ...toSummary(m.row, policy, config, 5), matchContext: m.matchContext }))
+          const note = scanNote(res.scan, messages.length, after !== undefined)
           return {
             structured: Output.parse({
               messages,
               nextCursor: res.resumeAfter ? encodeCursor(res.resumeAfter, hash) : null,
               scan: res.scan,
-              note: scanNote(res.scan, messages.length, after !== undefined),
+              note: liveNote === null ? note : `${note} ${liveNote}`,
             }),
           }
         }

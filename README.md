@@ -81,6 +81,8 @@ model that can also reach the internet.
   them.
 - Any program running as your user can start the helper and read your mail with it. This is
   less than giving Full Disk Access to Terminal, but it is not nothing.
+- The optional body index is a plain-text copy of your mail that any program of your user can
+  read, without Full Disk Access. It is off by default; see [Body index](#body-index).
 
 The full threat model and both residual risks: [`SECURITY.md`](./SECURITY.md).
 
@@ -197,6 +199,34 @@ claude mcp add apple-mail \
   -- npx -y @redpop/apple-mail-mcp
 ```
 
+## Body index
+
+Without an index, `bodyContains` decodes messages while it searches, so one call looks at no
+more than the 2,000 newest candidates or 3 seconds of work. A mail from years ago can take many
+pages to reach. With `APPLE_MAIL_BODY_INDEX=true` the server keeps a full-text index of the
+message bodies and searches all of them in one call, with the same matches, order and
+`matchContext` as the scan.
+
+- **Disk space:** about 14 KiB per mail. On the test mailbox, 121,000 mails took 1.7 GiB.
+- **Build time:** about 3 ms per mail, just under 6 minutes for 120,000 mails. The server builds
+  it in the background after its first successful tool call and continues after a restart. Tool
+  calls go first.
+- **Until it is complete** `bodyContains` scans as before, and the `note` says how far the
+  build is. Terms shorter than 3 characters are always scanned.
+- **It keeps itself current:** new mail is added before each body search and every minute,
+  deleted mail is removed every 30 minutes, and a changed configuration is applied at the next
+  start.
+- **Where:** `~/Library/Application Support/apple-mail-mcp/body-index/`, directory 0700, files
+  0600, excluded from Time Machine. To rebuild it, delete the directory.
+- **Turning it off deletes it** at the next start of the server.
+- **Requires** Node 22.16 or newer in the 22 line, or 24 and newer (for `node:sqlite` with
+  FTS5). Without it the index stays off and the search scans live.
+
+`doctor` shows the state under `body-index`. The index is a copy of your mail text that any
+program of your user can read, without Full Disk Access. Read
+[`SECURITY.md`](./SECURITY.md#the-body-index-is-a-plain-text-copy-of-your-mail) before you turn
+it on.
+
 ## Tools
 
 | Tool | What it does |
@@ -215,11 +245,11 @@ npx -y @redpop/apple-mail-mcp doctor        # from source: node dist/index.js do
 ```
 
 `doctor` checks the macOS version, the helper's signature, Full Disk Access, the database
-layout, how many messages have a local file, the mailbox roles and the effective settings. Its
-default output contains no names, addresses or subjects, so you can paste it into an issue as
-it is. `--verbose` adds mailbox names and account identifiers; `--json` is for machines;
-`--schema` prints only the database fingerprint, any missing columns and the `CREATE TABLE`
-statements of Mail's database (structure, no data). Exit code 1 means at
+layout, how many messages have a local file, the mailbox roles, the effective settings and the
+state of the body index. Its default output contains no names, addresses or subjects, so you
+can paste it into an issue as it is. `--verbose` adds mailbox names and account identifiers;
+`--json` is for machines; `--schema` prints only the database fingerprint, any missing columns
+and the `CREATE TABLE` statements of Mail's database (structure, no data). Exit code 1 means at
 least one check failed.
 
 ## Reporting problems

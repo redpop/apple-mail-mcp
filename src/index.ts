@@ -37,7 +37,7 @@ const toolRunner: HelperRunner = {
   helperVersion: () => runner.helperVersion?.() ?? null,
 }
 
-const ctx = createContext({ runner: toolRunner, configResult, bundlePath: runner.bundlePath })
+const ctx = createContext({ runner: toolRunner, configResult, bundlePath: runner.bundlePath, bodyIndex: () => indexer })
 const server = createServer(ctx)
 
 void startBodyIndex({ configResult, runner, policy: () => ctx.policy() }).then((i) => {

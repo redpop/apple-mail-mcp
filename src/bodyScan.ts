@@ -162,7 +162,7 @@ export async function fetchBatch(runner: HelperRunner, policy: Policy, batch: Me
 }
 
 // Leerraum fuer den Vorfilter; U+200B zaehlt dazu, wie bei html-to-text.
-const LOOSE_SPACE = /[\s\u200b]+/g
+export const LOOSE_SPACE = /[\s\u200b]+/g
 
 /**
  * Prueft eine Nachricht: Treffer-Kontext, null ohne Treffer, undefined wenn nicht verfuegbar.

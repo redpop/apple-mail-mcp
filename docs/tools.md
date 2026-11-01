@@ -78,6 +78,22 @@ not on this Mac or cannot be decoded count as `unavailable`; this count never de
 search term. Security mails are never matched by body.
 `APPLE_MAIL_BODY_SEARCH=false` turns the parameter off.
 
+**Body index.** With `APPLE_MAIL_BODY_INDEX=true` and a complete index, `bodyContains` searches
+every indexed message in one call, without the 2,000-candidate and 3-second bounds. Matches,
+order, `matchContext` and `nextCursor` are the same as with the scan, and a cursor from one
+works with the other. The result then has `bodyIndex` instead of `scan`:
+
+| Field | Meaning |
+|---|---|
+| `bodyIndex.indexed` | Number of messages in the index. It does not depend on the search term. |
+| `bodyIndex.lastUpdated` | When the index last changed, ISO 8601 with offset, or `null`. |
+
+The `note` says that the index was searched, and also when mail from the last minute may not be
+in it yet. The search scans as described above, and the `note` says why, while the index is
+still being built (with its progress), for terms shorter than 3 characters, when the term occurs
+in more than 200,000 indexed messages, and when another server with a different configuration
+holds the index. `totalMatched` is never returned for a body search.
+
 Errors: `MAILBOX_NOT_FOUND` (unknown or hidden mailbox id; both look the same), `INVALID_CURSOR`,
 `INVALID_INPUT`.
 

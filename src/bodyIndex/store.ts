@@ -70,9 +70,20 @@ export interface DocRow {
   text: string
 }
 
-export interface Store {
-  readonly dir: string
+/** Nur lesender Zugriff (Suche, doctor); auch eine Instanz ohne Lease darf das (Spec 5.9). */
+export interface ReadStore {
   meta(key: string): string | null
+  /** gid aller Dokumente, deren gefalteter Text die gefaltete Phrase enthaelt (ohne Reihenfolge). */
+  matchGids(foldedPhrase: string): number[]
+  /** Originaltext (zusammengezogen) je gid; fehlende gid fehlen in der Map. */
+  texts(gids: number[]): Map<number, string>
+  skippedGids(reason: SkipReason): number[]
+  counts(): { docs: number; skipped: number }
+  close(): void
+}
+
+export interface Store extends ReadStore {
+  readonly dir: string
   setMeta(key: string, value: string): void
   known(gid: number): boolean
   /** text ist schon zusammengezogen (collapse); indiziert wird foldFast(text) wie im Live-Scan. */
@@ -84,11 +95,7 @@ export interface Store {
   skipped(): Map<number, SkipReason>
   clearSkipped(reasons: SkipReason[]): number
   docs(afterRowid: number, limit: number): DocRow[]
-  /** gid aller Dokumente, deren gefalteter Text die gefaltete Phrase enthaelt (ohne Reihenfolge). */
-  matchGids(foldedPhrase: string): number[]
-  counts(): { docs: number; skipped: number }
   tx<T>(fn: () => T): T
-  close(): void
 }
 
 const SCHEMA = `
@@ -128,6 +135,67 @@ function openDb(sqlite: Sqlite, file: string): DatabaseSync {
   }
 }
 
+/** Lesende Abfragen, gemeinsam fuer Schreiber und Leser. */
+function readQueries(db: DatabaseSync): ReadStore {
+  const q = {
+    getMeta: db.prepare('SELECT value FROM meta WHERE key = ?'),
+    match: db.prepare('SELECT DISTINCT d.gid AS gid FROM fts JOIN docs d ON d.rowid = fts.rowid WHERE fts MATCH ?'),
+    text: db.prepare("SELECT text FROM docs WHERE gid = ? AND part = 'body'"),
+    skippedBy: db.prepare('SELECT gid FROM skipped WHERE reason = ? ORDER BY gid'),
+    countDocs: db.prepare('SELECT count(DISTINCT gid) AS n FROM docs'),
+    countSkip: db.prepare('SELECT count(*) AS n FROM skipped'),
+  }
+  return {
+    meta: (key) => (q.getMeta.get(key) as { value: string } | undefined)?.value ?? null,
+    matchGids(foldedPhrase) {
+      // Phrase in Anfuehrungszeichen, eingebettete verdoppelt; unter drei Zeichen kann trigram nichts.
+      if ([...foldedPhrase].length < 3) return []
+      return (q.match.all(`"${foldedPhrase.replaceAll('"', '""')}"`) as { gid: number }[]).map((r) => r.gid)
+    },
+    texts(gids) {
+      const out = new Map<number, string>()
+      for (const gid of gids) {
+        const r = q.text.get(gid) as { text: string } | undefined
+        if (r !== undefined) out.set(gid, r.text)
+      }
+      return out
+    },
+    skippedGids: (reason) => (q.skippedBy.all(reason) as { gid: number }[]).map((r) => r.gid),
+    counts: () => ({
+      docs: (q.countDocs.get() as { n: number }).n,
+      skipped: (q.countSkip.get() as { n: number }).n,
+    }),
+    close: () => db.close(),
+  }
+}
+
+/**
+ * Oeffnet den Index nur lesend: legt nichts an, aendert nichts, loescht nichts (Suche, doctor).
+ * null, wenn keine Datei da ist, sie keine Datenbank ist oder schemaVersion nicht passt. SQLite legt
+ * dabei -wal und -shm an, falls sie fehlen; die Rechte werden auf 0600 gezogen.
+ */
+export function openReader(sqlite: Sqlite, dir: string): ReadStore | null {
+  const file = join(dir, INDEX_FILE)
+  if (!existsSync(file)) return null
+  let db: DatabaseSync | null = null
+  try {
+    db = new sqlite.DatabaseSync(file, { readOnly: true })
+    for (const f of INDEX_FILES) chmodIfExists(join(dir, f), 0o600)
+    if (schemaVersionOf(db) !== String(SCHEMA_VERSION)) {
+      db.close()
+      return null
+    }
+    return readQueries(db)
+  } catch {
+    try {
+      db?.close()
+    } catch {
+      // schon zu
+    }
+    return null
+  }
+}
+
 function schemaVersionOf(db: DatabaseSync): string | null {
   const r = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get() as { value: string } | undefined
   return r?.value ?? null
@@ -159,7 +227,6 @@ export function openStore(sqlite: Sqlite, dir: string, opts: { exclude?: (dir: s
   fixModes()
 
   const q = {
-    getMeta: db.prepare('SELECT value FROM meta WHERE key = ?'),
     setMeta: db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value'),
     knownDoc: db.prepare('SELECT 1 FROM docs WHERE gid = ? LIMIT 1'),
     knownSkip: db.prepare('SELECT 1 FROM skipped WHERE gid = ?'),
@@ -173,15 +240,12 @@ export function openStore(sqlite: Sqlite, dir: string, opts: { exclude?: (dir: s
     docGids: db.prepare('SELECT DISTINCT gid FROM docs'),
     skipped: db.prepare('SELECT gid, reason FROM skipped'),
     docs: db.prepare('SELECT rowid, gid, text FROM docs WHERE rowid > ? ORDER BY rowid LIMIT ?'),
-    match: db.prepare('SELECT DISTINCT d.gid AS gid FROM fts JOIN docs d ON d.rowid = fts.rowid WHERE fts MATCH ?'),
-    countDocs: db.prepare('SELECT count(DISTINCT gid) AS n FROM docs'),
-    countSkip: db.prepare('SELECT count(*) AS n FROM skipped'),
   }
 
   let depth = 0
   const store: Store = {
+    ...readQueries(db),
     dir,
-    meta: (key) => (q.getMeta.get(key) as { value: string } | undefined)?.value ?? null,
     setMeta: (key, value) => void q.setMeta.run(key, value),
     known: (gid) => q.knownDoc.get(gid) !== undefined || q.knownSkip.get(gid) !== undefined,
     addDoc(gid, text) {
@@ -203,15 +267,6 @@ export function openStore(sqlite: Sqlite, dir: string, opts: { exclude?: (dir: s
       return Number(changes)
     },
     docs: (afterRowid, limit) => q.docs.all(afterRowid, limit) as unknown as DocRow[],
-    matchGids(foldedPhrase) {
-      // Phrase in Anfuehrungszeichen, eingebettete verdoppelt; unter drei Zeichen kann trigram nichts.
-      if ([...foldedPhrase].length < 3) return []
-      return (q.match.all(`"${foldedPhrase.replaceAll('"', '""')}"`) as { gid: number }[]).map((r) => r.gid)
-    },
-    counts: () => ({
-      docs: (q.countDocs.get() as { n: number }).n,
-      skipped: (q.countSkip.get() as { n: number }).n,
-    }),
     tx(fn) {
       if (depth > 0) return fn()
       db.exec('BEGIN IMMEDIATE')
@@ -228,7 +283,6 @@ export function openStore(sqlite: Sqlite, dir: string, opts: { exclude?: (dir: s
         fixModes()
       }
     },
-    close: () => db.close(),
   }
   return store
 }

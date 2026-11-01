@@ -3,11 +3,10 @@ import type { Config } from '../config.js'
 import { HelperError } from '../errors.js'
 import type { HelperRunner } from '../helper.js'
 import { indexFingerprintOf, type Policy } from '../policy.js'
-import { getMessagesResult, probeResult, searchResult } from '../schemas.js'
+import { getMessagesResult, indexFeedResult, indexGidsResult, probeResult, searchResult } from '../schemas.js'
 import { classify } from '../securityMail.js'
 import { createLease, LEASE_RENEW_MS, type Lease } from './lease.js'
-import { indexFeedResult, indexGidsResult } from './schemas.js'
-import { ensureIndexDir, isCorrupt, openStore, removeIndexFiles, type SkipReason, type Sqlite, type Store } from './store.js'
+import { ensureIndexDir, isCorrupt, openReader, openStore, removeIndexFiles, type ReadStore, type SkipReason, type Sqlite, type Store } from './store.js'
 import { indexText, type Classify } from './text.js'
 import { classifierVersion, parserVersion } from './versions.js'
 
@@ -50,8 +49,16 @@ export interface Indexer {
   notify(): void
   /** Ein voller Durchgang (probe, Konsistenz, Nachzug, Abgleich); fuer Tests und den Start. */
   runCycle(): Promise<void>
-  /** Nachzug ab highWater, hoechstens budgetMs lang (vor einer bodyContains-Suche, AMM-17). */
-  catchUp(budgetMs: number): Promise<void>
+  /**
+   * Nachzug ab highWater, hoechstens budgetMs lang (vor einer bodyContains-Suche). true, wenn er das
+   * Ende erreicht hat; false ohne Lease oder wenn das Budget nicht reichte.
+   */
+  catchUp(budgetMs: number): Promise<boolean>
+  /**
+   * Index zum Lesen, wenn er die Suche bedienen darf: fertig aufgebaut und fuer dieselbe Konfiguration
+   * (Spec 5.5, 5.9), auch ohne Lease. Sonst null. Der Aufrufer schliesst ihn.
+   */
+  reader(): ReadStore | null
   status(): IndexerStatus
   /** Wartet, bis die Warteschlange leer ist (Tests). */
   idle(): Promise<void>
@@ -101,6 +108,8 @@ export function createIndexer(deps: IndexerDeps): Indexer {
   let lastReconcile = 0
   let envelope: string | null = null
   let backoff = BACKOFF_MIN_MS
+  // Hat der letzte Nachzug das Ende der Tabelle erreicht?
+  let reachedEnd = false
   let chain: Promise<void> = Promise.resolve()
   let tick: NodeJS.Timeout | null = null
   let renewTimer: NodeJS.Timeout | null = null
@@ -354,7 +363,7 @@ export function createIndexer(deps: IndexerDeps): Indexer {
     if (full || deadline === null) needReconcile = (await consistency(mailboxIds)) || needReconcile
     const s = checkpoint()
     if (s.meta('buildComplete') !== '1') state = 'building'
-    const reachedEnd = await feed(mailboxIds, deadline)
+    reachedEnd = await feed(mailboxIds, deadline)
     if (!reachedEnd || deadline !== null) return
     if (needReconcile) await reconcile(mailboxIds)
     const st = checkpoint()
@@ -427,11 +436,26 @@ export function createIndexer(deps: IndexerDeps): Indexer {
     },
     runCycle: () => enqueue(true, null),
     async catchUp(budgetMs) {
-      if (stopped || !holds || store === null) return
-      const run = enqueue(false, now() + budgetMs)
+      if (stopped || !holds || store === null) return false
+      reachedEnd = false
+      let finished = false
+      const run = enqueue(false, now() + budgetMs).then(() => void (finished = true))
       let timer: NodeJS.Timeout | undefined
       await Promise.race([run, new Promise<void>((r) => (timer = setTimeout(r, budgetMs)))])
       clearTimeout(timer)
+      return finished && reachedEnd
+    },
+    reader() {
+      if (stopped) return null
+      const r = openReader(deps.sqlite, deps.dir)
+      if (r === null) return null
+      try {
+        if (r.meta('buildComplete') === '1' && r.meta('indexFingerprint') === fingerprint) return r
+      } catch {
+        // beschaedigt oder gerade neu angelegt: live suchen
+      }
+      r.close()
+      return null
     },
     status() {
       const s = store

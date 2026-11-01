@@ -1,15 +1,20 @@
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { arch as osArch, homedir } from 'node:os'
 import type { Writable } from 'node:stream'
+import { foreignLeaseValid } from '../bodyIndex/lease.js'
+import { bodyIndexEnabled } from '../bodyIndex/lifecycle.js'
+import { INDEX_FILE, indexDir, loadSqlite as defaultLoadSqlite, openReader, type Sqlite } from '../bodyIndex/store.js'
 import type { ConfigResult } from '../config.js'
+import { formatLocal } from '../dates.js'
 import { describeError, HelperError } from '../errors.js'
 import type { HelperRunner } from '../helper.js'
 import { parseMailbox, type MailboxRole } from '../mailboxes.js'
-import { computePolicy } from '../policy.js'
+import { computePolicy, indexFingerprintOf } from '../policy.js'
 import { helloResult, listMailboxesResult, probeResult, searchResult, type ProbeResult } from '../schemas.js'
 import { RELEASE_BUNDLE_ID, readBundleId, readBundleName } from '../signing.js'
-import { readState } from '../state.js'
+import { defaultStateDir, readState } from '../state.js'
 import { PROTOCOL_VERSION } from '../stdioRunner.js'
 
 export type DoctorExec = (file: string, args: string[]) => { stdout: string; stderr: string; status: number }
@@ -39,6 +44,8 @@ export interface DoctorDeps {
   override?: boolean
   /** Nur fuer Tests: Home-Verzeichnis, das in der Standardausgabe zu ~ wird. */
   home?: string
+  /** Nur fuer Tests: node:sqlite fehlt. */
+  loadSqlite?: () => Promise<Sqlite | null>
 }
 
 /** Ersetzt das Home-Verzeichnis durch ~ (Standardausgabe enthaelt keinen Benutzernamen). */
@@ -248,6 +255,8 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
     }
   }
   if (!deps.configResult.ok) add('config', 'fail', `Configuration error in ${deps.configResult.key}: ${deps.configResult.error}`)
+  const bodyIndex = await bodyIndexCheck(deps)
+  if (bodyIndex !== null) checks.push(bodyIndex)
 
   // --json --schema: ein fehlender Schemateil zaehlt wie in `doctor --schema` als Fehlschlag.
   const schema = deps.json && deps.schema ? schemaLines(probeRaw, deps.verbose) : null
@@ -263,6 +272,76 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
     for (const l of verboseLines) out.write(l + '\n')
   }
   return exit
+}
+
+const INDEX_FILES = [INDEX_FILE, `${INDEX_FILE}-wal`, `${INDEX_FILE}-shm`]
+
+function formatBytes(n: number): string {
+  if (n >= 2 ** 30) return `${(n / 2 ** 30).toFixed(1)} GiB`
+  if (n >= 2 ** 20) return `${(n / 2 ** 20).toFixed(1)} MiB`
+  return `${(n / 2 ** 10).toFixed(1)} KiB`
+}
+
+/**
+ * Pruefpunkt "Body index" (Spec 5.10): oeffnet den Index nur lesend, loescht nichts und zeigt nur
+ * Zahlen, nie Mailinhalt. Ohne gueltige Konfiguration entfaellt er (der config-Pruefpunkt scheitert).
+ */
+async function bodyIndexCheck(deps: DoctorDeps): Promise<Check | null> {
+  if (!deps.configResult.ok) return null
+  const config = deps.configResult.config
+  const dir = indexDir(deps.stateDir ?? defaultStateDir())
+  const shown = deps.verbose ? dir : tildePath(dir, deps.home)
+  const check = (status: Status, message: string): Check => ({ id: 'body-index', status, message })
+
+  if (!bodyIndexEnabled(config)) {
+    return existsSync(dir)
+      ? check('warn', `Body index disabled, but an index directory is still on disk (${shown}). The server deletes it at its next start unless another server is using it.`)
+      : check('ok', 'Body index disabled.')
+  }
+  const sqlite = await (deps.loadSqlite ?? defaultLoadSqlite)()
+  if (sqlite === null) {
+    return check('fail', `Body index enabled, but Node ${process.versions.node} has no node:sqlite with FTS5 trigram (needs Node 22.16 or later, or 24); bodyContains scans live.`)
+  }
+  const reader = openReader(sqlite, dir)
+  if (reader === null) return check('warn', 'Body index enabled but not built yet. The server builds it in the background after its first successful tool call.')
+  let meta: { complete: boolean; fingerprint: string | null; total: number | null; updated: number | null }
+  let counts: { docs: number; skipped: number }
+  try {
+    const total = reader.meta('total')
+    const updated = reader.meta('lastUpdated')
+    meta = { complete: reader.meta('buildComplete') === '1', fingerprint: reader.meta('indexFingerprint'), total: total === null ? null : Number(total), updated: updated === null ? null : Number(updated) }
+    counts = reader.counts()
+  } catch {
+    return check('warn', 'Body index file could not be read; the server rebuilds it.')
+  } finally {
+    reader.close()
+  }
+
+  let size = 0
+  for (const f of INDEX_FILES) {
+    try {
+      size += statSync(join(dir, f)).size
+    } catch {
+      // Datei fehlt
+    }
+  }
+  const tm = deps.exec('/usr/bin/tmutil', ['isexcluded', dir])
+  const excluded = tm.status === 0 && tm.stdout.includes('[Excluded]')
+  const updated = meta.updated === null ? 'never' : formatLocal(meta.updated / 1000)
+  const details = `${counts.docs} messages indexed, ${counts.skipped} skipped, ${formatBytes(size)} on disk, last updated ${updated}`
+  const timeMachine = excluded ? 'excluded from Time Machine.' : `not excluded from Time Machine; run \`tmutil addexclusion "${shown}"\`.`
+
+  if (meta.fingerprint !== indexFingerprintOf(config)) {
+    return foreignLeaseValid(dir)
+      ? check('warn', `Another server with a different configuration holds the index (${details}); with this configuration bodyContains scans live.`)
+      : check('warn', `Body index was built for a different configuration (${details}); the server adapts it at its next start.`)
+  }
+  if (!meta.complete) {
+    const done = counts.docs + counts.skipped
+    const pct = meta.total !== null && meta.total > 0 ? `, ${Math.min(99, Math.floor((done / meta.total) * 100))}% done` : ''
+    return check('warn', `Building${pct}: ${details}; ${timeMachine}`)
+  }
+  return check(excluded ? 'ok' : 'warn', `Complete: ${details}; ${timeMachine}`)
 }
 
 function schemaLines(probe: { raw: unknown } | { error: unknown }, verbose: boolean): { lines: string[]; ok: boolean } {
