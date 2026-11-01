@@ -1,0 +1,128 @@
+name: Schema probe (experiment)
+
+# Experiment zu AMM-11: startet Mail.app ohne Konto auf einem GitHub-Runner und versucht, das
+# DDL des entstehenden Envelope Index zu lesen. Nur manuell, nicht Teil von ci.yml. Scheitert es
+# an Full Disk Access, ist das ein gueltiges Ergebnis; der Job meldet es und bleibt gruen.
+on:
+  workflow_dispatch:
+    inputs:
+      wait_seconds:
+        description: How long to wait for Mail to create its database
+        default: '120'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Probe Mail's database
+        env:
+          WAIT_SECONDS: ${{ inputs.wait_seconds }}
+          RUNNER_LABEL: ${{ matrix.os }}
+        run: |
+          set -uo pipefail
+          case "$WAIT_SECONDS" in ''|*[!0-9]*) WAIT_SECONDS=120 ;; esac
+          OUT="$RUNNER_TEMP/schema-probe"
+          mkdir -p "$OUT"
+          MACOS="$(/usr/bin/sw_vers -productVersion)"
+          BUILD="$(/usr/bin/sw_vers -buildVersion)"
+          MAIL_VERSION="$(/usr/bin/defaults read /System/Applications/Mail.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo unknown)"
+          OUTCOME=""
+          DETAIL=""
+
+          # Ergebnis in outcome.txt und in die Job-Zusammenfassung; nie Inhalte aus Mail, nur Status.
+          finish() {
+            {
+              echo "runner: $RUNNER_LABEL"
+              echo "macos: $MACOS ($BUILD)"
+              echo "mail: $MAIL_VERSION"
+              echo "outcome: $OUTCOME"
+              echo "detail: $DETAIL"
+            } > "$OUT/outcome.txt"
+            {
+              echo "### $RUNNER_LABEL: \`$OUTCOME\`"
+              echo ""
+              echo "macOS $MACOS ($BUILD), Mail $MAIL_VERSION"
+              echo ""
+              echo "$DETAIL"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Schema probe $RUNNER_LABEL::$OUTCOME - $DETAIL"
+            /usr/bin/osascript -e 'tell application "Mail" to quit' >/dev/null 2>&1 || true
+            exit 0
+          }
+
+          echo "macOS $MACOS ($BUILD), Mail $MAIL_VERSION"
+
+          # 1. Mail im Hintergrund starten. Ohne Konto zeigt es den Kontoassistenten; ob es dabei
+          #    schon ~/Library/Mail/V<n>/MailData anlegt, ist genau die offene Frage.
+          if ! /usr/bin/open -g -a Mail; then
+            OUTCOME="mail-not-started"
+            DETAIL="open -a Mail failed on this runner."
+            finish
+          fi
+
+          # 2. Auf den Envelope Index warten. EPERM/EACCES beim Listen heisst: kein Full Disk Access.
+          INDEX=""
+          LAST_ERR=""
+          for _ in $(/usr/bin/seq 1 "$WAIT_SECONDS"); do
+            if ! LAST_ERR="$(/bin/ls "$HOME/Library/Mail" 2>&1 >/dev/null)"; then
+              case "$LAST_ERR" in
+                *"Operation not permitted"*|*"Permission denied"*)
+                  OUTCOME="fda-blocked"
+                  DETAIL="Listing ~/Library/Mail failed: ${LAST_ERR##*: }. The runner process has no Full Disk Access; fall back to user schema reports."
+                  finish
+                  ;;
+              esac
+            fi
+            for candidate in "$HOME"/Library/Mail/V*/MailData/"Envelope Index"; do
+              [ -f "$candidate" ] && INDEX="$candidate"
+            done
+            [ -n "$INDEX" ] && break
+            /bin/sleep 1
+          done
+
+          if [ -z "$INDEX" ]; then
+            OUTCOME="no-envelope-index"
+            if [ -d "$HOME/Library/Mail" ]; then
+              # Nur Verzeichnisnamen bis Tiefe 2; auf dem Runner gibt es keine Nutzerdaten.
+              DETAIL="Mail started but created no Envelope Index within ${WAIT_SECONDS}s. Present: $(cd "$HOME/Library/Mail" && /usr/bin/find . -maxdepth 2 -type d 2>&1 | /usr/bin/sort | /usr/bin/tr '\n' ' ')"
+            else
+              DETAIL="Mail started but ~/Library/Mail does not exist after ${WAIT_SECONDS}s."
+            fi
+            finish
+          fi
+
+          # 3. Nur das DDL lesen: .schema gibt CREATE-Anweisungen aus, keine Zeilen.
+          REL="${INDEX#"$HOME"/}"
+          if ERR="$(/usr/bin/sqlite3 -readonly "$INDEX" .schema 2>&1 > "$OUT/envelope-index.sql")"; then
+            if [ -s "$OUT/envelope-index.sql" ]; then
+              OUTCOME="schema-read"
+              DETAIL="Read the DDL of ~/$REL ($(/usr/bin/grep -c '^CREATE TABLE' "$OUT/envelope-index.sql") tables). Download the artifact and add it under fixtures/schema/."
+            else
+              OUTCOME="schema-empty"
+              DETAIL="~/$REL exists but has no tables yet (Mail may create them only after an account is added)."
+            fi
+          else
+            case "$ERR" in
+              *"authorization denied"*|*"not permitted"*|*"unable to open"*) OUTCOME="fda-blocked" ;;
+              *) OUTCOME="sqlite-error" ;;
+            esac
+            DETAIL="sqlite3 could not read ~/$REL: $ERR"
+          fi
+          finish
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: schema-probe-${{ matrix.os }}
+          path: ${{ runner.temp }}/schema-probe
+          if-no-files-found: warn

@@ -1,0 +1,67 @@
+name: Schema report
+description: Share the layout of Mail's database from your macOS version, so it can be added to the compatibility tests.
+title: "Schema report: macOS <version>"
+labels: ["schema report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. A schema report helps most from a macOS version other than 27, or when `doctor`
+        says the schema is not supported.
+
+        **Do not paste mail content.** No subjects, addresses, names, message text or screenshots of
+        Mail. `doctor --schema` prints only the database fingerprint, any missing column names and the
+        `CREATE TABLE` statements (structure, no data). Paste its output unchanged and nothing else.
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      description: "Apple menu > About This Mac, or `sw_vers -productVersion`."
+      placeholder: "15.4"
+    validations:
+      required: true
+  - type: input
+    id: mail
+    attributes:
+      label: Mail version
+      description: "Mail > About Mail."
+      placeholder: "16.0"
+    validations:
+      required: true
+  - type: input
+    id: helper
+    attributes:
+      label: apple-mail-mcp version
+      description: "The package version you ran, e.g. from `npm ls -g @redpop/apple-mail-mcp` or the version line of `doctor`."
+    validations:
+      required: false
+  - type: dropdown
+    id: accounts
+    attributes:
+      label: Account types in Mail
+      description: Only the kinds, never the addresses.
+      multiple: true
+      options:
+        - IMAP (iCloud, Gmail, other)
+        - Exchange
+        - On My Mac only
+        - Other
+    validations:
+      required: false
+  - type: textarea
+    id: schema
+    attributes:
+      label: Output of `doctor --schema`
+      description: |
+        Run `npx -y @redpop/apple-mail-mcp doctor --schema` and paste the complete output here.
+        It starts with a line `sha256:...`. If it prints an error sentence instead, paste that.
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Check before you submit
+      options:
+        - label: The text above contains no mail content, addresses or names.
+          required: true
