@@ -11,6 +11,7 @@
 # Aufrufe:
 #   publish-registry.sh [mcpb-path]          ohne Pfad: Asset des Release v<version> laden (GH_TOKEN)
 #   publish-registry.sh --fill-only <mcpb> <out>   nur die Kopie mit Pruefsumme schreiben (Test)
+#   publish-registry.sh --wait-npm-only <version>  nur auf die Version bei npm warten (Test)
 #
 # Setzt eine GitHub-OIDC-Anmeldung voraus (Actions mit id-token: write); lokal nur --fill-only.
 set -euo pipefail
@@ -39,6 +40,33 @@ fill_sha() {
     exit 1
   fi
 }
+
+# Wartet, bis npm die Version ausliefert. Ein neues Paket zeigt direkt nach dem Publish nur den
+# Platzhalter 0.0.0-stage (beim ersten Release rund 70 s lang); die Registry lehnt den Eintrag
+# solange mit "NPM package ... not found" ab.
+wait_for_npm() {
+  local version="$1" name deadline
+  name="$(node -p "require('./package.json').name")"
+  deadline=$((SECONDS + ${REGISTRY_NPM_WAIT_SECONDS:-600}))
+  # Ohne Benutzerkonfiguration: die .npmrc des Release-Jobs traegt ein Token, das ab Trusted
+  # Publishing leer ist. Lesen braucht keines.
+  until [ "$(npm view --userconfig /dev/null "$name@$version" version 2>/dev/null)" = "$version" ]; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "publish-registry: $name@$version is not on npm after ${REGISTRY_NPM_WAIT_SECONDS:-600} s" >&2
+      exit 1
+    fi
+    sleep "${REGISTRY_NPM_POLL_SECONDS:-15}"
+  done
+}
+
+if [ "${1:-}" = "--wait-npm-only" ]; then
+  if [ $# -ne 2 ]; then
+    echo "usage: publish-registry.sh --wait-npm-only <version>" >&2
+    exit 2
+  fi
+  wait_for_npm "$2"
+  exit 0
+fi
 
 if [ "${1:-}" = "--fill-only" ]; then
   if [ $# -ne 3 ]; then
@@ -84,6 +112,8 @@ if [ "$ACTUAL_SHA256" != "$PUBLISHER_SHA256" ]; then
   exit 1
 fi
 tar xzf "$WORK_DIR/mcp-publisher.tar.gz" -C "$WORK_DIR" mcp-publisher
+
+wait_for_npm "$VERSION"
 
 # GitHub-OIDC statt eines langlebigen Tokens: der Namensraum io.github.redpop haengt an der
 # Identitaet des Workflow-Laufs. publish liest server.json aus dem Arbeitsverzeichnis.
