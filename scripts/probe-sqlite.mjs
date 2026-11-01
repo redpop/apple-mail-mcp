@@ -5,7 +5,7 @@
 // In-Memory-Datenbank und schreibt nichts auf die Platte.
 //
 // Ausgabe auf stderr, damit dieselbe Datei auch als Server einer Probe-MCPB laufen kann: Claude
-// Desktop schreibt stderr des Servers in ~/Library/Logs/Claude/mcp-server-<Name>.log, stdout waere
+// Desktop schreibt stderr des Servers (UtilityProcess) nach ~/Library/Logs/Claude/main.log, stdout waere
 // dort das MCP-Protokoll.
 //
 // Aufruf: node scripts/probe-sqlite.mjs

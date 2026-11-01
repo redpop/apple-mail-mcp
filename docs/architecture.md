@@ -376,8 +376,79 @@ mail; on the development machine the scan path handles about 2,400 messages per 
 the full path about 600.
 
 A raw grep over 2,000 random files took 2.5 s in the spike, and a scan of the whole mailbox
-takes minutes, which is why the scan is bounded. An opt-in full-text index is a possible later
-addition; it is not built.
+takes minutes, which is why the scan is bounded. An opt-in full-text index is planned (AMM-12);
+the spike below measured it, it is not built yet.
+
+### Body index spike (AMM-14)
+
+The planned index is an FTS5 table with `tokenize = 'trigram case_sensitive 1'`,
+`content = ''` and `contentless_delete = 1` over the folded body text, written by Node with
+`node:sqlite`. Two scripts check whether that works and what it costs:
+
+- `node scripts/probe-sqlite.mjs` prints one JSON line to stderr with the Node and SQLite
+  versions and whether each capability works, in an in-memory database.
+  `scripts/build-probe-mcpb.sh <out-dir>` wraps it in an MCPB with the same
+  `compatibility.runtimes.node` as the real one, so Claude Desktop runs it in its built-in Node.
+  The line lands in `~/Library/Logs/Claude/main.log`.
+- `scripts/measure-body-index.mjs [--max=N] [term ...]` builds a throwaway index in a temporary
+  directory through the dev helper, prints only counts, sizes and times, and deletes the index
+  at the end. Candidates come from `search` like the live scan, text from `parseForScan` (always
+  the full text), and security mails are skipped.
+
+Runtimes (2026-11-01, probe with the exact table from the spec):
+
+| Runtime | SQLite | `node:sqlite` | FTS5, trigram, `contentless_delete` |
+|---|---|---|---|
+| Node 22.13.0, 22.14.0 | 3.47.2 | yes | no (`no such module: fts5`) |
+| Node 22.15.0 | 3.49.1 | yes | no |
+| Node 22.16.0 | 3.49.1 | yes | yes |
+| Node 22.18.0 | 3.50.2 | yes | yes |
+| Node 23.0.0 | 3.46.1 | no | no |
+| Node 24.0.0, 24.6.0, 24.19.0 | 3.49.1, 3.50.4, 3.53.3 | yes | yes |
+| Node 26.13.0 | 3.54.1 | yes | yes |
+| Claude Desktop 4.4212.0, MCPB | 3.53.4 | yes | yes |
+
+Claude Desktop starts MCPB node servers, this one included, in an Electron `UtilityProcess` with
+its built-in Node (log: `isUsingBuiltInNodeForMcp is true and built-in node is compatible`),
+here Node 24.22.0 in Electron 44.9.3. The `RunAsNode` fuse of the app is off, so that runtime
+can only be tested through an MCPB. `node:sqlite` alone is not enough: the Node 22 line has it
+from 22.13 but bundles FTS5 only from 22.16. The index needs `^22.16 || >=24`.
+
+Build on the spike mailbox (macOS 27.0.1, arm64, default policy, Node 24.19.0, nothing else
+running against the helper):
+
+| | |
+|---|---|
+| distinct mails visible | 120,806 |
+| indexed | 115,843 |
+| skipped | unavailable 1,793, parse failed 409, empty 304, security 2,457 |
+| raw bytes fetched | 4,971 MiB |
+| text stored (`docs.text`) | 477 MiB |
+| index files after checkpoint | 1,706 MiB (docs 545 MiB, fts 1,159 MiB), 3.6 x text, about 14 KiB per mail |
+| build time | 335 s, 2.8 ms per mail |
+| of which | `search` 16 s, `get-messages` 80 s, parse and classify 118 s, write 121 s |
+| peak RSS | 415 MiB |
+
+Queries (three typical German terms of 5 to 8 characters, median of 5 runs):
+
+| Term length | FTS hits | FTS query | `findMatch` on all hits | `includes` over all stored text | missed by FTS |
+|---|---|---|---|---|---|
+| 8 | 10,677 | 9 ms | 6.0 s | 1.9 s | 0 |
+| 6 | 3,789 | 5 ms | 3.8 s | 2.1 s | 0 |
+| 5 | 6,043 | 4 ms | 4.3 s | 2.0 s | 0 |
+
+What follows from it:
+
+- The trigram phrase over folded text gave exactly the live-scan matches: every hit passed
+  `findMatch`, and a plain `includes` over all 115,843 stored texts found no message that FTS
+  missed.
+- The FTS query itself costs milliseconds. `findMatch` costs 0.4 to 1 ms per hit, so the search
+  must confirm only the rows of the returned page (spec 5.4 step 4), never all hits.
+- No term came near the 200,000-hit fallback.
+- The full build takes minutes and the parse and write steps run on the main thread: about
+  100 ms per block of 50 mails. A tool call can wait that long behind one block, unless the
+  indexer uses smaller blocks or a `worker_thread` (spec section 7 leaves that open).
+- Disk use is about 1.7 GiB for 121,000 mails; the README should give about 14 KiB per mail.
 
 ### Policy enforcement
 
@@ -406,7 +477,9 @@ Measured on macOS 27.0.1, Mail 16.0, arm64, one real mailbox (spike, 2026-10-25)
 - the grant across release builds, paths and install channels with `rc.1` and `rc.2`
   (2026-10-31), in the table under Permission model. `doctor` on that mailbox: 221 mailboxes,
   238,863 message rows, 121,125 distinct mails, 190 mailboxes visible with the default policy;
-  of the 500 newest messages 446 have a full local file, 54 a partial one, none is missing.
+  of the 500 newest messages 446 have a full local file, 54 a partial one, none is missing;
+- `node:sqlite` with FTS5 trigram per Node version and in Claude Desktop's MCPB runtime, and size
+  and build time of a body index on that mailbox (2026-11-01), under Body index spike.
 
 Assumed, not measured:
 
