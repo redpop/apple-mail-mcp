@@ -5,9 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  # Gepinnt, gleiche Version wie in release.yml und release-candidate.yml.
+  MCPB_VERSION: 2.1.2
+
 jobs:
   build:
-    runs-on: macos-14
+    # macos-14 wird am 2026-11-02 abgeschaltet. Das Deployment-Target 14.0 setzt swift/build.sh.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
 
@@ -43,6 +48,9 @@ jobs:
       - name: Swift tests
         run: npm run test:swift
 
+      - name: Validate MCPB manifest
+        run: npx -y "@anthropic-ai/mcpb@$MCPB_VERSION" validate manifest.json
+
       - name: TypeScript build
         run: npm run build
 
@@ -57,3 +65,14 @@ jobs:
           echo "$INFO"
           echo "$INFO" | /usr/bin/grep -q x86_64
           echo "$INFO" | /usr/bin/grep -q arm64
+
+      # Die Pruefungen des Release-Workflows muessen ein Ad-hoc-Bundle ablehnen; sonst pruefen sie nichts.
+      - name: Release checks reject an ad-hoc bundle
+        run: |
+          set -uo pipefail
+          if scripts/release/verify-bundle.sh "bin/Mail MCP Helper (Ad hoc).app" 2>verify.err; then
+            echo "::error::verify-bundle.sh accepted an ad-hoc bundle"
+            exit 1
+          fi
+          cat verify.err
+          /usr/bin/grep -Eq 'verify-bundle: (Identifier|Authority) failed' verify.err

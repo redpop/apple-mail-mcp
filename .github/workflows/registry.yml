@@ -1,0 +1,30 @@
+name: MCP Registry
+
+# Von Hand auszuloesen, wenn der letzte Schritt von release.yml scheitert, etwa weil die Registry
+# nicht erreichbar war. Baut und veroeffentlicht nichts: der Eintrag verweist auf das schon
+# veroeffentlichte npm-Paket und das .mcpb-Asset des Release, dessen Pruefsumme das Skript
+# aus dem heruntergeladenen Asset berechnet. Ein erneuter Lauf ist folgenlos.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # OIDC-Nachweis fuer den Namensraum io.github.redpop
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      # Die Version stammt aus package.json auf dem gewaehlten Stand; fuer eine aeltere Version
+      # den passenden Tag als Referenz waehlen.
+      - name: Publish to the MCP Registry
+        run: scripts/publish-registry.sh
+        env:
+          GH_TOKEN: ${{ github.token }}

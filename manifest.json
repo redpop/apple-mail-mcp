@@ -1,0 +1,136 @@
+{
+  "manifest_version": "0.3",
+  "name": "apple-mail-mcp",
+  "display_name": "Apple Mail",
+  "version": "0.1.0",
+  "description": "Search and read Apple Mail on macOS, read-only: mailboxes, messages and threads.",
+  "long_description": "A read-only MCP server for Apple Mail. A notarized helper app reads Mail's local index and message files; it is the only process that needs Full Disk Access. Accounts, junk, trash and security mails are controlled by the settings below, never by the assistant.",
+  "author": {
+    "name": "Martin Alker",
+    "url": "https://github.com/redpop"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/redpop/apple-mail-mcp"
+  },
+  "homepage": "https://github.com/redpop/apple-mail-mcp",
+  "documentation": "https://github.com/redpop/apple-mail-mcp#readme",
+  "support": "https://github.com/redpop/apple-mail-mcp/issues",
+  "license": "MIT",
+  "icon": "icon.png",
+  "keywords": [
+    "mail",
+    "email",
+    "apple-mail",
+    "macos",
+    "read-only"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/dist/index.js"
+      ],
+      "env": {
+        "APPLE_MAIL_ACCOUNTS": "${user_config.accounts}",
+        "APPLE_MAIL_INCLUDE_JUNK": "${user_config.include_junk}",
+        "APPLE_MAIL_INCLUDE_TRASH": "${user_config.include_trash}",
+        "APPLE_MAIL_EXCLUDE_MAILBOXES": "${user_config.exclude_mailboxes}",
+        "APPLE_MAIL_SHOW_SECURITY_MAILS": "${user_config.show_security_mails}",
+        "APPLE_MAIL_BODY_SEARCH": "${user_config.body_search}",
+        "APPLE_MAIL_MAX_RESULTS": "${user_config.max_results}",
+        "APPLE_MAIL_MAX_BODY_CHARS": "${user_config.max_body_chars}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "list_mailboxes",
+      "description": "Lists the visible mail accounts and mailboxes with message counts."
+    },
+    {
+      "name": "search_messages",
+      "description": "Searches messages by sender, recipient, subject, date, mailbox and body text."
+    },
+    {
+      "name": "get_message",
+      "description": "Returns one message with headers, attachment names and body text."
+    },
+    {
+      "name": "get_thread",
+      "description": "Returns summaries of the messages in a conversation."
+    }
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin"
+    ],
+    "runtimes": {
+      "node": ">=22"
+    }
+  },
+  "user_config": {
+    "accounts": {
+      "type": "string",
+      "title": "Accounts",
+      "description": "Comma-separated accounts to include, by address, name or UUID. Empty means all accounts.",
+      "default": "",
+      "required": false
+    },
+    "include_junk": {
+      "type": "boolean",
+      "title": "Include junk",
+      "description": "Include mailboxes with the junk role.",
+      "default": false,
+      "required": false
+    },
+    "include_trash": {
+      "type": "boolean",
+      "title": "Include trash",
+      "description": "Include mailboxes with the trash role.",
+      "default": false,
+      "required": false
+    },
+    "exclude_mailboxes": {
+      "type": "string",
+      "title": "Excluded mailboxes",
+      "description": "Comma-separated mailboxes to hide, by name or by path with /.",
+      "default": "",
+      "required": false
+    },
+    "show_security_mails": {
+      "type": "boolean",
+      "title": "Show security mails",
+      "description": "Show sign-in codes and password reset mails unfiltered.",
+      "default": false,
+      "required": false
+    },
+    "body_search": {
+      "type": "boolean",
+      "title": "Body search",
+      "description": "Allow searching in message bodies.",
+      "default": true,
+      "required": false
+    },
+    "max_results": {
+      "type": "number",
+      "title": "Maximum results",
+      "description": "Upper bound for the number of results of a search (1 to 100).",
+      "default": 50,
+      "min": 1,
+      "max": 100,
+      "required": false
+    },
+    "max_body_chars": {
+      "type": "number",
+      "title": "Maximum body length",
+      "description": "Upper bound for the characters of a message body (1000 to 100000).",
+      "default": 20000,
+      "min": 1000,
+      "max": 100000,
+      "required": false
+    }
+  }
+}
