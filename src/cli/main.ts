@@ -7,7 +7,7 @@ import { runSetup } from './setup.js'
 
 const DEFAULT_CONFIG: Config = {
   accounts: [], includeJunk: false, includeTrash: false, excludeMailboxes: [], showSecurityMails: false,
-  bodySearch: true, maxResults: 50, maxBodyChars: 20000, helperPath: null, debug: false,
+  bodySearch: true, bodyIndex: false, maxResults: 50, maxBodyChars: 20000, helperPath: null, debug: false,
 }
 
 type CliRunner = HelperRunner & { stop(): void; bundlePath: string }
