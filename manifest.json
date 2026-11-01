@@ -40,6 +40,7 @@
         "APPLE_MAIL_EXCLUDE_MAILBOXES": "${user_config.exclude_mailboxes}",
         "APPLE_MAIL_SHOW_SECURITY_MAILS": "${user_config.show_security_mails}",
         "APPLE_MAIL_BODY_SEARCH": "${user_config.body_search}",
+        "APPLE_MAIL_BODY_INDEX": "${user_config.body_index}",
         "APPLE_MAIL_MAX_RESULTS": "${user_config.max_results}",
         "APPLE_MAIL_MAX_BODY_CHARS": "${user_config.max_body_chars}"
       }
@@ -68,7 +69,7 @@
       "darwin"
     ],
     "runtimes": {
-      "node": ">=22"
+      "node": "^22.16 || >=24"
     }
   },
   "user_config": {
@@ -112,6 +113,13 @@
       "title": "Body search",
       "description": "Allow searching in message bodies.",
       "default": true,
+      "required": false
+    },
+    "body_index": {
+      "type": "boolean",
+      "title": "Body index",
+      "description": "Keep a full-text index of message bodies on disk so body search finds every message. Turning it off deletes the index.",
+      "default": false,
       "required": false
     },
     "max_results": {

@@ -6,7 +6,7 @@ import { toSummary } from '../src/summary.js'
 
 const config: Config = {
   accounts: [], includeJunk: false, includeTrash: false, excludeMailboxes: [], showSecurityMails: false,
-  bodySearch: true, maxResults: 50, maxBodyChars: 20000, helperPath: null, debug: false,
+  bodySearch: true, bodyIndex: false, maxResults: 50, maxBodyChars: 20000, helperPath: null, debug: false,
 }
 const A = 'AAAAAAAA-0000-0000-0000-000000000001'
 const raw: ListMailboxesResult = {

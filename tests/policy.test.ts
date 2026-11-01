@@ -1,11 +1,11 @@
 import { expect, test } from 'vitest'
 import type { Config } from '../src/config.js'
-import { computePolicy } from '../src/policy.js'
+import { computePolicy, indexFingerprintOf } from '../src/policy.js'
 import type { ListMailboxesResult } from '../src/schemas.js'
 
 const base: Config = {
   accounts: [], includeJunk: false, includeTrash: false, excludeMailboxes: [], showSecurityMails: false,
-  bodySearch: true, maxResults: 50, maxBodyChars: 20000, helperPath: null, debug: false,
+  bodySearch: true, bodyIndex: false, maxResults: 50, maxBodyChars: 20000, helperPath: null, debug: false,
 }
 const A = 'AAAAAAAA-0000-0000-0000-000000000001'
 const B = 'BBBBBBBB-0000-0000-0000-000000000002'
@@ -74,6 +74,16 @@ test('fingerprint changes with config, ignores helperPath and debug', () => {
   expect(f(cfg({ includeJunk: true }))).not.toBe(f(base))
   expect(f(cfg({ excludeMailboxes: ['x'] }))).not.toBe(f(base))
   expect(f(cfg({ helperPath: '/a', debug: true }))).toBe(f(base))
+  // Mit und ohne Index ist die Treffermenge dieselbe; Cursor bleiben gueltig.
+  expect(f(cfg({ bodyIndex: true }))).toBe(f(base))
+})
+test('index fingerprint covers only what decides which mails may be indexed', () => {
+  expect(indexFingerprintOf(base)).toMatch(/^[0-9a-f]{16}$/)
+  expect(indexFingerprintOf(cfg({ accounts: ['x'] }))).not.toBe(indexFingerprintOf(base))
+  expect(indexFingerprintOf(cfg({ includeJunk: true }))).not.toBe(indexFingerprintOf(base))
+  expect(indexFingerprintOf(cfg({ includeTrash: true }))).not.toBe(indexFingerprintOf(base))
+  expect(indexFingerprintOf(cfg({ excludeMailboxes: ['x'] }))).not.toBe(indexFingerprintOf(base))
+  expect(indexFingerprintOf(cfg({ maxResults: 3, maxBodyChars: 5000, showSecurityMails: true, bodySearch: false, bodyIndex: true, helperPath: '/a', debug: true }))).toBe(indexFingerprintOf(base))
 })
 
 test('junk/trash mailbox with invalid url segment is excluded by default', () => {

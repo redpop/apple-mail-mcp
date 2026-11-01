@@ -61,7 +61,7 @@ mail in Mail.app, where Mail stores the Message-ID (not on macOS 15). Details: [
   no `message://` link. Support depends on the layout of Mail's database, not on the version
   number: `doctor` checks it.
   Reports from other versions are welcome, see [Reporting problems](#reporting-problems).
-- Node.js 22 or newer.
+- Node.js 22.16 or newer in the 22 line, or 24 and newer.
 - Mail set up with at least one account.
 - Exchange accounts are untested. Mailboxes and message metadata are listed, but bodies of
   Exchange mail are not read yet: `get_message` reports `file_not_found`. See
@@ -182,6 +182,7 @@ saving its settings, keeps the running server and its old settings.
 | `APPLE_MAIL_EXCLUDE_MAILBOXES` | empty | Comma-separated mailboxes to hide. An entry matches a mailbox name (exact, ignoring case) or a path with `/`. |
 | `APPLE_MAIL_SHOW_SECURITY_MAILS` | `false` | Show messages detected as security mails without withholding the body or masking the subject. |
 | `APPLE_MAIL_BODY_SEARCH` | `true` | Allow `bodyContains` in `search_messages`. When `false`, using it is an `INVALID_INPUT` error. |
+| `APPLE_MAIL_BODY_INDEX` | `false` | Build a full-text index of message bodies on disk, so `bodyContains` can search every message. Takes effect only with `APPLE_MAIL_BODY_SEARCH`. Turning it off deletes the index at the next start. |
 | `APPLE_MAIL_MAX_RESULTS` | `50` | Upper bound for the `limit` of a search (1 to 100). |
 | `APPLE_MAIL_MAX_BODY_CHARS` | `20000` | Upper bound for `maxChars` in `get_message` (1000 to 100000). |
 | `APPLE_MAIL_HELPER_PATH` | not set | Development only: path to a helper bundle (Dev or Ad hoc). A bundle with the release bundle id is refused. |
