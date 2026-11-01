@@ -211,8 +211,8 @@ least one check failed.
 Open an issue at <https://github.com/redpop/apple-mail-mcp/issues> and attach the output of
 `doctor`. If you run it on a macOS version other than 27, open a
 [Schema report](https://github.com/redpop/apple-mail-mcp/issues/new?template=schema-report.yml)
-with the output of `doctor --schema` instead: that is the most useful report we can get. Security problems go through GitHub Security Advisories, see
-[`SECURITY.md`](./SECURITY.md).
+with the output of `doctor --schema` instead: that is the most useful report we can get.
+Security problems go through GitHub Security Advisories, see [`SECURITY.md`](./SECURITY.md).
 
 ## More documentation
 
