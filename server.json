@@ -7,21 +7,21 @@
     "url": "https://github.com/redpop/apple-mail-mcp",
     "source": "github"
   },
-  "version": "0.0.0",
+  "version": "0.1.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@redpop/apple-mail-mcp",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "transport": {
         "type": "stdio"
       }
     },
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/redpop/apple-mail-mcp/releases/download/v0.0.0/apple-mail-mcp-0.0.0.mcpb",
-      "version": "0.0.0",
+      "identifier": "https://github.com/redpop/apple-mail-mcp/releases/download/v0.1.0/apple-mail-mcp-0.1.0.mcpb",
+      "version": "0.1.0",
       "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
       "transport": {
         "type": "stdio"

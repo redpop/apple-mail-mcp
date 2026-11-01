@@ -1,6 +1,6 @@
 {
   "name": "@redpop/apple-mail-mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "mcpName": "io.github.redpop/apple-mail-mcp",
   "description": "Read-only MCP server for Apple Mail on macOS: search and read mail, mailboxes and threads, with a Full Disk Access grant that only a signed helper holds",
   "license": "MIT",

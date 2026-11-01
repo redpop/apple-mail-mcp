@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "apple-mail-mcp",
   "display_name": "Apple Mail",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Search and read Apple Mail on macOS, read-only: mailboxes, messages and threads.",
   "long_description": "A read-only MCP server for Apple Mail. A notarized helper app reads Mail's local index and message files; it is the only process that needs Full Disk Access. Accounts, junk, trash and security mails are controlled by the settings below, never by the assistant.",
   "author": {
@@ -18,13 +18,21 @@
   "support": "https://github.com/redpop/apple-mail-mcp/issues",
   "license": "MIT",
   "icon": "icon.png",
-  "keywords": ["mail", "email", "apple-mail", "macos", "read-only"],
+  "keywords": [
+    "mail",
+    "email",
+    "apple-mail",
+    "macos",
+    "read-only"
+  ],
   "server": {
     "type": "node",
     "entry_point": "dist/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/dist/index.js"],
+      "args": [
+        "${__dirname}/dist/index.js"
+      ],
       "env": {
         "APPLE_MAIL_ACCOUNTS": "${user_config.accounts}",
         "APPLE_MAIL_INCLUDE_JUNK": "${user_config.include_junk}",
@@ -38,13 +46,27 @@
     }
   },
   "tools": [
-    { "name": "list_mailboxes", "description": "Lists the visible mail accounts and mailboxes with message counts." },
-    { "name": "search_messages", "description": "Searches messages by sender, recipient, subject, date, mailbox and body text." },
-    { "name": "get_message", "description": "Returns one message with headers, attachment names and body text." },
-    { "name": "get_thread", "description": "Returns summaries of the messages in a conversation." }
+    {
+      "name": "list_mailboxes",
+      "description": "Lists the visible mail accounts and mailboxes with message counts."
+    },
+    {
+      "name": "search_messages",
+      "description": "Searches messages by sender, recipient, subject, date, mailbox and body text."
+    },
+    {
+      "name": "get_message",
+      "description": "Returns one message with headers, attachment names and body text."
+    },
+    {
+      "name": "get_thread",
+      "description": "Returns summaries of the messages in a conversation."
+    }
   ],
   "compatibility": {
-    "platforms": ["darwin"],
+    "platforms": [
+      "darwin"
+    ],
     "runtimes": {
       "node": ">=22"
     }
