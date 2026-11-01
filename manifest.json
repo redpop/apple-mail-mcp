@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "apple-mail-mcp",
   "display_name": "Apple Mail",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Search and read Apple Mail on macOS, read-only: mailboxes, messages and threads.",
   "long_description": "A read-only MCP server for Apple Mail. A notarized helper app reads Mail's local index and message files; it is the only process that needs Full Disk Access. Accounts, junk, trash and security mails are controlled by the settings below, never by the assistant.",
   "author": {
