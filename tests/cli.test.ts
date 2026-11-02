@@ -206,7 +206,7 @@ const searchRes = () => ({
   ].map((m, i) => ({
     gid: i, messageIdHeader: null, subject: m.subject, sender: { address: 'alice@example.com', name: null }, recipients: [],
     recipientCount: 0, dateReceived: 1, dateSent: null, mailboxIds: [1], read: true, flagged: false, attachmentNames: [],
-    conversationId: null, file: m.file,
+    conversationId: null, file: m.file, category: null, highImpact: false,
   })),
   hasMore: false,
 })
@@ -310,6 +310,19 @@ describe('doctor', () => {
       expect(c.message.length).toBeGreaterThan(0)
     }
     for (const seed of SEED) expect(s.text()).not.toContain(seed)
+  })
+
+  it('doctor reports whether Mail categories are available', async () => {
+    const status = async (categories?: boolean) => {
+      const s = sink()
+      const schema = { compatible: true, missing: [], fingerprint: 'sha256:abc123', ...(categories === undefined ? {} : { categories }) }
+      await runDoctor(doctorDeps(s, goodRunner({ probe: () => probe('granted', { schema }) }), { json: true }))
+      const o = JSON.parse(s.text()) as { checks: Array<{ id: string; status: string }> }
+      return o.checks.find((c) => c.id === 'categories')?.status
+    }
+    expect(await status(true)).toBe('ok')
+    expect(await status(false)).toBe('warn')
+    expect(await status(undefined)).toBeUndefined()
   })
 
   it('doctor warns when no junk or trash mailbox was recognised', async () => {

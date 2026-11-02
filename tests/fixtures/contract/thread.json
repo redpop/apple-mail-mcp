@@ -10,12 +10,14 @@
         "attachmentNames" : [
 
         ],
+        "category" : null,
         "conversationId" : 77,
         "dateReceived" : 1700001000,
         "dateSent" : 1700000940,
         "file" : "full",
         "flagged" : false,
         "gid" : 1007,
+        "highImpact" : false,
         "mailboxIds" : [
           1
         ],
@@ -40,12 +42,14 @@
         "attachmentNames" : [
 
         ],
+        "category" : null,
         "conversationId" : 77,
         "dateReceived" : 1700001100,
         "dateSent" : 1700001040,
         "file" : "full",
         "flagged" : false,
         "gid" : 1008,
+        "highImpact" : false,
         "mailboxIds" : [
           6
         ],
@@ -70,12 +74,14 @@
         "attachmentNames" : [
 
         ],
+        "category" : null,
         "conversationId" : 77,
         "dateReceived" : 1700001200,
         "dateSent" : 1700001140,
         "file" : "full",
         "flagged" : false,
         "gid" : 1009,
+        "highImpact" : false,
         "mailboxIds" : [
           4
         ],

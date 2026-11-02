@@ -492,6 +492,8 @@ enum FixtureBuilder {
     /// - Anhaenge: i % 32 == 3 an allen Kopien, i % 16 == 7 nur an der zweiten Kopie (die geloescht oder in
     ///   einer nicht erlaubten Mailbox liegen kann); 1 oder 2 Zeilen je Nachricht, im Mittel 1,8
     /// - jede siebte erste Kopie ungelesen, jede 50. markiert; Datum steigt mit i
+    /// - Kategorie (AMM-19) nur fuer die neuesten 7 % (wie 113000 von 121000 ohne Wert beim Maintainer),
+    ///   reihum 0 bis 3; jede 97. davon model_high_impact; 60 Absender mit Uebersteuerung in business_addresses
     /// Ergibt bei 121000 gids rund 242000 Zeilen in messages und 26000 in attachments auf 14000 Nachrichten.
     private static func insertRealSizeBulk(_ db: SQLiteHandle, count n: Int) throws {
         let subjectCount: Int64 = 30_000, addressCount: Int64 = 6_000
@@ -517,7 +519,15 @@ enum FixtureBuilder {
                 CASE WHEN i % 5 = 0 THEN 'Jürgen Größe ' || i ELSE 'Person ' || i END FROM seq
             """)
         try db.exec(seq(count) + """
-            INSERT INTO message_global_data (ROWID, message_id_header) SELECT \(baseGid) + i, '<real-' || i || '@example.com>' FROM seq
+            INSERT INTO message_global_data (ROWID, message_id_header, model_category, model_high_impact)
+            SELECT \(baseGid) + i, '<real-' || i || '@example.com>',
+                CASE WHEN i * 100 >= \(count) * 93 THEN i % 4 END, i * 100 >= \(count) * 93 AND i % 97 = 0 FROM seq
+            """)
+        try db.exec(seq(60) + """
+            INSERT INTO businesses (ROWID, address_comment, domain) SELECT 1 + i, 'Firma ' || i, 'firma' || i || '.example.com' FROM seq
+            """)
+        try db.exec(seq(60) + """
+            INSERT INTO business_addresses (address, business, category) SELECT \(a0) + 1 + i * 100, 1 + i, i % 4 FROM seq
             """)
         let columns = """
             INSERT INTO messages (ROWID, global_message_id, sender, subject_prefix, subject,

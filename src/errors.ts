@@ -50,6 +50,8 @@ const MESSAGES: Record<string, string> = {
   MAILBOX_NOT_FOUND: 'No such mailbox, or it is not visible under the current settings. Call list_mailboxes to get valid mailbox IDs.',
   INVALID_CURSOR: 'The cursor belongs to a different search or is no longer valid. Repeat the search without a cursor.',
   INVALID_INPUT: 'The request was rejected as invalid.',
+  CATEGORY_UNSUPPORTED:
+    'The category filter is not available: the Mail database on this Mac has no category columns (older macOS or Mail version). Search without category.',
   CONFIG_INVALID:
     'The server configuration is invalid, so no mail was accessed. The user needs to correct the named setting in the MCP server configuration and restart the client.',
   HELPER_MISSING:

@@ -41,6 +41,8 @@ function row(gid: number, over: Record<string, unknown> = {}) {
     attachmentNames: [],
     conversationId: null,
     file: 'full',
+    category: null,
+    highImpact: false,
     ...over,
   }
 }

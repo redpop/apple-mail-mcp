@@ -177,6 +177,12 @@ import Testing
             ("mailboxIds small", page(.init(allowedMailboxIds: allowed, mailboxIds: [1003], limit: 20)), .milliseconds(150)),
             ("mailboxIds small + read", page(.init(allowedMailboxIds: allowed, mailboxIds: [1003], unread: false, limit: 20)), nil),
             ("mailboxIds large", page(.init(allowedMailboxIds: allowed, mailboxIds: [1000], limit: 20)), nil),
+            // Kategorie (AMM-19): 7 % der gids haben einen Wert; Mailbox 1001 spielt den Eingang.
+            ("category primary", page(.init(allowedMailboxIds: allowed, category: 0, inboxMailboxIds: [1001], limit: 20)), nil),
+            ("category transactions", page(.init(allowedMailboxIds: allowed, category: 1, limit: 20)), nil),
+            ("category promotions", page(.init(allowedMailboxIds: allowed, category: 3, limit: 20)), nil),
+            ("category + subject", page(.init(allowedMailboxIds: allowed, subject: "rechnung", category: 1, limit: 20)), nil),
+            ("category + unread", page(.init(allowedMailboxIds: allowed, unread: true, category: 2, limit: 20)), nil),
         ]
         // Erst ohne ANALYZE-Statistik (wie der frisch gebaute Index), dann mit; ob Mails Index sqlite_stat1
         // fuehrt, ist nicht belegt, und der Planer entscheidet je nach Statistik anders.

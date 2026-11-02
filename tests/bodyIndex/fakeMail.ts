@@ -49,7 +49,7 @@ export class FakeMail {
     return {
       gid: r.gid, messageIdHeader: null, subject: r.subject, sender: { address: r.from, name: null }, recipients: [], recipientCount: 0,
       dateReceived: 1768000000 + r.gid, dateSent: null, mailboxIds: [r.mailbox], read: true, flagged: false, attachmentNames: [],
-      conversationId: null, file: r.body === null ? 'none' : 'full',
+      conversationId: null, file: r.body === null ? 'none' : 'full', category: null, highImpact: false,
     }
   }
 

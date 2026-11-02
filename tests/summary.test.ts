@@ -20,7 +20,7 @@ const policy = computePolicy(config, raw)
 const row = (over: Partial<MessageRow> = {}): MessageRow => ({
   gid: 42, messageIdHeader: '<abc@example.com>', subject: 'Hello', sender: { address: 'a@b.example', name: 'Ann' },
   recipients: [], recipientCount: 0, dateReceived: 1767225600, dateSent: null, mailboxIds: [1], read: false, flagged: true,
-  attachmentNames: ['x.pdf'], conversationId: 7, file: 'full', ...over,
+  attachmentNames: ['x.pdf'], conversationId: 7, file: 'full', category: null, highImpact: false, ...over,
 })
 const rowNoHeader = row({ messageIdHeader: null, subject: '', sender: { address: '', name: null }, conversationId: null, file: 'none' })
 
@@ -38,7 +38,7 @@ test('basic field mapping', () => {
     id: '42', link: 'message://%3Cabc%40example.com%3E', subject: 'Hello', from: { address: 'a@b.example', name: 'Ann' },
     to: [], cc: [], recipientCount: 0, date: '2026-01-01T01:00:00+01:00',
     mailboxes: [{ id: '1', name: 'INBOX', account: 'Work' }], unread: true, flagged: true,
-    attachmentNames: ['x.pdf'], attachmentCount: 1, threadId: '7', bodyLocal: 'full',
+    attachmentNames: ['x.pdf'], attachmentCount: 1, threadId: '7', bodyLocal: 'full', category: null, important: false,
   })
 })
 test('summary redacts security subject unless configured', () => {

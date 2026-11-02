@@ -115,7 +115,7 @@ struct CollectedSchema {
 
         let reduced = full.ddl.map { $0.hasPrefix("CREATE TABLE subjects ") ? "CREATE TABLE subjects (ROWID INTEGER PRIMARY KEY)" : $0 }
         let withoutColumn = try CollectedSchema.parseDoctorOutput(
-            doctorOutput(SchemaReport(compatible: false, missing: ["subjects.subject"], fingerprint: full.fingerprint, ddl: reduced)))
+            doctorOutput(SchemaReport(compatible: false, missing: ["subjects.subject"], fingerprint: full.fingerprint, categories: true, ddl: reduced)))
         let reducedReport = try check(withoutColumn)
         #expect(withoutColumn.expectedMissing == ["subjects.subject"])
         #expect(reducedReport.missing == ["subjects.subject"])

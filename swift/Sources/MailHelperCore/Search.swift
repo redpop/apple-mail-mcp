@@ -25,6 +25,10 @@ public struct SearchRequest: Codable, Equatable, Sendable {
     public var unread: Bool?
     public var flagged: Bool?
     public var hasAttachment: Bool?
+    /// Kategorie aus Mail (AMM-19): 0 Wichtiges, 1 Transaktionen, 2 Neuigkeiten, 3 Werbung.
+    public var category: Int?
+    /// Eingangs-Mailboxen (Teilmenge der erlaubten): dort zaehlt eine Mail ohne Kategorie zu 0, wie in Mail.
+    public var inboxMailboxIds: [Int64]?
     /// Nur diese gids (Treffer des Body-Index); alle uebrigen Filter wirken weiter. Leer: keine Kandidaten.
     public var gids: [Int64]?
     public var after: After?
@@ -34,7 +38,8 @@ public struct SearchRequest: Codable, Equatable, Sendable {
 
     public init(allowedMailboxIds: [Int64], mailboxIds: [Int64]? = nil, from: String? = nil, to: String? = nil,
                 subject: String? = nil, query: String? = nil, since: Int64? = nil, before: Int64? = nil,
-                unread: Bool? = nil, flagged: Bool? = nil, hasAttachment: Bool? = nil, gids: [Int64]? = nil,
+                unread: Bool? = nil, flagged: Bool? = nil, hasAttachment: Bool? = nil,
+                category: Int? = nil, inboxMailboxIds: [Int64]? = nil, gids: [Int64]? = nil,
                 after: After? = nil,
                 limit: Int, maxRecipients: Int = 5, countTotal: Bool = false) {
         self.allowedMailboxIds = allowedMailboxIds
@@ -48,6 +53,8 @@ public struct SearchRequest: Codable, Equatable, Sendable {
         self.unread = unread
         self.flagged = flagged
         self.hasAttachment = hasAttachment
+        self.category = category
+        self.inboxMailboxIds = inboxMailboxIds
         self.gids = gids
         self.after = after
         self.limit = limit
@@ -89,7 +96,7 @@ extension MailStore {
     /// Gruppierte Kandidatenabfrage (Spec 5.4) ohne Keyset. Filter wirken auf irgendeine Kopie in
     /// einer erlaubten Mailbox (HAVING ueber max(...)), das Gruppendatum bleibt das Maximum ueber alle
     /// erlaubten Kopien, damit Keyset und angezeigtes Datum uebereinstimmen.
-    private func candidateCTE(_ r: SearchRequest) -> (sql: String, bind: [SQLValue]) {
+    private func candidateCTE(_ r: SearchRequest, _ optional: Schema.OptionalColumns) -> (sql: String, bind: [SQLValue]) {
         var bind: [SQLValue] = r.allowedMailboxIds.map { .int($0) }
         var wherePre: [String] = []
         var whereBind: [SQLValue] = []
@@ -175,6 +182,13 @@ extension MailStore {
             whereBind += allowedBind
             if h { driveByGid = true }
         }
+        if let c = r.category {
+            let (cond, binds) = Self.categoryFilter(c, inbox: r.inboxMailboxIds ?? [], allowedIn: allowedIn,
+                                                    allowedBind: allowedBind, optional)
+            wherePre.append("m.global_message_id IN (\(cond))")
+            whereBind += binds
+            driveByGid = true
+        }
         bind += whereBind + havingBind
         // Gibt es eine gid-Menge, nimmt das unaere + deleted und mailbox die Indexnutzung, damit SQLite die
         // Gruppen ueber messages_global_message_id_mailbox_index aus der Menge holt (schon nach gid sortiert,
@@ -197,6 +211,74 @@ extension MailStore {
         return (sql, bind)
     }
 
+    /// Effektive Kategorie einer Kopie m2 (AMM-19): Absender-Uebersteuerung vor dem Modellwert, Join ueber den
+    /// Absender. Mail schreibt eine Uebersteuerung in beide Tabellen; COALESCE deckt beide Faelle ab. Ohne
+    /// Uebersteuerungstabellen bleibt der Modellwert, ohne Modellspalten NULL. Feste Ausdruecke, nie Eingaben.
+    static func effectiveCategory(_ o: Schema.OptionalColumns) -> (joins: String, override: String, effective: String) {
+        let model = o.modelCategory ? "g.model_category" : "NULL"
+        guard o.addressCategory else { return ("", "NULL", model) }
+        var joins = "LEFT JOIN business_addresses ba ON ba.address = m2.sender"
+        var override = "ba.category"
+        if o.businessCategory {
+            joins += " LEFT JOIN business_categories bc ON bc.business = ba.business"
+            override = "COALESCE(ba.category, bc.category)"
+        }
+        return (joins, override, "COALESCE(\(override), \(model))")
+    }
+
+    /// gid-Menge fuer `category` (AMM-19, Regeln am 2026-11-02 mit der Oberflaeche abgeglichen):
+    /// 1 bis 3: effektive Kategorie gleich dem Wert. 0 (Wichtiges): effektive Kategorie 0 oder
+    /// model_high_impact = 1, in Eingangs-Mailboxen zusaetzlich ohne effektive Kategorie.
+    /// Die Menge entsteht aus Teilmengen, die je einen Index nutzen, statt alle erlaubten Zeilen samt Joins
+    /// zu lesen (COALESCE nimmt jedem Index die Wirkung):
+    /// - Modellwert ueber message_global_data_model_category_index, dann die Kopien ueber
+    ///   messages_global_message_id_mailbox_index; die effektive Kategorie wird dort nochmals geprueft, weil
+    ///   eine Uebersteuerung den Modellwert ersetzt
+    /// - Uebersteuerung: die (wenigen) Absender in business_addresses, ihre Kopien ueber messages_sender_index
+    /// - nur 0: model_high_impact = 1 (ohne Index, ein Durchlauf ueber message_global_data) und die Eingaenge
+    ///   ueber messages_mailbox_date_received_index
+    private static func categoryFilter(_ c: Int, inbox: [Int64], allowedIn: String, allowedBind: [SQLValue],
+                                       _ o: Schema.OptionalColumns) -> (sql: String, bind: [SQLValue]) {
+        let e = effectiveCategory(o)
+        let copy = "+m2.deleted = 0 AND +\(allowedIn)"
+        let value = SQLValue.int(Int64(c))
+        var parts: [String] = []
+        var bind: [SQLValue] = []
+        parts.append("""
+            SELECT m2.global_message_id FROM message_global_data g
+                CROSS JOIN messages m2 ON m2.global_message_id = g.ROWID \(e.joins)
+                WHERE g.model_category = ? AND \(copy) AND \(e.effective) = ?
+            """)
+        bind += [value] + allowedBind + [value]
+        if o.addressCategory {
+            // business_categories haengt nur ueber ba.business an; der LEFT JOIN steht deshalb vor messages.
+            let bcJoin = o.businessCategory ? "LEFT JOIN business_categories bc ON bc.business = ba.business" : ""
+            parts.append("""
+                SELECT m2.global_message_id FROM business_addresses ba \(bcJoin)
+                    CROSS JOIN messages m2 ON m2.sender = ba.address
+                    WHERE \(e.override) = ? AND \(copy)
+                """)
+            bind += [value] + allowedBind
+        }
+        if c == 0 {
+            parts.append("""
+                SELECT m2.global_message_id FROM message_global_data g
+                    CROSS JOIN messages m2 ON m2.global_message_id = g.ROWID
+                    WHERE g.model_high_impact = 1 AND \(copy)
+                """)
+            bind += allowedBind
+            if !inbox.isEmpty {
+                parts.append("""
+                    SELECT m2.global_message_id FROM messages m2
+                        LEFT JOIN message_global_data g ON g.ROWID = m2.global_message_id \(e.joins)
+                        WHERE +m2.deleted = 0 AND m2.mailbox IN (\(placeholders(inbox.count))) AND \(e.effective) IS NULL
+                    """)
+                bind += inbox.map { .int($0) }
+            }
+        }
+        return (parts.joined(separator: " UNION ALL "), bind)
+    }
+
     public func search(_ r: SearchRequest) throws(HelperFailure) -> SearchResult {
         guard !r.allowedMailboxIds.isEmpty else { throw Self.invalid("allowedMailboxIds") }
         guard (1...2000).contains(r.limit) else { throw Self.invalid("limit") }
@@ -205,20 +287,27 @@ extension MailStore {
             guard !ids.isEmpty, Set(ids).isSubset(of: Set(r.allowedMailboxIds)) else { throw Self.invalid("mailboxIds") }
         }
         if let gids = r.gids { guard gids.count <= searchMaxGids else { throw Self.invalid("gids") } }
+        if let c = r.category { guard (0...3).contains(c) else { throw Self.invalid("category") } }
+        if let ids = r.inboxMailboxIds {
+            guard r.category != nil, Set(ids).isSubset(of: Set(r.allowedMailboxIds)) else { throw Self.invalid("inboxMailboxIds") }
+        }
 
-        let db = try envelopeDatabase()
+        let (db, optional) = try envelopeDatabaseWithColumns()
+        if r.category != nil, !optional.modelCategory {
+            throw HelperFailure(code: .categoryUnsupported, message: "Missing columns: message_global_data.model_category, message_global_data.model_high_impact")
+        }
         // Eine Lesetransaktion fuer Fold-Nachtrag, Seitenabfrage und Zeilenaufbau: sonst koennte Mail
         // dazwischen schreiben, und eine gefundene gid fehlte in `messages` oder totalMatched passte nicht
         // zur Seite. Die Transaktion dauert so lange wie die Suche (Millisekunden bis wenige hundert).
-        return try db.readTransaction { () throws(HelperFailure) in try searchPage(r, db) }
+        return try db.readTransaction { () throws(HelperFailure) in try searchPage(r, db, optional) }
     }
 
-    private func searchPage(_ r: SearchRequest, _ db: Database) throws(HelperFailure) -> SearchResult {
+    private func searchPage(_ r: SearchRequest, _ db: Database, _ optional: Schema.OptionalColumns) throws(HelperFailure) -> SearchResult {
         if [r.from, r.to, r.subject, r.query].contains(where: { Self.term($0) != nil }) {
             try db.refreshFoldedDictionaries()
         }
         if let gids = r.gids { try db.fillSearchGids(gids) }
-        let cte = candidateCTE(r)
+        let cte = candidateCTE(r, optional)
 
         // Gesamtzahl nur auf der ersten Seite, per Fensterfunktion in derselben Abfrage: die Kandidaten
         // werden ohnehin vollstaendig gruppiert, eine zweite Abfrage wiederholte alles. Exakt, ohne Obergrenze.

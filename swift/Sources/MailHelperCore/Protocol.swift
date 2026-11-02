@@ -1,7 +1,7 @@
 import Foundation
 
 /// Version des NDJSON-Protokolls (Spec 7.1). Node vergleicht sie im `hello`.
-public let protocolVersion = 2
+public let protocolVersion = 3
 
 /// Spec 7.3 `hello`: Ergebnis.
 public struct HelloResult: Codable, Equatable, Sendable {
@@ -23,7 +23,7 @@ extension StrictPayload {
 extension SearchRequest: StrictPayload {
     static let allowedKeys: Set<String> = [
         "allowedMailboxIds", "mailboxIds", "from", "to", "subject", "query", "since", "before", "unread",
-        "flagged", "hasAttachment", "gids", "after", "limit", "maxRecipients", "countTotal",
+        "flagged", "hasAttachment", "category", "inboxMailboxIds", "gids", "after", "limit", "maxRecipients", "countTotal",
     ]
     static let nestedKeys: [String: Set<String>] = ["after": ["date", "gid"]]
 }

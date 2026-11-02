@@ -497,7 +497,7 @@ import Testing
         let nh = try #require(rows.first { ($0["gid"] as? Int64) == f.gid(named: "noHeader") })
         #expect(nh["messageIdHeader"] is NSNull && nh["sender"] is NSNull)
         #expect(Set(nh.keys) == ["gid", "messageIdHeader", "subject", "sender", "recipients", "recipientCount", "dateReceived",
-                                 "dateSent", "mailboxIds", "read", "flagged", "attachmentNames", "attachmentCount", "conversationId", "file"])
+                                 "dateSent", "mailboxIds", "read", "flagged", "attachmentNames", "attachmentCount", "conversationId", "file", "category", "highImpact"])
         #expect(obj["totalMatched"] != nil && obj["totalMatchedCapped"] as? Bool == false)
         let req = try JSONDecoder().decode(SearchRequest.self, from: Data(#"{"allowedMailboxIds":[1],"after":{"date":5,"gid":6},"limit":3,"maxRecipients":2,"countTotal":true}"#.utf8))
         #expect(req.after == .init(date: 5, gid: 6) && req.limit == 3 && req.countTotal)

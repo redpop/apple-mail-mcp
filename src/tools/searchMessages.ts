@@ -7,7 +7,7 @@ import { decodeCursor, encodeCursor, queryHash } from '../cursor.js'
 import { formatLocal, parseDateInput } from '../dates.js'
 import { HelperError } from '../errors.js'
 import { searchResult } from '../schemas.js'
-import { MessageSummary, toSummary } from '../summary.js'
+import { CATEGORIES, MessageSummary, toSummary } from '../summary.js'
 import { respond } from './respond.js'
 
 const IsoDateOrDateTime = z.string().min(1).max(40)
@@ -25,6 +25,7 @@ const Input = z
     unread: z.boolean().optional(),
     flagged: z.boolean().optional(),
     hasAttachment: z.boolean().optional(),
+    category: z.enum(CATEGORIES).optional(),
     limit: z.number().int().min(1).max(100).default(20),
     cursor: z.string().optional(),
   })
@@ -75,6 +76,14 @@ function indexNote(indexed: number, matches: number, more: boolean, caughtUp: bo
   return `Searched the body index of ${fmt(indexed)} messages and found ${found}.${next}${late}`
 }
 
+/** note bei jedem category-Filter (AMM-19): woher die Kategorien kommen und was sie nicht abdecken. */
+export const CATEGORY_NOTE =
+  "Categories come from Mail's own classification, which covers mainly newer messages; messages Mail has not categorised match no category. Exception, as in Mail: in an inbox, an uncategorised message counts as primary, and primary also includes messages Mail marks as important."
+
+function withNote(note: string, extra: string | undefined): string {
+  return extra === undefined ? note : `${note} ${extra}`
+}
+
 function defined(o: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
 }
@@ -84,7 +93,7 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
     'search_messages',
     {
       description:
-        'Searches mail by sender, recipient, subject, free text, mailbox, date range, unread, flagged and attachment state, newest first, and returns message summaries without bodies. Changes nothing.',
+        'Searches mail by sender, recipient, subject, free text, mailbox, date range, unread, flagged and attachment state, and Mail category, newest first, and returns message summaries without bodies. Changes nothing.',
       inputSchema: Input,
       outputSchema: Output,
       annotations: { title: 'Search messages', readOnlyHint: true, idempotentHint: true, openWorldHint: false },
@@ -118,6 +127,12 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
           }
         }
         const limit = Math.min(input.limit, config.maxResults)
+        // Kategorie als Zahl fuer den Helper; fuer primary dazu die Eingaenge, in denen Mail eine Mail ohne
+        // Kategorie unter "Wichtiges" zeigt.
+        const category = input.category === undefined ? undefined : CATEGORIES.indexOf(input.category)
+        const inboxMailboxIds =
+          category === 0 ? [...policy.mailboxes.values()].filter((m) => m.role === 'inbox').map((m) => m.id).sort((a, b) => a - b) : []
+        const categoryNote = category === undefined ? undefined : CATEGORY_NOTE
 
         const filters = defined({
           query: input.query,
@@ -130,6 +145,8 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
           unread: input.unread,
           flagged: input.flagged,
           hasAttachment: input.hasAttachment,
+          category,
+          inboxMailboxIds: inboxMailboxIds.length > 0 ? inboxMailboxIds : undefined,
         })
         // bodyContains gehoert in den Hash, damit ein Cursor nur zur selben Body-Suche passt.
         const hash = queryHash(input.bodyContains !== undefined ? { ...filters, bodyContains: input.bodyContains } : filters, policy.fingerprint)
@@ -161,7 +178,7 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
                       messages,
                       nextCursor: res.resumeAfter ? encodeCursor(res.resumeAfter, hash) : null,
                       bodyIndex: { indexed, lastUpdated: updated === null ? null : formatLocal(Number(updated) / 1000) },
-                      note: indexNote(indexed, messages.length, res.resumeAfter !== null, caughtUp),
+                      note: withNote(indexNote(indexed, messages.length, res.resumeAfter !== null, caughtUp), categoryNote),
                     }),
                   }
                 }
@@ -188,7 +205,7 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
               messages,
               nextCursor: res.resumeAfter ? encodeCursor(res.resumeAfter, hash) : null,
               scan: res.scan,
-              note: liveNote === null ? note : `${note} ${liveNote}`,
+              note: withNote(liveNote === null ? note : `${note} ${liveNote}`, categoryNote),
             }),
           }
         }
@@ -213,6 +230,7 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
           const of = raw.totalMatched == null ? '' : ` of ${raw.totalMatched}`
           note = `Showing ${messages.length}${of} matches. Use nextCursor for more, or narrow with from, since or mailboxIds.`
         }
+        if (categoryNote !== undefined) note = note === undefined ? categoryNote : `${note} ${categoryNote}`
         return {
           structured: Output.parse({
             messages,

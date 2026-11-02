@@ -339,6 +339,8 @@ without `ANALYZE`:
 | from, to, query | 8 to 19 ms |
 | query `e`, to `example` (almost every mail matches) | 440 ms, 320 ms |
 | `mailboxIds`, small / large mailbox | 3 ms / 100 ms |
+| `category`: primary / transactions / promotions | 16 ms / 8 ms / 7 ms |
+| `category` with subject / with unread | 68 ms / 6 ms |
 
 Run it with `PERF_REAL_SIZE=1 swift test -c release --package-path swift --filter realSize`. The
 no-filter case is slower here than on the maintainer's real store (112 ms), so compare the rows
@@ -388,6 +390,50 @@ after a start also pays for opening the database.
 Separately measured on a real mailbox during the spike: `LIKE` over all subjects 42 ms and over
 sender addresses 27 ms with `sqlite3` including process start; `count(*)` through the helper 2
 to 6 ms including the re-exec. Treat all of these as orders of magnitude.
+
+### Categories (AMM-19)
+
+Mail stores its on-device classification in `message_global_data`: `model_category` (0 primary,
+1 transactions, 2 updates, 3 promotions, NULL without a value) and `model_high_impact`. A sender
+override set with "Categorize Sender" goes into both `business_addresses.category` (keyed by the
+`addresses` row of the sender) and `business_categories.category` (keyed by
+`business_addresses.business`) and wins over the model value; setting it back writes the original
+value, not NULL. The effective category of a copy is therefore
+
+```sql
+COALESCE(business_addresses.category, business_categories.category, message_global_data.model_category)
+```
+
+joined through `messages.sender`. The rules were checked against Mail's category buttons on one
+inbox on 2026-11-02, with count-only scripts the maintainer ran (`scripts/check-categories-attachments.py`):
+
+- `primary` is effective 0 or `model_high_impact = 1`; in an inbox also effective NULL, because
+  Mail shows uncategorised inbox mail under Primary and does not categorise mail moved there.
+  Outside the inbox NULL does not count: there it would match almost every message (113,320 of
+  121,251 on that store have no value). Node sends the inbox ids (`inboxMailboxIds`, role `inbox`
+  among the allowed mailboxes) because it owns mailbox roles.
+- `transactions`, `updates` and `promotions` are effective 1, 2 and 3.
+- Other numbers match no filter; the summary shows them as `null`.
+
+The helper takes `category` as a number from a fixed range, never as text. `messageRow` carries
+the effective category of the best copy (raw, Node maps it) and `highImpact`.
+
+The columns are read as optional, like `message_id_header`. Without `model_category` or
+`model_high_impact` the filter fails with `CATEGORY_UNSUPPORTED` and rows carry NULL and `false`;
+without the override tables the model value stands alone. `probe` reports `schema.categories`, and
+`doctor` shows it.
+
+The filter is a prefilter on group ids like `hasAttachment`. `COALESCE` defeats every index, so the
+set is a `UNION ALL` of parts that each use one: the model value through
+`message_global_data_model_category_index` and the copies through
+`messages_global_message_id_mailbox_index` (rechecking the effective value, since an override
+replaces the model value), the override senders from the small `business_addresses` table and their
+copies through `messages_sender_index`, and for `primary` the high-impact rows (no index, one pass
+over `message_global_data`) and the inbox rows through `messages_mailbox_date_received_index`. On
+the synthetic store (7 % of the group ids categorised, as on the maintainer's store, and 60 override
+senders) a page takes 7 to 16 ms; see the table under Text search. A large inbox with many
+uncategorised messages makes `primary` slower, roughly like `mailboxIds` on a mailbox of that size.
+Not yet measured on a real store.
 
 ### Reading a body
 
@@ -616,6 +662,8 @@ Assumed, not measured:
   pass the column check; macOS 15 lacks `message_global_data.message_id_header`, which is
   therefore optional and read as NULL. Collected schemas go to `fixtures/schema/`, where a
   Swift test runs the column check against each one;
+- Mail categories on macOS 15 and 26 with a real mailbox (the schemas there have the columns;
+  whether Mail fills them is open), and the latency of the `category` filter on a real store;
 - Exchange accounts: not in the spike mailbox; [`exchange.md`](./exchange.md) lists what the
   code does and what to check;
 - whether macOS turns a grant off at `exec` or at first file access for an unexpected

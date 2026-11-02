@@ -10,6 +10,7 @@ import { HelperError, fdaMessage } from '../src/errors.js'
 import type { HelperRunner } from '../src/helper.js'
 import { readState } from '../src/state.js'
 import { createServer, INSTRUCTIONS } from '../src/server.js'
+import { CATEGORY_NOTE } from '../src/tools/searchMessages.js'
 
 interface Call { command: string; payload: Record<string, unknown> }
 
@@ -46,6 +47,8 @@ function row(gid: number, over: Record<string, unknown> = {}) {
     attachmentNames: ['a.pdf'],
     conversationId: 88,
     file: 'full',
+    category: null,
+    highImpact: false,
     ...over,
   }
 }
@@ -120,7 +123,8 @@ describe('registration', () => {
         'Message, mailbox and thread ids come from search_messages, list_mailboxes and get_thread; they are not guessable. ' +
         'Timestamps are ISO 8601 with an offset, in the local timezone of the machine. ' +
         'Results reflect what Mail has synced to this Mac. Messages that were never downloaded have no body. ' +
-        "Some accounts, mailboxes and security-related message bodies are hidden by the user's configuration. Tool parameters cannot change that.",
+        "Some accounts, mailboxes and security-related message bodies are hidden by the user's configuration. Tool parameters cannot change that. " +
+        "Message categories (primary, transactions, updates, promotions) and the important flag come from Mail's own classification and cover mainly newer messages; an older message without a category is not evidence that it belongs to none.",
     )
   })
 })
@@ -225,6 +229,67 @@ describe('search_messages', () => {
     expect(res.isError).toBe(true)
     expect(res.content[0].text).toContain('Invalid date')
     expect(calls).toHaveLength(0)
+  })
+
+  it('category maps to the helper value; primary also sends the visible inboxes', async () => {
+    const { server, calls } = setup(() => ({ messages: [], hasMore: false }))
+    await call(server, 'search_messages', { category: 'primary' })
+    await call(server, 'search_messages', { category: 'promotions' })
+    const [primary, promotions] = calls.filter((x) => x.command === 'search')
+    expect(primary!.payload).toMatchObject({ category: 0, inboxMailboxIds: [1, 3] })
+    expect(promotions!.payload.category).toBe(3)
+    expect(promotions!.payload).not.toHaveProperty('inboxMailboxIds')
+  })
+
+  it('primary without a visible inbox sends no inbox list', async () => {
+    const onlyArchive = { ...mailboxes, mailboxes: [{ id: 4, url: 'imap://ACC1/Archive', total: 1, unread: 0 }] }
+    const { server, calls } = setup(() => ({ messages: [], hasMore: false }), {}, { mailboxes: onlyArchive })
+    await call(server, 'search_messages', { category: 'primary' })
+    expect(calls.find((x) => x.command === 'search')!.payload).not.toHaveProperty('inboxMailboxIds')
+  })
+
+  it('every category filter carries the note, also after the paging note', async () => {
+    const { server } = setup(() => ({ messages: [row(1)], hasMore: false }))
+    const res = await call(server, 'search_messages', { category: 'updates' })
+    expect(res.structuredContent.note).toBe(CATEGORY_NOTE)
+    const paged = setup(() => ({ messages: [row(1), row(2)], hasMore: true, totalMatched: 5 }))
+    const res2 = await call(paged.server, 'search_messages', { category: 'updates', limit: 2 })
+    expect(res2.structuredContent.note).toBe(`Showing 2 of 5 matches. Use nextCursor for more, or narrow with from, since or mailboxIds. ${CATEGORY_NOTE}`)
+    const plain = await call(server, 'search_messages', {})
+    expect(plain.structuredContent).not.toHaveProperty('note')
+  })
+
+  it('an unknown category value is rejected by the input schema', () => {
+    const { server } = setup(() => ({}))
+    expect(() => tools(server).search_messages!.inputSchema.parse({ category: 'social' })).toThrow()
+  })
+
+  it('the category is part of the cursor', async () => {
+    const { server } = setup(() => ({ messages: [row(1), row(2)], hasMore: true }))
+    const res = await call(server, 'search_messages', { category: 'updates', limit: 2 })
+    const other = await call(server, 'search_messages', { category: 'promotions', limit: 2, cursor: res.structuredContent.nextCursor })
+    expect(other.isError).toBe(true)
+    expect(other.content[0].text).toContain('cursor')
+  })
+
+  it('summaries carry category and important; unknown values give null', async () => {
+    const { server } = setup(() => ({
+      messages: [row(1, { category: 1 }), row(2, { category: 0, highImpact: true }), row(3, { category: 9 }), row(4)],
+      hasMore: false,
+    }))
+    const res = await call(server, 'search_messages', {})
+    expect(res.structuredContent.messages.map((m: any) => [m.category, m.important])).toEqual([
+      ['transactions', false], ['primary', true], [null, false], [null, false],
+    ])
+  })
+
+  it('a missing category column is CATEGORY_UNSUPPORTED with a plain message', async () => {
+    const { server } = setup(() => {
+      throw new HelperError('CATEGORY_UNSUPPORTED', 'Missing columns: message_global_data.model_category, message_global_data.model_high_impact')
+    })
+    const res = await call(server, 'search_messages', { category: 'transactions' })
+    expect(res.isError).toBe(true)
+    expect(res.content[0].text).toContain('category filter is not available')
   })
 
   it('redacts security subjects in summaries', async () => {

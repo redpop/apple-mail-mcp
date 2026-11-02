@@ -54,10 +54,15 @@ public struct MessageRow: Codable, Equatable, Sendable {
     public let attachmentCount: Int
     public let conversationId: Int64?
     public let file: FileState
+    /// Effektive Kategorie der besten Kopie (AMM-19), roh; Node bildet 0 bis 3 auf Namen ab, alles andere
+    /// auf null. NULL ohne Wert oder ohne die Spalten.
+    public let category: Int64?
+    /// message_global_data.model_high_impact = 1; false ohne die Spalte.
+    public let highImpact: Bool
 
     enum CodingKeys: String, CodingKey {
         case gid, messageIdHeader, subject, sender, recipients, recipientCount, dateReceived, dateSent
-        case mailboxIds, read, flagged, attachmentNames, attachmentCount, conversationId, file
+        case mailboxIds, read, flagged, attachmentNames, attachmentCount, conversationId, file, category, highImpact
     }
 
     // Nullable Felder werden immer geschrieben (zod: nullable, nicht optional).
@@ -78,6 +83,8 @@ public struct MessageRow: Codable, Equatable, Sendable {
         try c.encode(attachmentCount, forKey: .attachmentCount)
         try c.encode(conversationId, forKey: .conversationId)
         try c.encode(file, forKey: .file)
+        try c.encode(category, forKey: .category)
+        try c.encode(highImpact, forKey: .highImpact)
     }
 }
 
@@ -96,6 +103,8 @@ struct MessageCopy {
     let senderAddress: String?
     let senderComment: String?
     let messageIdHeader: String?
+    let category: Int64?
+    let highImpact: Bool
 }
 
 /// Auswahl der besten Kopie (Spec 5.4): vollstaendige Datei vor .partial vor keiner, dann hoechste ROWID.
@@ -135,6 +144,8 @@ extension MailStore {
         locator.beginRequest()
         // Fester Ausdruck, nie aus Eingaben: ohne die Spalte (macOS 15) liefert die Abfrage NULL.
         let messageIdHeader = optional.messageIdHeader ? "g.message_id_header" : "NULL"
+        let category = Self.effectiveCategory(optional)
+        let highImpact = optional.modelCategory ? "g.model_high_impact" : "0"
 
         // 1. Kopien in erlaubten Mailboxen.
         var copiesByGid: [Int64: [MessageCopy]] = [:]
@@ -146,15 +157,17 @@ extension MailStore {
             // messages_deleted_mailbox_index und las alle erlaubten Zeilen (auf 240000 Zeilen rund 200 ms je
             // Seite) statt der wenigen Kopien ueber messages_global_message_id_mailbox_index.
             let sql = """
-                SELECT m.ROWID, m.global_message_id, m.mailbox, m.read, m.flagged, m.date_received, m.date_sent,
-                       m.conversation_id, m.subject_prefix, s.subject, a.address, a.comment, \(messageIdHeader)
-                FROM messages m
-                LEFT JOIN subjects s ON s.ROWID = m.subject
-                LEFT JOIN addresses a ON a.ROWID = m.sender
-                LEFT JOIN message_global_data g ON g.ROWID = m.global_message_id
-                WHERE +m.deleted = 0
-                  AND m.global_message_id IN (\(placeholders(chunk.count)))
-                  AND +m.mailbox IN (\(placeholders(allowed.count)))
+                SELECT m2.ROWID, m2.global_message_id, m2.mailbox, m2.read, m2.flagged, m2.date_received, m2.date_sent,
+                       m2.conversation_id, m2.subject_prefix, s.subject, a.address, a.comment, \(messageIdHeader),
+                       \(category.effective), \(highImpact)
+                FROM messages m2
+                LEFT JOIN subjects s ON s.ROWID = m2.subject
+                LEFT JOIN addresses a ON a.ROWID = m2.sender
+                LEFT JOIN message_global_data g ON g.ROWID = m2.global_message_id
+                \(category.joins)
+                WHERE +m2.deleted = 0
+                  AND m2.global_message_id IN (\(placeholders(chunk.count)))
+                  AND +m2.mailbox IN (\(placeholders(allowed.count)))
                 """
             try db.query(sql, (chunk + allowed).map { .int($0) }) { r in
                 let c = MessageCopy(
@@ -164,7 +177,8 @@ extension MailStore {
                     conversationId: r.isNull(7) ? nil : r.int(7),
                     subjectPrefix: r.text(8) ?? "", subject: r.text(9) ?? "",
                     senderAddress: r.text(10), senderComment: r.text(11),
-                    messageIdHeader: r.text(12))
+                    messageIdHeader: r.text(12),
+                    category: r.isNull(13) ? nil : r.int(13), highImpact: r.int(14) != 0)
                 copiesByGid[c.gid, default: []].append(c)
             }
         }
@@ -235,7 +249,8 @@ extension MailStore {
                 mailboxIds: Set(copies.map(\.mailbox)).sorted(),
                 read: copies.contains { $0.read }, flagged: copies.contains { $0.flagged },
                 attachmentNames: attachments[c.rowid] ?? [], attachmentCount: attachmentCounts[c.rowid] ?? 0,
-                conversationId: c.conversationId, file: b.file), b.located))
+                conversationId: c.conversationId, file: b.file,
+                category: c.category, highImpact: c.highImpact), b.located))
         }
         return out
     }
