@@ -25,6 +25,7 @@ import collections
 import contextlib
 import io
 import os
+import plistlib
 import re
 import shutil
 import sqlite3
@@ -42,6 +43,8 @@ EMLX_RE = re.compile(r"^\d+(\.partial)?\.emlx$")
 MAIL_DATACLASS = "com.apple.Dataclass.Mail"
 DATACLASS_RE = re.compile(r"^com\.apple\.Dataclass\.[A-Za-z0-9.]+$")
 DATACLASS_PREFIX = "com.apple.Dataclass."
+DECODED_RE = re.compile(r"^com\.apple\.Dataclass\.[A-Za-z0-9.]{1,80}$")
+UNDECODABLE = ("undecodable",)
 # Ganzzahlspalten von ZACCOUNT, die nichts ueber das Konto sagen oder Fremdschluessel sind.
 SKIP_INT_COLS = {"Z_PK", "Z_OPT", "ZPARENTACCOUNT", "ZACCOUNTTYPE"}
 
@@ -201,6 +204,23 @@ def ident_column(con, t):
     return None
 
 
+def decode_name(v):
+    """ZNAME als Text oder als NSKeyedArchiver-bplist mit einem String als Wurzel.
+
+    -> Kennung (str) oder UNDECODABLE; der Rohwert wird nie zurueckgegeben, wenn er nicht passt."""
+    if isinstance(v, str):
+        return v
+    if not isinstance(v, bytes) or not v.startswith(b"bplist"):
+        return UNDECODABLE
+    try:
+        d = plistlib.loads(v)
+        uid = d["$top"]["root"]
+        obj = d["$objects"][uid.data] if isinstance(uid, plistlib.UID) else None
+    except Exception:
+        return UNDECODABLE
+    return obj if isinstance(obj, str) and DECODED_RE.match(obj) else UNDECODABLE
+
+
 def resolve_entity(con, tables, entities, ent, wanted):
     """Bildet eine CoreData-Entitaet auf Tabelle und Kennungsspalte ab.
 
@@ -232,8 +252,8 @@ def resolve_entity(con, tables, entities, ent, wanted):
         enum = '"ZENUMVALUE"' if "ZENUMVALUE" in cols and col != "ZENUMVALUE" else "NULL"
         ids = {}
         for pk, v, ev in con.execute('SELECT Z_PK, "%s", %s FROM "%s"' % (col, enum, t)):
-            empty = v is None or (isinstance(v, str) and v.strip() == "")
-            ids[pk] = ("enum", ev) if empty and isinstance(ev, int) else v
+            empty = v is None or (isinstance(v, (str, bytes)) and v.strip() == v[:0])
+            ids[pk] = ("enum", ev) if empty and isinstance(ev, int) else decode_name(v)
         hit = sum(1 for pk in wanted if pk in ids)
         notes.append("entity %d: table %s, identifier column %s, rows %d, linked Z_PK found %d of %d"
                      % (e, safe_ident(t), safe_ident(col), len(ids), hit, len(wanted)))
@@ -246,6 +266,8 @@ def short_dc(ident):
     """Kennung fuer die Ausgabe: nur com.apple.Dataclass.*, ohne Praefix; sonst other."""
     if ident is None:
         return "unresolved"
+    if ident == UNDECODABLE:
+        return "undecodable"
     if isinstance(ident, tuple):
         return "enum %d" % ident[1]
     if isinstance(ident, str) and DATACLASS_RE.match(ident):
@@ -257,8 +279,9 @@ def fmt_dcs(ids):
     if ids is None:
         return "-"
     c = collections.Counter(short_dc(i) for i in ids)
-    named = sorted(k for k in c if k not in ("other", "unresolved"))
-    extra = ["%s x%d" % (k, c[k]) for k in ("other", "unresolved") if c[k]]
+    special = ("other", "undecodable", "unresolved")
+    named = sorted(k for k in c if k not in special)
+    extra = ["%s x%d" % (k, c[k]) for k in special if c[k]]
     return ", ".join(named + extra) or "none"
 
 
@@ -457,6 +480,13 @@ def run(args):
 T_UUIDS = ["0000000%d-0000-4000-8000-00000000000%d" % (i, i) for i in range(1, 6)]
 
 
+def archived(text):
+    """NSKeyedArchiver-Struktur mit einem String als Wurzel, als binaere plist."""
+    return plistlib.dumps({"$version": 100000, "$archiver": "NSKeyedArchiver",
+                           "$top": {"root": plistlib.UID(1)}, "$objects": ["$null", text]},
+                          fmt=plistlib.FMT_BINARY)
+
+
 def build_fixture(base):
     """Baut einen kleinen Mail-Store und ein Accounts4 mit reservierten Domains.
 
@@ -510,10 +540,18 @@ def build_fixture(base):
         (3, 2, 1, 1, 1, 0, 2, 2, T_UUIDS[1], "user@example.org", None),
         (4, 2, 1, 1, 1, 1, 1, None, T_UUIDS[2], "user@example.net", "Off in Mail"),
     ]
+    # Wie im echten Accounts4: ZNAME als NSKeyedArchiver-bplist, dazu ein kaputter BLOB.
+    con.executemany("INSERT INTO ZNAMEDOBJECT VALUES (?,?,?,?,?)", [
+        (5, 7, 1, archived("com.apple.Dataclass.Calendars"), 2),
+        (6, 7, 1, archived("not a dataclass, user@example.com"), 2147483647),
+        (7, 7, 1, b"bplist00garbage", 2147483647),
+    ])
+    # Mail selbst nur als BLOB, damit mailEn/mailProv nachweislich aus der Dekodierung kommen.
+    con.execute("UPDATE ZNAMEDOBJECT SET ZNAME = ? WHERE Z_PK = 1", (archived("com.apple.Dataclass.Mail"),))
     con.executemany("INSERT INTO ZACCOUNT VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
     con.executemany("INSERT INTO Z_2ENABLEDDATACLASSES VALUES (?,?)", [(1, 1), (1, 2), (1, 3), (2, 1), (4, 2), (4, 4)])
     con.executemany("INSERT INTO Z_2PROVISIONEDDATACLASSES VALUES (?,?)",
-                    [(1, 1), (1, 2), (2, 1), (3, 1), (4, 1), (4, 2)])
+                    [(1, 1), (1, 2), (2, 1), (3, 1), (4, 1), (4, 2), (2, 5), (2, 6), (2, 7)])
     con.commit()
     con.close()
     return root, acc
@@ -536,12 +574,12 @@ def selftest():
         ("five accounts", "account hosts: 5; with V<n>/<uuid> directory: 3" in text),
         ("enabled table found", "enabled link table: Z_2ENABLEDDATACLASSES(Z_2ENABLEDACCOUNTS, Z_7ENABLEDDATACLASSES), rows 6" in text),
         ("entities listed", "2 Account 0, 3 AccountType 0, 4 Dataclass 0, 7 EnabledDataclass 8, 8 NamedObject 0" in text),
-        ("identifier column ZNAME", "  target entity 8: table ZNAMEDOBJECT, identifier column ZNAME, rows 4" in text),
+        ("identifier column ZNAME", "  target entity 8: table ZNAMEDOBJECT, identifier column ZNAME, rows 7" in text),
+        ("bplist decoded", "      parent enabled: Mail; parent provisioned: Calendars, Mail, undecodable x2" in text),
         ("entity 7 resolved via super", "  target entity 7 -> table ZNAMEDOBJECT, identifier column ZNAME; "
          "'com.apple.Dataclass.Mail' present: yes" in text),
         ("own table missing noted", "  target entity 7 (EnabledDataclass): no table" in text),
         ("A1 dataclasses", "A1    own enabled: Mail, Notes, other x1; own provisioned: Mail, Notes" in text),
-        ("A2 parent dataclasses", "      parent enabled: Mail; parent provisioned: Mail" in text),
         ("summary dataclasses", "  enabled dataclasses: Mail, Notes, other x1: A1; Notes, enum 42: A3; none: A2" in text),
         ("provisioned table found", "provisioned link table: Z_2PROVISIONEDDATACLASSES(" in text),
         ("A1 enabled", re.search(r"^A1 .*\| yes   1      1       yes      yes      3      2 ", lines.get("A1", ""), re.M)),
