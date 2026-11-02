@@ -49,7 +49,7 @@ export class FakeMail {
     return {
       gid: r.gid, messageIdHeader: null, subject: r.subject, sender: { address: r.from, name: null }, recipients: [], recipientCount: 0,
       dateReceived: 1768000000 + r.gid, dateSent: null, mailboxIds: [r.mailbox], read: true, flagged: false, attachmentNames: [],
-      conversationId: null, file: r.body === null ? 'none' : 'full', category: null, highImpact: false,
+      conversationId: null, file: r.body === null ? 'none' : 'full', category: null, highImpact: false, reminder: null,
     }
   }
 
@@ -112,7 +112,7 @@ export class FakeMail {
         return {
           mailboxes: ids.map((id) => ({ id, url: id === 1 ? 'imap://ACC1/INBOX' : `imap://ACC1/Folder${id}`, total: 0, unread: 0 })),
           accounts: [{ uuid: 'ACC1', description: 'Privat', username: 'a@example.com' }],
-          accountStores: [{ uuid: 'ACC1', hasStore: true }],
+          accountStores: [{ uuid: 'ACC1', hasStore: true }], dueReminders: [],
           accountNames: 'available',
         }
       }

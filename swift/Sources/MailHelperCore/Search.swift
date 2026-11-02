@@ -29,6 +29,10 @@ public struct SearchRequest: Codable, Equatable, Sendable {
     public var category: Int?
     /// Eingangs-Mailboxen (Teilmenge der erlaubten): dort zaehlt eine Mail ohne Kategorie zu 0, wie in Mail.
     public var inboxMailboxIds: [Int64]?
+    /// Nur mit `mailboxIds` (AMM-20): faellige Erinnerungen (read_later_date <= jetzt) mit einer Kopie in diesen
+    /// Mailboxen zaehlen zusaetzlich als Treffer, wie Mail sie im Eingang zeigt. Node schickt fuer einen
+    /// gesuchten Eingang die erlaubten Mailboxen seines Kontos (Teilmenge der erlaubten).
+    public var reminderMailboxIds: [Int64]?
     /// Nur diese gids (Treffer des Body-Index); alle uebrigen Filter wirken weiter. Leer: keine Kandidaten.
     public var gids: [Int64]?
     public var after: After?
@@ -39,7 +43,8 @@ public struct SearchRequest: Codable, Equatable, Sendable {
     public init(allowedMailboxIds: [Int64], mailboxIds: [Int64]? = nil, from: String? = nil, to: String? = nil,
                 subject: String? = nil, query: String? = nil, since: Int64? = nil, before: Int64? = nil,
                 unread: Bool? = nil, flagged: Bool? = nil, hasAttachment: Bool? = nil,
-                category: Int? = nil, inboxMailboxIds: [Int64]? = nil, gids: [Int64]? = nil,
+                category: Int? = nil, inboxMailboxIds: [Int64]? = nil, reminderMailboxIds: [Int64]? = nil,
+                gids: [Int64]? = nil,
                 after: After? = nil,
                 limit: Int, maxRecipients: Int = 5, countTotal: Bool = false) {
         self.allowedMailboxIds = allowedMailboxIds
@@ -55,6 +60,7 @@ public struct SearchRequest: Codable, Equatable, Sendable {
         self.hasAttachment = hasAttachment
         self.category = category
         self.inboxMailboxIds = inboxMailboxIds
+        self.reminderMailboxIds = reminderMailboxIds
         self.gids = gids
         self.after = after
         self.limit = limit
@@ -154,11 +160,23 @@ extension MailStore {
             // messages_mailbox_date_received_index (das + nimmt deleted die Indexnutzung). Als HAVING las die
             // Suche alle erlaubten Zeilen, auch fuer eine kleine Mailbox (rund 220 ms auf 242000 Zeilen).
             // ids ist Teilmenge der erlaubten Mailboxen (geprueft in search), die Bedeutung bleibt gleich.
-            wherePre.append("""
-                m.global_message_id IN (SELECT m2.global_message_id FROM messages m2
-                    WHERE +m2.deleted = 0 AND m2.mailbox IN (\(placeholders(ids.count))))
-                """)
+            var inMailboxes = """
+                SELECT m2.global_message_id FROM messages m2
+                    WHERE +m2.deleted = 0 AND m2.mailbox IN (\(placeholders(ids.count)))
+                """
             whereBind += ids.map { .int($0) }
+            if let rem = r.reminderMailboxIds, optional.readLater {
+                // Faellige Erinnerungen (AMM-20) ueber message_global_data_read_later_date_index, dann die Kopien
+                // ueber messages_global_message_id_mailbox_index. 0 heisst ohne Termin.
+                inMailboxes += """
+                     UNION ALL SELECT m2.global_message_id FROM message_global_data g
+                        CROSS JOIN messages m2 ON m2.global_message_id = g.ROWID
+                        WHERE g.read_later_date > 0 AND g.read_later_date <= ?
+                          AND +m2.deleted = 0 AND +m2.mailbox IN (\(placeholders(rem.count)))
+                    """
+                whereBind += [.int(Int64(Date().timeIntervalSince1970))] + rem.map { .int($0) }
+            }
+            wherePre.append("m.global_message_id IN (\(inMailboxes))")
             driveByGid = true
         }
         if let since = r.since { having.append("max(m.date_received) >= ?"); havingBind.append(.int(since)) }
@@ -288,6 +306,11 @@ extension MailStore {
         }
         if let gids = r.gids { guard gids.count <= searchMaxGids else { throw Self.invalid("gids") } }
         if let c = r.category { guard (0...3).contains(c) else { throw Self.invalid("category") } }
+        if let ids = r.reminderMailboxIds {
+            guard r.mailboxIds != nil, !ids.isEmpty, Set(ids).isSubset(of: Set(r.allowedMailboxIds)) else {
+                throw Self.invalid("reminderMailboxIds")
+            }
+        }
         if let ids = r.inboxMailboxIds {
             guard r.category != nil, Set(ids).isSubset(of: Set(r.allowedMailboxIds)) else { throw Self.invalid("inboxMailboxIds") }
         }

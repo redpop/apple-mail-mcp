@@ -6,6 +6,7 @@ import { CANDIDATE_CAP, foldTerm, scanBodies, TIME_BUDGET_MS, type ScanInfo } fr
 import { decodeCursor, encodeCursor, queryHash } from '../cursor.js'
 import { formatLocal, parseDateInput } from '../dates.js'
 import { HelperError } from '../errors.js'
+import { reminderMailboxIds } from '../policy.js'
 import { searchResult } from '../schemas.js'
 import { CATEGORIES, MessageSummary, toSummary } from '../summary.js'
 import { respond } from './respond.js'
@@ -133,6 +134,8 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
         const inboxMailboxIds =
           category === 0 ? [...policy.mailboxes.values()].filter((m) => m.role === 'inbox').map((m) => m.id).sort((a, b) => a - b) : []
         const categoryNote = category === undefined ? undefined : CATEGORY_NOTE
+        // Faellige Erinnerungen zeigt Mail auch im Eingang ihres Kontos (AMM-20).
+        const reminders = mailboxIds ? reminderMailboxIds(policy, mailboxIds) : []
 
         const filters = defined({
           query: input.query,
@@ -147,6 +150,7 @@ export function registerSearchMessages(server: McpServer, ctx: ToolContext): voi
           hasAttachment: input.hasAttachment,
           category,
           inboxMailboxIds: inboxMailboxIds.length > 0 ? inboxMailboxIds : undefined,
+          reminderMailboxIds: reminders.length > 0 ? reminders : undefined,
         })
         // bodyContains gehoert in den Hash, damit ein Cursor nur zur selben Body-Suche passt.
         const hash = queryHash(input.bodyContains !== undefined ? { ...filters, bodyContains: input.bodyContains } : filters, policy.fingerprint)

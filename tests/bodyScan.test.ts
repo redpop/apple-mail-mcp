@@ -15,7 +15,7 @@ import { createServer } from '../src/server.js'
 const mailboxes = {
   mailboxes: [{ id: 1, url: 'imap://ACC1/INBOX', total: 10, unread: 2 }],
   accounts: [{ uuid: 'ACC1', description: 'Privat', username: 'a@example.com' }],
-  accountStores: [],
+  accountStores: [], dueReminders: [],
   accountNames: 'available',
 }
 
@@ -42,7 +42,7 @@ function row(gid: number, over: Record<string, unknown> = {}) {
     conversationId: null,
     file: 'full',
     category: null,
-    highImpact: false,
+    highImpact: false, reminder: null,
     ...over,
   }
 }

@@ -435,6 +435,29 @@ senders) a page takes 7 to 16 ms; see the table under Text search. A large inbox
 uncategorised messages makes `primary` slower, roughly like `mailboxIds` on a mailbox of that size.
 Not yet measured on a real store.
 
+### Reminders (AMM-20)
+
+Mail's Remind Me stores a date in `message_global_data.read_later_date` (Unix seconds, 0 or NULL
+for none). From that date on, Mail shows the message in its account's inbox although it stays in
+its mailbox; nothing else changes (no move, no label, no pending action). A date ahead hides
+nothing: the message stays where it is until then. Mail's `mailboxes.total_count` does not count
+due reminders. Measured on 2026-11-02 with `scripts/check-read-later.py`, run by the maintainer:
+one inbox held 30 rows, Mail showed 33, and the 3 others were due reminders in the archive of the
+same account.
+
+The server follows Mail and keeps the policy:
+
+- `search` takes `reminderMailboxIds` alongside `mailboxIds`. Node sends the allowed mailboxes of
+  every account whose inbox is searched; the helper adds the groups with `read_later_date <= now`
+  and a non-deleted copy there, through `message_global_data_read_later_date_index`. A reminder
+  in a hidden mailbox stays hidden.
+- `list-mailboxes` returns `dueReminders` (gid, mailbox, read for each non-deleted copy of a due
+  reminder). Node adds each message once to the inbox counts of its account, only for copies in
+  allowed mailboxes and only if no copy already lies in that inbox.
+- `messageRow.reminder` carries the date; the summary shows it as `reminder`.
+
+The column is read as optional. Without it there are no reminders and rows carry NULL.
+
 ### Reading a body
 
 The `.emlx` file name equals `messages.ROWID`. The path is

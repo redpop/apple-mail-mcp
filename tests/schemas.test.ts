@@ -6,7 +6,7 @@ const row = {
   sender: { address: 'anna@example.com', name: 'Anna Beispiel' },
   recipients: [{ type: 'to', address: 'ich@example.org', name: null }], recipientCount: 3,
   dateReceived: 1768000000, dateSent: 1767999000, mailboxIds: [12], read: false, flagged: false,
-  attachmentNames: ['angebot.pdf'], conversationId: 88123, file: 'full', category: 1, highImpact: false,
+  attachmentNames: ['angebot.pdf'], conversationId: 88123, file: 'full', category: 1, highImpact: false, reminder: null,
 }
 
 describe('schemas', () => {
@@ -28,12 +28,12 @@ describe('schemas', () => {
   it('list-mailboxes with accounts block', () => {
     const r = listMailboxesResult.parse({
       mailboxes: [{ id: 12, url: 'imap://x/INBOX', total: 290, unread: 3 }],
-      accounts: [{ uuid: 'u', description: 'd', username: null }], accountStores: [{ uuid: 'x', hasStore: false }],
+      accounts: [{ uuid: 'u', description: 'd', username: null }], accountStores: [{ uuid: 'x', hasStore: false }], dueReminders: [],
       accountNames: 'available',
     })
     expect(r.accounts[0]!.username).toBeNull()
     expect(r.accountStores[0]!.hasStore).toBe(false)
-    expect(() => listMailboxesResult.parse({ mailboxes: [], accounts: [], accountStores: [], accountNames: 'maybe' })).toThrow()
+    expect(() => listMailboxesResult.parse({ mailboxes: [], accounts: [], accountStores: [], dueReminders: [], accountNames: 'maybe' })).toThrow()
     expect(() => listMailboxesResult.parse({ mailboxes: [], accounts: [], accountNames: 'available' })).toThrow()
   })
   it('probe granted and denied', () => {

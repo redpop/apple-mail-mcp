@@ -31,6 +31,7 @@
             "type" : "to"
           }
         ],
+        "reminder" : null,
         "sender" : {
           "address" : "alice@example.com",
           "name" : "Alice Beispiel"
@@ -63,6 +64,7 @@
             "type" : "to"
           }
         ],
+        "reminder" : null,
         "sender" : {
           "address" : "anna@example.com",
           "name" : "Anna Tester"
@@ -95,6 +97,7 @@
             "type" : "to"
           }
         ],
+        "reminder" : null,
         "sender" : {
           "address" : "alice@example.com",
           "name" : "Alice Beispiel"

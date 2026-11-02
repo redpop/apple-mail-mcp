@@ -7,6 +7,15 @@ public struct MailboxInfo: Codable, Equatable, Sendable {
     public let unread: Int64
 }
 
+/// Eine nicht geloeschte Kopie einer faelligen Erinnerung (read_later_date <= jetzt, AMM-20). Mail zeigt die
+/// Mail im Eingang ihres Kontos, zaehlt sie aber nicht in dessen total_count; Node rechnet sie dazu, soweit
+/// die Mailbox der Kopie erlaubt ist.
+public struct DueReminder: Codable, Equatable, Sendable {
+    public let gid: Int64
+    public let mailbox: Int64
+    public let read: Bool
+}
+
 /// Ob ein Konto noch sein Verzeichnis `V<n>/<konto-uuid>/` hat (AMM-21). Ohne es ist das Konto aus Mail
 /// entfernt, seine Zeilen stehen aber noch im Envelope Index.
 public struct AccountStore: Codable, Equatable, Sendable {
@@ -21,8 +30,9 @@ public struct ListMailboxesResult: Codable, Equatable, Sendable {
     public var accountStores: [AccountStore]
     public var accountNames: AccountNamesState.Status
     public var accountNamesReason: String?
+    public var dueReminders: [DueReminder]
 
-    enum CodingKeys: String, CodingKey { case mailboxes, accounts, accountStores, accountNames, accountNamesReason }
+    enum CodingKeys: String, CodingKey { case mailboxes, accounts, accountStores, accountNames, accountNamesReason, dueReminders }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -31,6 +41,7 @@ public struct ListMailboxesResult: Codable, Equatable, Sendable {
         try c.encode(accountStores, forKey: .accountStores)
         try c.encode(accountNames, forKey: .accountNames)
         try c.encodeIfPresent(accountNamesReason, forKey: .accountNamesReason)
+        try c.encode(dueReminders, forKey: .dueReminders)
     }
 }
 
@@ -74,7 +85,24 @@ extension MailStore {
         return ListMailboxesResult(mailboxes: mailboxes, accounts: names.accounts,
                                    accountStores: Self.accountStores(versionDir: versionDir, mailboxes: mailboxes),
                                    accountNames: names.available ? .available : .unavailable,
-                                   accountNamesReason: names.reason)
+                                   accountNamesReason: names.reason, dueReminders: try dueReminders())
+    }
+
+    /// Kopien faelliger Erinnerungen, nach gid und Mailbox sortiert. Erinnerungen sind selten; die Abfrage laeuft
+    /// ueber message_global_data_read_later_date_index. Ohne die Spalte leer.
+    func dueReminders() throws(HelperFailure) -> [DueReminder] {
+        let (db, optional) = try envelopeDatabaseWithColumns()
+        guard optional.readLater else { return [] }
+        var out: [DueReminder] = []
+        try db.query("""
+            SELECT m.global_message_id, m.mailbox, m.read FROM message_global_data g
+                CROSS JOIN messages m ON m.global_message_id = g.ROWID
+                WHERE g.read_later_date > 0 AND g.read_later_date <= ? AND m.deleted = 0
+                ORDER BY m.global_message_id, m.mailbox, m.ROWID
+            """, [.int(Int64(Date().timeIntervalSince1970))]) { row in
+            out.append(DueReminder(gid: row.int(0), mailbox: row.int(1), read: row.int(2) != 0))
+        }
+        return out
     }
 
     /// Je Konto mit imap://- oder local://-Mailbox, ob `<versionDir>/<konto-uuid>` ein Verzeichnis ist, nach UUID

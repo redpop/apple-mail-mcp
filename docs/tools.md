@@ -36,6 +36,7 @@ Conventions:
 | `bodyLocal` | `full`, `partial` (text present, attachments missing) or `none` (never downloaded). |
 | `category` | Mail's category: `primary`, `transactions`, `updates`, `promotions`, or `null` when Mail has not categorised the message (most older mail) or stores a value this server does not know. A sender override set in Mail ("Categorize Sender") wins over Mail's own value. See [Categories](#categories). |
 | `important` | `true` if Mail marks the message as important; it then also appears under `primary`. |
+| `reminder` | The date set with Remind Me in Mail, due or still ahead, or `null`. Once it has passed, Mail shows the message in its account's inbox; so does a search in that inbox, while `mailboxes` still names where the message is stored. |
 | `matchContext` | Up to 160 characters around the first hit; only with `bodyContains`. |
 
 ## list_mailboxes
@@ -46,7 +47,9 @@ parameters.
 Result: `accounts`, each with `id`, `name` (the account description from macOS, else the
 account UUID), `address`, `type` (`imap`, `local`, `exchange`,
 `other`) and `mailboxes`. Each mailbox has `id`, `name`, `path`, `role` (`inbox`, `sent`,
-`drafts`, `archive`, `junk`, `trash`, `allmail`, `other`), `total` and `unread`. Accounts and
+`drafts`, `archive`, `junk`, `trash`, `allmail`, `other`), `total` and `unread`. As in Mail, an
+inbox's counts include messages whose Remind Me date has passed and that are stored in another
+visible mailbox of the same account. Accounts and
 mailboxes excluded by configuration are absent, not marked. So are accounts that were removed
 from Mail but still have rows in its index (no folder under the Mail directory), and accounts for which Mail is switched off in System
 Settings (for example iCloud Mail with "Sync this Mac" off); they are hidden from every tool. If an entry of
@@ -61,7 +64,7 @@ Searches, newest first. With no filter it returns the newest messages.
 | `query` | Free text in subject, sender address and name, recipient addresses and names. |
 | `from`, `to`, `subject` | Narrower text filters. `to` covers To, Cc and Bcc. |
 | `bodyContains` | Text inside the body (2 to 200 characters). See below. |
-| `mailboxIds` | Restrict to these mailbox ids from `list_mailboxes`, at most 50. |
+| `mailboxIds` | Restrict to these mailbox ids from `list_mailboxes`, at most 50. An inbox also yields the messages Mail shows there because their Remind Me date has passed. |
 | `since`, `before` | Date range on the received date. |
 | `unread`, `flagged`, `hasAttachment` | Boolean filters. |
 | `category` | `primary`, `transactions`, `updates` or `promotions`. See [Categories](#categories). |

@@ -30,6 +30,7 @@
             "type" : "to"
           }
         ],
+        "reminder" : null,
         "sender" : null,
         "subject" : "Absender ohne Adresszeile"
       },
@@ -59,6 +60,7 @@
             "type" : "to"
           }
         ],
+        "reminder" : null,
         "sender" : {
           "address" : "alice@example.com",
           "name" : "Alice Beispiel"
@@ -91,6 +93,7 @@
             "type" : "to"
           }
         ],
+        "reminder" : null,
         "sender" : {
           "address" : "carol@example.net",
           "name" : "Carol"
@@ -119,6 +122,7 @@
         "recipients" : [
 
         ],
+        "reminder" : null,
         "sender" : null,
         "subject" : "Notiz lokal"
       },
@@ -148,6 +152,7 @@
             "type" : "to"
           }
         ],
+        "reminder" : null,
         "sender" : {
           "address" : "alice@example.com",
           "name" : "Alice Beispiel"

@@ -23,6 +23,8 @@ export const messageRow = z.object({
   // Effektive Kategorie aus Mail (AMM-19), roh; summary.ts bildet sie auf Namen ab.
   category: z.number().int().nullable(),
   highImpact: z.boolean(),
+  // Termin aus "Erinnern" (AMM-20) in Unix-Sekunden, faellig oder kuenftig.
+  reminder: z.number().int().nullable(),
 })
 
 export const searchResult = z.object({
@@ -58,6 +60,8 @@ export const listMailboxesResult = z.object({
   accountStores: z.array(z.object({ uuid: z.string(), hasStore: z.boolean() })),
   accountNames: z.enum(['available', 'unavailable']),
   accountNamesReason: z.string().nullable().optional(),
+  // Nicht geloeschte Kopien faelliger Erinnerungen (AMM-20); policy.ts rechnet sie den Eingaengen zu.
+  dueReminders: z.array(z.object({ gid: z.number().int(), mailbox: z.number().int(), read: z.boolean() })),
 })
 
 export const probeResult = z.object({
