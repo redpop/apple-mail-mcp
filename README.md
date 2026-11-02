@@ -88,7 +88,16 @@ The full threat model and both residual risks: [`SECURITY.md`](./SECURITY.md).
 
 ## Install
 
-**Claude Code** (or any client that starts a command):
+**Claude Code and Cowork, as a plugin** (settings in a dialog, updates with each release):
+
+```
+/plugin install apple-mail-mcp --marketplace redpop/apple-mail-mcp
+```
+
+The plugin runs the npm package below at the plugin's version. Grant Full Disk Access once with
+`npx -y @redpop/apple-mail-mcp setup`.
+
+**Claude Code without the plugin** (or any client that starts a command):
 
 ```bash
 claude mcp add apple-mail -- npx -y @redpop/apple-mail-mcp
