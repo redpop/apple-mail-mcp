@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import type { Config } from '../src/config.js'
-import { computePolicy, indexFingerprintOf } from '../src/policy.js'
+import { computePolicy, indexFingerprintOf, reminderMailboxIds } from '../src/policy.js'
 import type { ListMailboxesResult } from '../src/schemas.js'
 
 const base: Config = {
@@ -20,6 +20,7 @@ const raw = (over: Partial<ListMailboxesResult> = {}): ListMailboxesResult => ({
     { uuid: B, description: 'Privat Konto', username: 'not-an-address' },
   ],
   accountStores: [],
+  dueReminders: [],
   accountNames: 'available',
   ...over,
 })
@@ -165,4 +166,36 @@ test('a removed account with Mail switched off counts as removed only', () => {
   expect(pol.removedAccounts).toBe(1)
   expect(pol.removedMailboxes).toBe(2)
   expect(pol.mailDisabledAccounts).toBe(0)
+})
+
+test('an inbox counts due reminders stored in allowed mailboxes of its account, as in Mail', () => {
+  const r = raw({
+    dueReminders: [
+      { gid: 100, mailbox: 4, read: false },
+      { gid: 101, mailbox: 4, read: true },
+      // Junk ist nicht erlaubt.
+      { gid: 102, mailbox: 2, read: false },
+      // Liegt schon im Eingang: nicht doppelt.
+      { gid: 103, mailbox: 1, read: false },
+      { gid: 103, mailbox: 4, read: false },
+      // Konto B.
+      { gid: 104, mailbox: 6, read: false },
+      // Gelesen nur in Trash: zaehlt ungelesen, solange Trash nicht erlaubt ist.
+      { gid: 105, mailbox: 4, read: false },
+      { gid: 105, mailbox: 3, read: true },
+    ],
+  })
+  const pol = computePolicy(base, r)
+  expect(pol.mailboxes.get(1)).toMatchObject({ total: 13, unread: 3 })
+  expect(pol.mailboxes.get(5)).toMatchObject({ total: 11, unread: 2 })
+  expect(pol.mailboxes.get(4)).toMatchObject({ total: 10, unread: 1 })
+  expect(computePolicy(cfg({ includeJunk: true, includeTrash: true }), r).mailboxes.get(1)).toMatchObject({ total: 14, unread: 3 })
+  // Ohne erlaubten Ordner zaehlt nichts dazu.
+  expect(computePolicy(cfg({ excludeMailboxes: ['Kunden/Privat'] }), r).mailboxes.get(1)).toMatchObject({ total: 10, unread: 1 })
+})
+test('reminderMailboxIds lists the allowed mailboxes of the accounts whose inbox is searched', () => {
+  const pol = computePolicy(base, raw())
+  expect(reminderMailboxIds(pol, [1])).toEqual([1, 4])
+  expect(reminderMailboxIds(pol, [1, 5])).toEqual([1, 4, 5, 6])
+  expect(reminderMailboxIds(pol, [4, 6])).toEqual([])
 })

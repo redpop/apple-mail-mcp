@@ -59,10 +59,14 @@ public struct MessageRow: Codable, Equatable, Sendable {
     public let category: Int64?
     /// message_global_data.model_high_impact = 1; false ohne die Spalte.
     public let highImpact: Bool
+    /// message_global_data.read_later_date ("Erinnern", AMM-20) in Unix-Sekunden, faellig oder kuenftig; NULL
+    /// ohne Termin (auch 0) oder ohne die Spalte.
+    public let reminder: Int64?
 
     enum CodingKeys: String, CodingKey {
         case gid, messageIdHeader, subject, sender, recipients, recipientCount, dateReceived, dateSent
         case mailboxIds, read, flagged, attachmentNames, attachmentCount, conversationId, file, category, highImpact
+        case reminder
     }
 
     // Nullable Felder werden immer geschrieben (zod: nullable, nicht optional).
@@ -85,6 +89,7 @@ public struct MessageRow: Codable, Equatable, Sendable {
         try c.encode(file, forKey: .file)
         try c.encode(category, forKey: .category)
         try c.encode(highImpact, forKey: .highImpact)
+        try c.encode(reminder, forKey: .reminder)
     }
 }
 
@@ -105,6 +110,7 @@ struct MessageCopy {
     let messageIdHeader: String?
     let category: Int64?
     let highImpact: Bool
+    let reminder: Int64?
 }
 
 /// Auswahl der besten Kopie (Spec 5.4): vollstaendige Datei vor .partial vor keiner, dann hoechste ROWID.
@@ -146,6 +152,7 @@ extension MailStore {
         let messageIdHeader = optional.messageIdHeader ? "g.message_id_header" : "NULL"
         let category = Self.effectiveCategory(optional)
         let highImpact = optional.modelCategory ? "g.model_high_impact" : "0"
+        let reminder = optional.readLater ? "g.read_later_date" : "NULL"
 
         // 1. Kopien in erlaubten Mailboxen.
         var copiesByGid: [Int64: [MessageCopy]] = [:]
@@ -159,7 +166,7 @@ extension MailStore {
             let sql = """
                 SELECT m2.ROWID, m2.global_message_id, m2.mailbox, m2.read, m2.flagged, m2.date_received, m2.date_sent,
                        m2.conversation_id, m2.subject_prefix, s.subject, a.address, a.comment, \(messageIdHeader),
-                       \(category.effective), \(highImpact)
+                       \(category.effective), \(highImpact), \(reminder)
                 FROM messages m2
                 LEFT JOIN subjects s ON s.ROWID = m2.subject
                 LEFT JOIN addresses a ON a.ROWID = m2.sender
@@ -178,7 +185,8 @@ extension MailStore {
                     subjectPrefix: r.text(8) ?? "", subject: r.text(9) ?? "",
                     senderAddress: r.text(10), senderComment: r.text(11),
                     messageIdHeader: r.text(12),
-                    category: r.isNull(13) ? nil : r.int(13), highImpact: r.int(14) != 0)
+                    category: r.isNull(13) ? nil : r.int(13), highImpact: r.int(14) != 0,
+                    reminder: r.isNull(15) || r.int(15) <= 0 ? nil : r.int(15))
                 copiesByGid[c.gid, default: []].append(c)
             }
         }
@@ -250,7 +258,7 @@ extension MailStore {
                 read: copies.contains { $0.read }, flagged: copies.contains { $0.flagged },
                 attachmentNames: attachments[c.rowid] ?? [], attachmentCount: attachmentCounts[c.rowid] ?? 0,
                 conversationId: c.conversationId, file: b.file,
-                category: c.category, highImpact: c.highImpact), b.located))
+                category: c.category, highImpact: c.highImpact, reminder: c.reminder), b.located))
         }
         return out
     }

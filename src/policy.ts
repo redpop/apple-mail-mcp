@@ -71,6 +71,50 @@ export function mailDisabledAccountIds(raw: ListMailboxesResult): Set<string> {
   return new Set(raw.accounts.filter((a) => a.mailEnabled === false && !removed.has(a.uuid)).map((a) => a.uuid))
 }
 
+/** Der Eingang je Konto (Rolle inbox), unter den erlaubten Mailboxen. */
+function inboxByAccount(mailboxes: Map<number, ParsedMailbox>): Map<string, ParsedMailbox> {
+  const out = new Map<string, ParsedMailbox>()
+  for (const mb of mailboxes.values()) if (mb.role === 'inbox' && !out.has(mb.accountId)) out.set(mb.accountId, mb)
+  return out
+}
+
+/**
+ * Faellige Erinnerungen (AMM-20): Mail zeigt sie zusaetzlich im Eingang ihres Kontos, zaehlt sie aber nicht in
+ * dessen total_count. Gezaehlt wird je Mail (gid) mit einer Kopie in einer erlaubten Mailbox des Kontos, nicht
+ * schon im Eingang; ungelesen, wenn keine dieser Kopien gelesen ist (wie `read` in der Suche).
+ */
+function addDueReminders(mailboxes: Map<number, ParsedMailbox>, due: ListMailboxesResult['dueReminders']): void {
+  const inboxes = inboxByAccount(mailboxes)
+  const byGid = new Map<string, { inbox: ParsedMailbox; inInbox: boolean; read: boolean }>()
+  for (const r of due) {
+    const mb = mailboxes.get(r.mailbox)
+    const inbox = mb && inboxes.get(mb.accountId)
+    if (!mb || !inbox) continue
+    const key = `${mb.accountId}/${r.gid}`
+    const e = byGid.get(key) ?? { inbox, inInbox: false, read: false }
+    e.inInbox ||= mb.id === inbox.id
+    e.read ||= r.read
+    byGid.set(key, e)
+  }
+  for (const e of byGid.values()) {
+    if (e.inInbox) continue
+    const cur = mailboxes.get(e.inbox.id)!
+    mailboxes.set(cur.id, { ...cur, total: cur.total + 1, unread: cur.unread + (e.read ? 0 : 1) })
+  }
+}
+
+/**
+ * Fuer eine Suche in `mailboxIds` (AMM-20): die erlaubten Mailboxen der Konten, deren Eingang gesucht wird. Der
+ * Helper nimmt faellige Erinnerungen mit einer Kopie dort dazu. Leer, wenn kein Eingang gesucht wird.
+ */
+export function reminderMailboxIds(policy: Policy, mailboxIds: readonly number[]): number[] {
+  const accounts = new Set(mailboxIds.flatMap((id) => {
+    const mb = policy.mailboxes.get(id)
+    return mb?.role === 'inbox' ? [mb.accountId] : []
+  }))
+  return policy.allowedMailboxIds.filter((id) => accounts.has(policy.mailboxes.get(id)!.accountId)).sort((a, b) => a - b)
+}
+
 export function computePolicy(config: Config, raw: ListMailboxesResult): Policy {
   const namesAvailable = raw.accountNames === 'available'
   // Entfernte und fuer Mail abgeschaltete Konten fallen vor allem anderen heraus, auch vor der Allowlist:
@@ -123,6 +167,8 @@ export function computePolicy(config: Config, raw: ListMailboxesResult): Policy 
     if (excluded.has(fold(mb.name)) || (mb.path.length > 0 && excluded.has(fold(mb.path.join('/'))))) continue
     mailboxes.set(mb.id, mb)
   }
+
+  addDueReminders(mailboxes, raw.dueReminders)
 
   const accountsWithMail = new Set([...mailboxes.values()].map((m) => m.accountId))
   return {

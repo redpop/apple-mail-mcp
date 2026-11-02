@@ -194,7 +194,7 @@ const mailboxes = (extra: Array<{ id: number; url: string }> = []) => ({
     ...extra.map((e) => ({ ...e, total: 1, unread: 0 })),
   ],
   accounts: [{ uuid: UUID, description: 'Work Account', username: 'alice@example.com' }],
-  accountStores: [],
+  accountStores: [], dueReminders: [],
   accountNames: 'available',
 })
 const searchRes = () => ({
@@ -206,7 +206,7 @@ const searchRes = () => ({
   ].map((m, i) => ({
     gid: i, messageIdHeader: null, subject: m.subject, sender: { address: 'alice@example.com', name: null }, recipients: [],
     recipientCount: 0, dateReceived: 1, dateSent: null, mailboxIds: [1], read: true, flagged: false, attachmentNames: [],
-    conversationId: null, file: m.file, category: null, highImpact: false,
+    conversationId: null, file: m.file, category: null, highImpact: false, reminder: null,
   })),
   hasMore: false,
 })

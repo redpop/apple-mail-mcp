@@ -32,11 +32,14 @@ enum Schema {
     /// Die Kategoriespalten (AMM-19): `model_category` und `model_high_impact` aus dem Modell, dazu die
     /// Absender-Uebersteuerung in `business_addresses` und `business_categories`. Fehlt eine
     /// Uebersteuerungstabelle, gibt es keine Uebersteuerung; fehlt eine Modellspalte, gibt es keine Kategorien.
+    /// Fehlt `read_later_date`, haben Zeilen keinen Erinnerungstermin und Eingaenge keine faelligen Erinnerungen.
     struct OptionalColumns: Equatable, Sendable {
         var messageIdHeader: Bool
         var modelCategory: Bool = false
         var addressCategory: Bool = false
         var businessCategory: Bool = false
+        /// message_global_data.read_later_date ("Erinnern", AMM-20); ohne sie gibt es keine Erinnerungen.
+        var readLater: Bool = false
     }
 
     static func optionalColumns(_ db: Database) throws(HelperFailure) -> OptionalColumns {
@@ -57,7 +60,8 @@ enum Schema {
             modelCategory: global.isSuperset(of: ["model_category", "model_high_impact"]),
             addressCategory: address,
             // business_categories wird nur ueber business_addresses.business erreicht.
-            businessCategory: address && businesses.isSuperset(of: ["business", "category"]))
+            businessCategory: address && businesses.isSuperset(of: ["business", "category"]),
+            readLater: global.contains("read_later_date"))
     }
 
     static func check(_ db: Database) throws(HelperFailure) -> SchemaReport {

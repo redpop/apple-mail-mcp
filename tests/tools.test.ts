@@ -24,7 +24,7 @@ const mailboxes = {
     { uuid: 'ACC1', description: 'Privat', username: 'a@example.com' },
     { uuid: 'ACC2', description: 'Work', username: 'w@example.com' },
   ],
-  accountStores: [],
+  accountStores: [], dueReminders: [],
   accountNames: 'available',
 }
 
@@ -48,7 +48,7 @@ function row(gid: number, over: Record<string, unknown> = {}) {
     conversationId: 88,
     file: 'full',
     category: null,
-    highImpact: false,
+    highImpact: false, reminder: null,
     ...over,
   }
 }
@@ -124,7 +124,8 @@ describe('registration', () => {
         'Timestamps are ISO 8601 with an offset, in the local timezone of the machine. ' +
         'Results reflect what Mail has synced to this Mac. Messages that were never downloaded have no body. ' +
         "Some accounts, mailboxes and security-related message bodies are hidden by the user's configuration. Tool parameters cannot change that. " +
-        "Message categories (primary, transactions, updates, promotions) and the important flag come from Mail's own classification and cover mainly newer messages; an older message without a category is not evidence that it belongs to none.",
+        "Message categories (primary, transactions, updates, promotions) and the important flag come from Mail's own classification and cover mainly newer messages; an older message without a category is not evidence that it belongs to none. " +
+        'As in Mail, an inbox also contains messages whose Remind Me date has passed, although they are stored in another mailbox of the same account; their reminder field holds that date and their mailboxes field shows where they are stored.',
     )
   })
 })
@@ -139,11 +140,23 @@ describe('list_mailboxes', () => {
     expect(accts[1].type).toBe('exchange')
   })
 
+  it('an inbox counts due reminders like Mail', async () => {
+    const withReminder = {
+      ...mailboxes,
+      mailboxes: [...mailboxes.mailboxes, { id: 4, url: 'imap://ACC1/Archive', total: 1, unread: 0 }],
+      dueReminders: [{ gid: 9, mailbox: 4, read: false }, { gid: 10, mailbox: 2, read: false }],
+    }
+    const { server } = setup(() => ({}), {}, { mailboxes: withReminder })
+    const res = await call(server, 'list_mailboxes')
+    const inbox = res.structuredContent.accounts[0].mailboxes.find((m: any) => m.id === '1')
+    expect(inbox).toMatchObject({ total: 11, unread: 3 })
+  })
+
   it('hides accounts without a store directory and keeps them out of searches', async () => {
     const removed = {
       ...mailboxes,
       mailboxes: [...mailboxes.mailboxes, { id: 9, url: 'imap://GONE/INBOX', total: 40, unread: 0 }],
-      accountStores: [{ uuid: 'ACC1', hasStore: true }, { uuid: 'GONE', hasStore: false }],
+      accountStores: [{ uuid: 'ACC1', hasStore: true }, { uuid: 'GONE', hasStore: false }], dueReminders: [],
     }
     const { server, calls } = setup(() => ({ messages: [], hasMore: false, totalMatched: 0 }), {}, { mailboxes: removed })
     const res = await call(server, 'list_mailboxes')
@@ -192,6 +205,24 @@ describe('search_messages', () => {
       expect(res.content[0].text).toContain('No such mailbox')
     }
     expect(calls.filter((x) => x.command === 'search')).toHaveLength(0)
+  })
+
+  it('a search in an inbox also asks for due reminders of that account, as in Mail', async () => {
+    const withArchive = { ...mailboxes, mailboxes: [...mailboxes.mailboxes, { id: 4, url: 'imap://ACC1/Archive', total: 1, unread: 0 }] }
+    const { server, calls } = setup(() => ({ messages: [], hasMore: false }), {}, { mailboxes: withArchive })
+    await call(server, 'search_messages', { mailboxIds: ['1'] })
+    await call(server, 'search_messages', { mailboxIds: ['4'] })
+    await call(server, 'search_messages', {})
+    const [inbox, archive, all] = calls.filter((x) => x.command === 'search')
+    expect(inbox!.payload).toMatchObject({ mailboxIds: [1], reminderMailboxIds: [1, 4] })
+    expect(archive!.payload).not.toHaveProperty('reminderMailboxIds')
+    expect(all!.payload).not.toHaveProperty('reminderMailboxIds')
+  })
+
+  it('summaries carry the reminder date', async () => {
+    const { server } = setup(() => ({ messages: [row(1, { reminder: 1768000000 }), row(2)], hasMore: false }))
+    const res = await call(server, 'search_messages', {})
+    expect(res.structuredContent.messages.map((m: any) => m.reminder)).toEqual(['2026-01-10T00:06:40+01:00', null])
   })
 
   it('allowed mailboxIds narrow the helper query', async () => {
@@ -488,7 +519,7 @@ describe('config and errors', () => {
 })
 
 describe('no visible mailbox', () => {
-  const none = { mailboxes: [{ id: 2, url: 'imap://ACC1/Junk', total: 5, unread: 5 }], accounts: mailboxes.accounts, accountStores: [], accountNames: 'available' }
+  const none = { mailboxes: [{ id: 2, url: 'imap://ACC1/Junk', total: 5, unread: 5 }], accounts: mailboxes.accounts, accountStores: [], dueReminders: [], accountNames: 'available' }
 
   it('search answers empty with a note and no helper search', async () => {
     const { server, calls } = setup(() => ({}), {}, { mailboxes: none })

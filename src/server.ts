@@ -14,6 +14,7 @@ export const INSTRUCTIONS = [
   'Results reflect what Mail has synced to this Mac. Messages that were never downloaded have no body.',
   "Some accounts, mailboxes and security-related message bodies are hidden by the user's configuration. Tool parameters cannot change that.",
   "Message categories (primary, transactions, updates, promotions) and the important flag come from Mail's own classification and cover mainly newer messages; an older message without a category is not evidence that it belongs to none.",
+  'As in Mail, an inbox also contains messages whose Remind Me date has passed, although they are stored in another mailbox of the same account; their reminder field holds that date and their mailboxes field shows where they are stored.',
 ].join(' ')
 
 export function createServer(ctx: ToolContext): McpServer {

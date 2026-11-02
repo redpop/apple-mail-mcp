@@ -93,7 +93,7 @@ import Testing
     @Test func jsonMatchesNodeSchema() throws {
         let f = try FixtureBuilder.build()
         let ok = try JSONSerialization.jsonObject(with: JSONEncoder().encode(MailStore(config: f.config).listMailboxes())) as! [String: Any]
-        #expect(Set(ok.keys) == ["mailboxes", "accounts", "accountStores", "accountNames"])
+        #expect(Set(ok.keys) == ["mailboxes", "accounts", "accountStores", "accountNames", "dueReminders"])
         let st = try #require((ok["accountStores"] as? [[String: Any]])?.first)
         #expect(Set(st.keys) == ["uuid", "hasStore"])
         let mb = try #require((ok["mailboxes"] as? [[String: Any]])?.first)

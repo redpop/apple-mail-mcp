@@ -44,6 +44,7 @@
             "type" : "bcc"
           }
         ],
+        "reminder" : null,
         "sender" : {
           "address" : "billing@example.org",
           "name" : "Buchhaltung"

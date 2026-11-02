@@ -37,6 +37,7 @@ export const MessageSummary = z.object({
   bodyLocal: z.enum(['full', 'partial', 'none']),
   category: z.enum(CATEGORIES).nullable(),
   important: z.boolean(),
+  reminder: z.string().nullable(),
   matchContext: z.string().optional(),
 })
 export type MessageSummary = z.infer<typeof MessageSummary>
@@ -74,5 +75,6 @@ export function toSummary(row: MessageRow, policy: Policy, config: Config, maxRe
     bodyLocal: row.file,
     category: categoryName(row.category),
     important: row.highImpact,
+    reminder: row.reminder === null ? null : formatLocal(row.reminder),
   }
 }

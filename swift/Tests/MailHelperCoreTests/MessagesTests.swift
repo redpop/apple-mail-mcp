@@ -180,7 +180,7 @@ import Testing
         for m in msgs {
             #expect(Set(m.keys) == ["gid", "messageIdHeader", "subject", "sender", "recipients", "recipientCount", "dateReceived",
                                     "dateSent", "mailboxIds", "read", "flagged", "attachmentNames", "attachmentCount",
-                                    "conversationId", "file", "category", "highImpact", "raw", "rawSize", "rawTruncated"])
+                                    "conversationId", "file", "category", "highImpact", "reminder", "raw", "rawSize", "rawTruncated"])
         }
         #expect(msgs.contains { $0["raw"] is NSNull })
         #expect(msgs.contains { $0["raw"] is String })

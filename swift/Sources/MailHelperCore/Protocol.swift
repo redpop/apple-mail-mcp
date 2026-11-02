@@ -23,7 +23,7 @@ extension StrictPayload {
 extension SearchRequest: StrictPayload {
     static let allowedKeys: Set<String> = [
         "allowedMailboxIds", "mailboxIds", "from", "to", "subject", "query", "since", "before", "unread",
-        "flagged", "hasAttachment", "category", "inboxMailboxIds", "gids", "after", "limit", "maxRecipients", "countTotal",
+        "flagged", "hasAttachment", "category", "inboxMailboxIds", "reminderMailboxIds", "gids", "after", "limit", "maxRecipients", "countTotal",
     ]
     static let nestedKeys: [String: Set<String>] = ["after": ["date", "gid"]]
 }
