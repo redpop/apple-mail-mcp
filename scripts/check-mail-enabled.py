@@ -186,6 +186,21 @@ def load_entities(con, tables):
     return {e: (n, s) for e, n, s in con.execute("SELECT Z_ENT, Z_NAME, %s FROM Z_PRIMARYKEY" % sup)}
 
 
+def ident_column(con, t):
+    """Kennungsspalte einer Tabelle: ZIDENTIFIER, dann ZNAME, sonst die erste TEXT-Spalte mit
+    Werten der Form com.apple.Dataclass.*. -> Spaltenname oder None"""
+    ctypes = column_types(con, t)
+    for c in ("ZIDENTIFIER", "ZNAME"):
+        if c in ctypes:
+            return c
+    for c, ty in ctypes.items():
+        if "CHAR" in ty or "TEXT" in ty:
+            q = 'SELECT count(*) FROM "%s" WHERE substr("%s", 1, %d) = ?' % (t, c, len(DATACLASS_PREFIX))
+            if con.execute(q, (DATACLASS_PREFIX,)).fetchone()[0]:
+                return c
+    return None
+
+
 def resolve_entity(con, tables, entities, ent, wanted):
     """Bildet eine CoreData-Entitaet auf Tabelle und Kennungsspalte ab.
 
@@ -208,16 +223,22 @@ def resolve_entity(con, tables, entities, ent, wanted):
             notes.append("entity %d (%s): no table" % (e, safe_ident(str(name))))
             continue
         cols = columns(con, t)
-        if "ZIDENTIFIER" not in cols:
-            notes.append("entity %d: table %s has no ZIDENTIFIER (columns: %s)"
+        col = ident_column(con, t)
+        if col is None:
+            notes.append("entity %d: table %s has no identifier column (columns: %s)"
                          % (e, safe_ident(t), ", ".join(safe_ident(c) for c in cols)))
             continue
-        ids = dict(con.execute('SELECT Z_PK, ZIDENTIFIER FROM "%s"' % t))
+        # Ist die Kennung leer, steht ersatzweise ZENUMVALUE als Zahl in der Ausgabe.
+        enum = '"ZENUMVALUE"' if "ZENUMVALUE" in cols and col != "ZENUMVALUE" else "NULL"
+        ids = {}
+        for pk, v, ev in con.execute('SELECT Z_PK, "%s", %s FROM "%s"' % (col, enum, t)):
+            empty = v is None or (isinstance(v, str) and v.strip() == "")
+            ids[pk] = ("enum", ev) if empty and isinstance(ev, int) else v
         hit = sum(1 for pk in wanted if pk in ids)
-        notes.append("entity %d: table %s, rows %d, linked Z_PK found %d of %d"
-                     % (e, safe_ident(t), len(ids), hit, len(wanted)))
+        notes.append("entity %d: table %s, identifier column %s, rows %d, linked Z_PK found %d of %d"
+                     % (e, safe_ident(t), safe_ident(col), len(ids), hit, len(wanted)))
         if hit > best[3]:
-            best = (t, "ZIDENTIFIER", ids, hit)
+            best = (t, col, ids, hit)
     return best[0], best[1], best[2], notes
 
 
@@ -225,6 +246,8 @@ def short_dc(ident):
     """Kennung fuer die Ausgabe: nur com.apple.Dataclass.*, ohne Praefix; sonst other."""
     if ident is None:
         return "unresolved"
+    if isinstance(ident, tuple):
+        return "enum %d" % ident[1]
     if isinstance(ident, str) and DATACLASS_RE.match(ident):
         return ident[len(DATACLASS_PREFIX):]
     return "other"
@@ -468,7 +491,8 @@ def build_fixture(base):
             ZIDENTIFIER VARCHAR, ZUSERNAME VARCHAR, ZACCOUNTDESCRIPTION VARCHAR);
         CREATE TABLE ZACCOUNTTYPE (Z_PK INTEGER PRIMARY KEY, ZIDENTIFIER VARCHAR);
         CREATE TABLE ZDATACLASS (Z_PK INTEGER PRIMARY KEY, ZIDENTIFIER VARCHAR);
-        CREATE TABLE ZNAMEDOBJECT (Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, ZIDENTIFIER VARCHAR);
+        CREATE TABLE ZNAMEDOBJECT (Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, Z_OPT INTEGER, ZNAME VARCHAR,
+            ZENUMVALUE INTEGER);
         CREATE TABLE Z_PRIMARYKEY (Z_ENT INTEGER PRIMARY KEY, Z_NAME VARCHAR, Z_SUPER INTEGER, Z_MAX INTEGER);
         CREATE TABLE Z_2ENABLEDDATACLASSES (Z_2ENABLEDACCOUNTS INTEGER, Z_7ENABLEDDATACLASSES INTEGER);
         CREATE TABLE Z_2PROVISIONEDDATACLASSES (Z_2PROVISIONEDACCOUNTS INTEGER, Z_7PROVISIONEDDATACLASSES INTEGER);
@@ -476,8 +500,9 @@ def build_fixture(base):
             (7, 'EnabledDataclass', 8, 3), (8, 'NamedObject', 0, 3);
         INSERT INTO ZACCOUNTTYPE VALUES (1, 'com.apple.account.IMAP'), (2, 'com.apple.account.Exchange'),
             (3, 'com.apple.account.Google');
-        INSERT INTO ZNAMEDOBJECT VALUES (1, 7, 'com.apple.Dataclass.Mail'), (2, 7, 'com.apple.Dataclass.Notes'),
-            (3, 7, 'x-custom.user@example.com');
+        INSERT INTO ZNAMEDOBJECT VALUES (1, 7, 1, 'com.apple.Dataclass.Mail', 1),
+            (2, 7, 1, 'com.apple.Dataclass.Notes', 2), (3, 7, 1, 'x-custom.user@example.com', 3),
+            (4, 7, 1, '', 42);
     """)
     rows = [
         (1, 2, 1, 1, 1, 1, 1, None, T_UUIDS[0], "user@example.com", "Work"),
@@ -486,7 +511,7 @@ def build_fixture(base):
         (4, 2, 1, 1, 1, 1, 1, None, T_UUIDS[2], "user@example.net", "Off in Mail"),
     ]
     con.executemany("INSERT INTO ZACCOUNT VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
-    con.executemany("INSERT INTO Z_2ENABLEDDATACLASSES VALUES (?,?)", [(1, 1), (1, 2), (1, 3), (2, 1), (4, 2)])
+    con.executemany("INSERT INTO Z_2ENABLEDDATACLASSES VALUES (?,?)", [(1, 1), (1, 2), (1, 3), (2, 1), (4, 2), (4, 4)])
     con.executemany("INSERT INTO Z_2PROVISIONEDDATACLASSES VALUES (?,?)",
                     [(1, 1), (1, 2), (2, 1), (3, 1), (4, 1), (4, 2)])
     con.commit()
@@ -509,19 +534,20 @@ def selftest():
     checks = [
         ("exit code 0", rc == 0),
         ("five accounts", "account hosts: 5; with V<n>/<uuid> directory: 3" in text),
-        ("enabled table found", "enabled link table: Z_2ENABLEDDATACLASSES(Z_2ENABLEDACCOUNTS, Z_7ENABLEDDATACLASSES), rows 5" in text),
+        ("enabled table found", "enabled link table: Z_2ENABLEDDATACLASSES(Z_2ENABLEDACCOUNTS, Z_7ENABLEDDATACLASSES), rows 6" in text),
         ("entities listed", "2 Account 0, 3 AccountType 0, 4 Dataclass 0, 7 EnabledDataclass 8, 8 NamedObject 0" in text),
-        ("entity 7 resolved via super", "  target entity 7 -> table ZNAMEDOBJECT, identifier column ZIDENTIFIER; "
+        ("identifier column ZNAME", "  target entity 8: table ZNAMEDOBJECT, identifier column ZNAME, rows 4" in text),
+        ("entity 7 resolved via super", "  target entity 7 -> table ZNAMEDOBJECT, identifier column ZNAME; "
          "'com.apple.Dataclass.Mail' present: yes" in text),
         ("own table missing noted", "  target entity 7 (EnabledDataclass): no table" in text),
         ("A1 dataclasses", "A1    own enabled: Mail, Notes, other x1; own provisioned: Mail, Notes" in text),
         ("A2 parent dataclasses", "      parent enabled: Mail; parent provisioned: Mail" in text),
-        ("summary dataclasses", "  enabled dataclasses: Mail, Notes, other x1: A1; Notes: A3; none: A2" in text),
+        ("summary dataclasses", "  enabled dataclasses: Mail, Notes, other x1: A1; Notes, enum 42: A3; none: A2" in text),
         ("provisioned table found", "provisioned link table: Z_2PROVISIONEDDATACLASSES(" in text),
         ("A1 enabled", re.search(r"^A1 .*\| yes   1      1       yes      yes      3      2 ", lines.get("A1", ""), re.M)),
         ("A1 .emlx without Attachments", re.search(r"yes        3  \|", lines.get("A1", ""))),
         ("A2 parent enabled", re.search(r"\| yes    1      1       yes      yes ", lines.get("A2", ""))),
-        ("A3 mail off", re.search(r"\| yes   1      1       no       yes      1      2 ", lines.get("A3", ""))),
+        ("A3 mail off", re.search(r"\| yes   1      1       no       yes      2      2 ", lines.get("A3", ""))),
         ("A4 not in Accounts4", re.search(r"\| no    -", lines.get("A4", ""))),
         ("summary splits mail enabled", "  mail enabled: no: A2,A3; yes: A1" in text),
         ("summary splits parent", "  has parent: no: A1,A3; yes: A2" in text),
