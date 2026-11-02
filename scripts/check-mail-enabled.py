@@ -13,6 +13,9 @@
 # Adressen und UUIDs geschwaerzt. Alles ist lesend (SQLite per URI mode=ro, nie immutable). Es
 # wird nichts geschrieben, auch kein Bericht.
 #
+# Dataclasses: Die Verknuepfungsspalte Z_<ent>...DATACLASSES zeigt auf Entitaet <ent>; ihre Tabelle
+# wird ueber Z_PRIMARYKEY (Z_NAME, Z_SUPER) gesucht, nicht als ZDATACLASS angenommen.
+#
 # Optionen (NUR FUER SELBSTTESTS mit synthetischen Daten):
 #   --root DIR       Standard: ~/Library/Mail
 #   --accounts FILE  Standard: ~/Library/Accounts/Accounts4.sqlite
@@ -37,6 +40,8 @@ EMAIL_RE = re.compile(r"[^\s@<>\"']+@[^\s@<>\"']+")
 APPLE_ID_RE = re.compile(r"^com\.apple\.[A-Za-z0-9.]{1,80}$")
 EMLX_RE = re.compile(r"^\d+(\.partial)?\.emlx$")
 MAIL_DATACLASS = "com.apple.Dataclass.Mail"
+DATACLASS_RE = re.compile(r"^com\.apple\.Dataclass\.[A-Za-z0-9.]+$")
+DATACLASS_PREFIX = "com.apple.Dataclass."
 # Ganzzahlspalten von ZACCOUNT, die nichts ueber das Konto sagen oder Fremdschluessel sind.
 SKIP_INT_COLS = {"Z_PK", "Z_OPT", "ZPARENTACCOUNT", "ZACCOUNTTYPE"}
 
@@ -164,13 +169,74 @@ def find_link_table(con, tables, kind):
     return t, acc[0], dc[0], None
 
 
-def load_links(con, table, acc_col, dc_col, dataclasses):
-    """-> {account Z_PK: set(dataclass-kennung)}"""
+def load_links(con, table, acc_col, dc_col):
+    """-> {account Z_PK: set(Z_PK der Dataclass-Entitaet)}"""
     res = collections.defaultdict(set)
     q = 'SELECT "%s", "%s" FROM "%s"' % (acc_col, dc_col, table)
     for apk, dpk in con.execute(q):
-        res[apk].add(dataclasses.get(dpk))
+        res[apk].add(dpk)
     return res
+
+
+def load_entities(con, tables):
+    """Z_PRIMARYKEY -> {Z_ENT: (Z_NAME, Z_SUPER)}"""
+    if "Z_PRIMARYKEY" not in tables:
+        return {}
+    sup = '"Z_SUPER"' if "Z_SUPER" in columns(con, "Z_PRIMARYKEY") else "0"
+    return {e: (n, s) for e, n, s in con.execute("SELECT Z_ENT, Z_NAME, %s FROM Z_PRIMARYKEY" % sup)}
+
+
+def resolve_entity(con, tables, entities, ent, wanted):
+    """Bildet eine CoreData-Entitaet auf Tabelle und Kennungsspalte ab.
+
+    CoreData legt Unterentitaeten in der Tabelle der Wurzelentitaet ab. Darum kommen die Tabellen
+    der Entitaet und aller Oberentitaeten in Frage; gewaehlt wird die, in der die meisten
+    verknuepften Z_PK eine Kennung haben. -> (tabelle|None, spalte|None, {Z_PK: kennung}, notizen)"""
+    notes = []
+    if ent not in entities:
+        return None, None, {}, ["entity %d not in Z_PRIMARYKEY" % ent]
+    chain, e = [], ent
+    while e in entities and e not in chain:
+        chain.append(e)
+        e = entities[e][1]
+    upper = {t.upper(): t for t in tables}
+    best = (None, None, {}, -1)
+    for e in chain:
+        name = entities[e][0]
+        t = upper.get("Z" + name.upper()) if isinstance(name, str) else None
+        if t is None:
+            notes.append("entity %d (%s): no table" % (e, safe_ident(str(name))))
+            continue
+        cols = columns(con, t)
+        if "ZIDENTIFIER" not in cols:
+            notes.append("entity %d: table %s has no ZIDENTIFIER (columns: %s)"
+                         % (e, safe_ident(t), ", ".join(safe_ident(c) for c in cols)))
+            continue
+        ids = dict(con.execute('SELECT Z_PK, ZIDENTIFIER FROM "%s"' % t))
+        hit = sum(1 for pk in wanted if pk in ids)
+        notes.append("entity %d: table %s, rows %d, linked Z_PK found %d of %d"
+                     % (e, safe_ident(t), len(ids), hit, len(wanted)))
+        if hit > best[3]:
+            best = (t, "ZIDENTIFIER", ids, hit)
+    return best[0], best[1], best[2], notes
+
+
+def short_dc(ident):
+    """Kennung fuer die Ausgabe: nur com.apple.Dataclass.*, ohne Praefix; sonst other."""
+    if ident is None:
+        return "unresolved"
+    if isinstance(ident, str) and DATACLASS_RE.match(ident):
+        return ident[len(DATACLASS_PREFIX):]
+    return "other"
+
+
+def fmt_dcs(ids):
+    if ids is None:
+        return "-"
+    c = collections.Counter(short_dc(i) for i in ids)
+    named = sorted(k for k in c if k not in ("other", "unresolved"))
+    extra = ["%s x%d" % (k, c[k]) for k in ("other", "unresolved") if c[k]]
+    return ", ".join(named + extra) or "none"
 
 
 class Accounts4:
@@ -196,15 +262,20 @@ class Accounts4:
         self.types = {}
         if "ZACCOUNTTYPE" in self.tables and "ZIDENTIFIER" in columns(con, "ZACCOUNTTYPE"):
             self.types = dict(con.execute("SELECT Z_PK, ZIDENTIFIER FROM ZACCOUNTTYPE"))
-        self.dataclasses = {}
-        if "ZDATACLASS" in self.tables and "ZIDENTIFIER" in columns(con, "ZDATACLASS"):
-            self.dataclasses = dict(con.execute("SELECT Z_PK, ZIDENTIFIER FROM ZDATACLASS"))
+        self.entities = load_entities(con, self.tables)
         self.links = {}
         self.link_info = {}
+        self.resolved = {}
         for kind in ("ENABLED", "PROVISIONED"):
             t, ac, dc, err = find_link_table(con, self.tables, kind)
             self.link_info[kind] = (t, ac, dc, err)
-            self.links[kind] = load_links(con, t, ac, dc, self.dataclasses) if err is None else None
+            self.links[kind] = load_links(con, t, ac, dc) if err is None else None
+            self.resolved[kind] = (None, None, {}, [])
+            if err is None:
+                # Die Dataclass-Spalte heisst Z_<ent>...; <ent> ist die Zielentitaet.
+                ent = int(re.match(r"Z_(\d+)", dc).group(1))
+                wanted = set(pk for v in self.links[kind].values() for pk in v)
+                self.resolved[kind] = (ent,) + resolve_entity(con, self.tables, self.entities, ent, wanted)
 
     def flags(self, row):
         """-> dict mit active, visible, mail enabled/provisioned und Zahl der Dataclasses."""
@@ -217,9 +288,13 @@ class Accounts4:
             if links is None:
                 f[kind] = None
                 f[kind + "_n"] = None
+                f[kind + "_ids"] = None
             else:
-                f[kind] = MAIL_DATACLASS in links.get(pk, ())
-                f[kind + "_n"] = len(links.get(pk, ()))
+                names = self.resolved[kind][3]
+                ids = [names.get(d) for d in links.get(pk, ())]
+                f[kind] = MAIL_DATACLASS in ids
+                f[kind + "_n"] = len(ids)
+                f[kind + "_ids"] = ids
         return f
 
     def parent(self, row):
@@ -265,8 +340,9 @@ def run(args):
         out("cannot read Accounts4: %s" % type(e).__name__)
         a4 = None
     if a4 is not None:
-        out("ZACCOUNT rows: %d; ZDATACLASS rows: %d; '%s' present: %s" % (
-            len(a4.by_pk), len(a4.dataclasses), MAIL_DATACLASS, yn(MAIL_DATACLASS in a4.dataclasses.values())))
+        out("ZACCOUNT rows: %d" % len(a4.by_pk))
+        out("Z_PRIMARYKEY entities (Z_ENT name super): %s" % (", ".join(
+            "%d %s %s" % (e, safe_ident(str(n)), s) for e, (n, s) in sorted(a4.entities.items())) or "none"))
         for kind in ("ENABLED", "PROVISIONED"):
             t, ac, dc, err = a4.link_info[kind]
             if err:
@@ -275,6 +351,12 @@ def run(args):
                 out("%s link table: %s(%s, %s), rows %d" % (
                     kind.lower(), safe_ident(t), safe_ident(ac), safe_ident(dc),
                     sum(len(v) for v in a4.links[kind].values())))
+                ent, rt, rc, names, notes = a4.resolved[kind]
+                for n in notes:
+                    out("  target %s" % n)
+                out("  target entity %d -> table %s, identifier column %s; '%s' present: %s" % (
+                    ent, "-" if rt is None else safe_ident(rt), rc or "-", MAIL_DATACLASS,
+                    yn(MAIL_DATACLASS in names.values())))
         out("ZACCOUNT integer columns compared below: %s" % (", ".join(safe_ident(c) for c in a4.int_cols) or "none"))
 
     header(3, "per account (A<n> ordered by smallest mailbox ROWID, same as check-account-names.py)")
@@ -292,6 +374,16 @@ def run(args):
             a.label, "+".join(sorted(a.schemes)), a.mailboxes, yn(a.has_store), a.emlx,
             yn(r is not None), fmt_flags(f), yn(None if r is None else p is not None), fmt_flags(pf),
             "-" if f is None else safe_type(f["type"]), "-" if pf is None else safe_type(pf["type"])))
+
+    out()
+    out("dataclasses per account (prefix com.apple.Dataclass. removed; other = not matching that pattern)")
+    for a, f, p, pf in rows:
+        if f is None:
+            continue
+        out("%-5s own enabled: %s; own provisioned: %s" % (a.label, fmt_dcs(f["ENABLED_ids"]), fmt_dcs(f["PROVISIONED_ids"])))
+        if pf is not None:
+            out("%-5s parent enabled: %s; parent provisioned: %s" % (
+                "", fmt_dcs(pf["ENABLED_ids"]), fmt_dcs(pf["PROVISIONED_ids"])))
 
     header(4, "ZACCOUNT integer columns per account in Accounts4 (own / parent)")
     if a4 is not None and a4.int_cols:
@@ -316,6 +408,10 @@ def run(args):
             "parent visible": "-" if pf is None else safe_int(pf["visible"]),
             "parent mail enabled": "-" if pf is None else yn(pf["ENABLED"]),
             "parent mail provisioned": "-" if pf is None else yn(pf["PROVISIONED"]),
+            "enabled dataclasses": fmt_dcs(f["ENABLED_ids"]),
+            "provisioned dataclasses": fmt_dcs(f["PROVISIONED_ids"]),
+            "parent enabled dataclasses": "-" if pf is None else fmt_dcs(pf["ENABLED_ids"]),
+            "parent provisioned dataclasses": "-" if pf is None else fmt_dcs(pf["PROVISIONED_ids"]),
         }
         for c in (a4.int_cols if a4 is not None else []):
             vals["ZACCOUNT." + safe_ident(c)] = safe_int(a.row.get(c))
@@ -343,7 +439,9 @@ def build_fixture(base):
 
     A1 IMAP, Mail aktiviert, Store.  A2 Kind eines Elternkontos, Mail aktiviert, Store.
     A3 Mail nur provisioniert (abgeschaltet), Store.  A4 nicht in Accounts4, kein Store.
-    A5 lokal (Host ohne UUID), kein Store."""
+    A5 lokal (Host ohne UUID), kein Store.
+    Wie im echten Accounts4 ist ZDATACLASS leer; die Verknuepfungen zeigen auf Entitaet 7, eine
+    Unterentitaet, deren Zeilen in der Tabelle ihrer Oberentitaet (ZNAMEDOBJECT) liegen."""
     root = os.path.join(base, "Mail")
     vdir = os.path.join(root, "V10")
     os.makedirs(os.path.join(vdir, "MailData"))
@@ -370,11 +468,16 @@ def build_fixture(base):
             ZIDENTIFIER VARCHAR, ZUSERNAME VARCHAR, ZACCOUNTDESCRIPTION VARCHAR);
         CREATE TABLE ZACCOUNTTYPE (Z_PK INTEGER PRIMARY KEY, ZIDENTIFIER VARCHAR);
         CREATE TABLE ZDATACLASS (Z_PK INTEGER PRIMARY KEY, ZIDENTIFIER VARCHAR);
-        CREATE TABLE Z_2ENABLEDDATACLASSES (Z_2ENABLEDACCOUNTS INTEGER, Z_4ENABLEDDATACLASSES INTEGER);
-        CREATE TABLE Z_2PROVISIONEDDATACLASSES (Z_2PROVISIONEDACCOUNTS INTEGER, Z_4PROVISIONEDDATACLASSES INTEGER);
+        CREATE TABLE ZNAMEDOBJECT (Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, ZIDENTIFIER VARCHAR);
+        CREATE TABLE Z_PRIMARYKEY (Z_ENT INTEGER PRIMARY KEY, Z_NAME VARCHAR, Z_SUPER INTEGER, Z_MAX INTEGER);
+        CREATE TABLE Z_2ENABLEDDATACLASSES (Z_2ENABLEDACCOUNTS INTEGER, Z_7ENABLEDDATACLASSES INTEGER);
+        CREATE TABLE Z_2PROVISIONEDDATACLASSES (Z_2PROVISIONEDACCOUNTS INTEGER, Z_7PROVISIONEDDATACLASSES INTEGER);
+        INSERT INTO Z_PRIMARYKEY VALUES (2, 'Account', 0, 4), (3, 'AccountType', 0, 3), (4, 'Dataclass', 0, 0),
+            (7, 'EnabledDataclass', 8, 3), (8, 'NamedObject', 0, 3);
         INSERT INTO ZACCOUNTTYPE VALUES (1, 'com.apple.account.IMAP'), (2, 'com.apple.account.Exchange'),
             (3, 'com.apple.account.Google');
-        INSERT INTO ZDATACLASS VALUES (1, 'com.apple.Dataclass.Mail'), (2, 'com.apple.Dataclass.Notes');
+        INSERT INTO ZNAMEDOBJECT VALUES (1, 7, 'com.apple.Dataclass.Mail'), (2, 7, 'com.apple.Dataclass.Notes'),
+            (3, 7, 'x-custom.user@example.com');
     """)
     rows = [
         (1, 2, 1, 1, 1, 1, 1, None, T_UUIDS[0], "user@example.com", "Work"),
@@ -383,7 +486,7 @@ def build_fixture(base):
         (4, 2, 1, 1, 1, 1, 1, None, T_UUIDS[2], "user@example.net", "Off in Mail"),
     ]
     con.executemany("INSERT INTO ZACCOUNT VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
-    con.executemany("INSERT INTO Z_2ENABLEDDATACLASSES VALUES (?,?)", [(1, 1), (1, 2), (2, 1), (3, 1), (4, 2)])
+    con.executemany("INSERT INTO Z_2ENABLEDDATACLASSES VALUES (?,?)", [(1, 1), (1, 2), (1, 3), (2, 1), (4, 2)])
     con.executemany("INSERT INTO Z_2PROVISIONEDDATACLASSES VALUES (?,?)",
                     [(1, 1), (1, 2), (2, 1), (3, 1), (4, 1), (4, 2)])
     con.commit()
@@ -406,14 +509,21 @@ def selftest():
     checks = [
         ("exit code 0", rc == 0),
         ("five accounts", "account hosts: 5; with V<n>/<uuid> directory: 3" in text),
-        ("enabled table found", "enabled link table: Z_2ENABLEDDATACLASSES(Z_2ENABLEDACCOUNTS, Z_4ENABLEDDATACLASSES), rows 5" in text),
+        ("enabled table found", "enabled link table: Z_2ENABLEDDATACLASSES(Z_2ENABLEDACCOUNTS, Z_7ENABLEDDATACLASSES), rows 5" in text),
+        ("entities listed", "2 Account 0, 3 AccountType 0, 4 Dataclass 0, 7 EnabledDataclass 8, 8 NamedObject 0" in text),
+        ("entity 7 resolved via super", "  target entity 7 -> table ZNAMEDOBJECT, identifier column ZIDENTIFIER; "
+         "'com.apple.Dataclass.Mail' present: yes" in text),
+        ("own table missing noted", "  target entity 7 (EnabledDataclass): no table" in text),
+        ("A1 dataclasses", "A1    own enabled: Mail, Notes, other x1; own provisioned: Mail, Notes" in text),
+        ("A2 parent dataclasses", "      parent enabled: Mail; parent provisioned: Mail" in text),
+        ("summary dataclasses", "  enabled dataclasses: Mail, Notes, other x1: A1; Notes: A3; none: A2" in text),
         ("provisioned table found", "provisioned link table: Z_2PROVISIONEDDATACLASSES(" in text),
-        ("A1 enabled", re.search(r"^A1 .*\| yes   1      1       yes      yes      2      2 ", lines.get("A1", ""), re.M)),
+        ("A1 enabled", re.search(r"^A1 .*\| yes   1      1       yes      yes      3      2 ", lines.get("A1", ""), re.M)),
         ("A1 .emlx without Attachments", re.search(r"yes        3  \|", lines.get("A1", ""))),
         ("A2 parent enabled", re.search(r"\| yes    1      1       yes      yes ", lines.get("A2", ""))),
         ("A3 mail off", re.search(r"\| yes   1      1       no       yes      1      2 ", lines.get("A3", ""))),
         ("A4 not in Accounts4", re.search(r"\| no    -", lines.get("A4", ""))),
-        ("summary splits mail enabled", "  mail enabled: no: A3; yes: A1,A2" in text),
+        ("summary splits mail enabled", "  mail enabled: no: A2,A3; yes: A1" in text),
         ("summary splits parent", "  has parent: no: A1,A3; yes: A2" in text),
         ("int columns compared", "ZACCOUNT integer columns compared below: ZACTIVE, ZAUTHENTICATED, ZVISIBLE, Z_ENT" in text),
         ("same int column not listed", "\n  ZACCOUNT.ZAUTHENTICATED" not in text),
