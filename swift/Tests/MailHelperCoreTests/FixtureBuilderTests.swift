@@ -96,7 +96,15 @@ import Testing
         #expect(try db.scalarInt("SELECT count(*) FROM ZACCOUNT WHERE ZIDENTIFIER IN ('\(f.accountUUID("B"))', '\(f.accountUUID("L"))')") == 0)
     }
 
-    @Test func extraMessagesAreBulkInserted() throws {
+    @Test func removedAccountHasNoDirectory() throws {
+        let f = try FixtureBuilder.build()
+        let v10 = f.mailRoot.appending(path: "V10")
+        #expect(!FileManager.default.fileExists(atPath: v10.appending(path: f.accountUUID("R")).path))
+        #expect(FileManager.default.fileExists(atPath: v10.appending(path: f.accountUUID("A")).path))
+        #expect(try f.count("SELECT count(*) FROM mailboxes WHERE ROWID = \(f.mailboxId(named: "entfernt"))") == 1)
+    }
+
+        @Test func extraMessagesAreBulkInserted() throws {
         let f = try FixtureBuilder.build(extraMessages: 250)
         #expect(try f.count("SELECT count(*) FROM messages") == Int64(f.seed.messages.count + 250))
     }

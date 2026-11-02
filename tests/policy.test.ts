@@ -19,6 +19,7 @@ const raw = (over: Partial<ListMailboxesResult> = {}): ListMailboxesResult => ({
     { uuid: A, description: 'Work', username: 'me@work.example' },
     { uuid: B, description: 'Privat Konto', username: 'not-an-address' },
   ],
+  accountStores: [],
   accountNames: 'available',
   ...over,
 })
@@ -90,4 +91,38 @@ test('junk/trash mailbox with invalid url segment is excluded by default', () =>
   const r = raw({ mailboxes: [mb(1, `imap://${A}/INBOX`), mb(2, `imap://${A}/%ZZ/Junk`), mb(3, `imap://${A}/a//Trash`)] })
   expect(computePolicy(base, r).allowedMailboxIds).toEqual([1])
   expect(computePolicy(cfg({ includeJunk: true, includeTrash: true }), r).allowedMailboxIds).toEqual([1, 2, 3])
+})
+
+// AMM-21: Konten ohne Store-Verzeichnis sind aus Mail entfernt und immer ausgeblendet.
+const R = 'DDDDDDDD-0000-0000-0000-000000000003'
+const withRemoved = (over: Partial<ListMailboxesResult> = {}) =>
+  raw({
+    mailboxes: [...raw().mailboxes, mb(7, `imap://${R}/INBOX`), mb(8, `imap://${R}/Archiv`)],
+    accountStores: [{ uuid: A, hasStore: true }, { uuid: B, hasStore: true }, { uuid: R, hasStore: false }],
+    ...over,
+  })
+
+test('accounts without a store directory are hidden and counted', () => {
+  const pol = computePolicy(base, withRemoved())
+  expect(pol.allowedMailboxIds).toEqual([1, 4, 5, 6])
+  expect(pol.accounts.map((a) => a.id)).toEqual([A, B])
+  expect(pol.removedAccounts).toBe(1)
+  expect(pol.removedMailboxes).toBe(2)
+})
+test('removed accounts stay hidden with junk, trash and an allowlist naming them', () => {
+  const pol = computePolicy(cfg({ includeJunk: true, includeTrash: true, accounts: [R] }), withRemoved())
+  expect(pol.allowedMailboxIds).toEqual([])
+  // Ein entferntes Konto ist kein Mail-Konto mehr: der Eintrag passt auf nichts.
+  expect(pol.unmatchedAllowlistEntries).toBe(1)
+})
+test('an account without an accountStores entry stays visible', () => {
+  const pol = computePolicy(base, withRemoved({ accountStores: [{ uuid: R, hasStore: false }] }))
+  expect(pol.allowedMailboxIds).toEqual([1, 4, 5, 6])
+  expect(computePolicy(base, raw()).removedAccounts).toBe(0)
+  expect(computePolicy(base, raw()).removedMailboxes).toBe(0)
+})
+test('a live account with a store keeps all its mailboxes', () => {
+  const pol = computePolicy(base, withRemoved({ accountStores: [{ uuid: R, hasStore: true }] }))
+  expect(pol.allowedMailboxIds).toEqual([1, 4, 5, 6, 7, 8])
+  expect(pol.removedAccounts).toBe(0)
 })

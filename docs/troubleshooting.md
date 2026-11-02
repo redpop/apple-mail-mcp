@@ -104,10 +104,10 @@ both called "Work") are therefore both allowed by one entry with that name. Use 
 account UUID (`doctor --verbose` lists the UUIDs) to allow only one of them.
 
 **An account is named by its UUID.**
-macOS has no description for it. Usually it is an account that was removed from Mail while its
-mailboxes stayed in Mail's index; `doctor` counts these as "mail accounts without a match".
-Their messages have no files any more, so bodies come back as `file_not_found`. To keep them
-out, list the accounts you want in `APPLE_MAIL_ACCOUNTS`.
+macOS has no description for it. Accounts that were removed from Mail while their mailboxes
+stayed in Mail's index are hidden automatically: they have no folder under the Mail directory,
+and `doctor` counts them under `removed-accounts`. An account that is still shown by its UUID
+has a folder; it has no description in System Settings, or macOS has no entry for it at all.
 
 **A message has no body.**
 `bodyUnavailableReason` tells why: `not_downloaded` (Mail never fetched it; open it in Mail),

@@ -5,10 +5,10 @@
     "access" : "granted",
     "accountNames" : {
       "status" : "available",
-      "unmatchedAccounts" : 2
+      "unmatchedAccounts" : 3
     },
     "counts" : {
-      "mailboxes" : 8,
+      "mailboxes" : 9,
       "messages" : 23,
       "uniqueMessages" : 21
     },

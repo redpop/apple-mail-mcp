@@ -11,7 +11,7 @@ import { formatLocal } from '../dates.js'
 import { describeError, HelperError } from '../errors.js'
 import type { HelperRunner } from '../helper.js'
 import { parseMailbox, type MailboxRole } from '../mailboxes.js'
-import { computePolicy, indexFingerprintOf } from '../policy.js'
+import { computePolicy, indexFingerprintOf, removedAccountIds } from '../policy.js'
 import { helloResult, listMailboxesResult, probeResult, searchResult, type ProbeResult } from '../schemas.js'
 import { RELEASE_BUNDLE_ID, readBundleId, readBundleName } from '../signing.js'
 import { defaultStateDir, readState } from '../state.js'
@@ -198,7 +198,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
       'account-names',
       an.status === 'available' && an.unmatchedAccounts === 0 ? 'ok' : 'warn',
       an.status === 'available'
-        ? `Account names available; ${an.unmatchedAccounts} mail accounts without a match${an.unmatchedAccounts > 0 ? ' (usually removed accounts; they are listed by UUID)' : ''}.`
+        ? `Account names available; ${an.unmatchedAccounts} mail accounts without a match${an.unmatchedAccounts > 0 ? ' (usually removed accounts, see removed-accounts)' : ''}.`
         : `Account names unavailable${deps.verbose && an.reason ? ` (${an.reason})` : ''}; ${an.unmatchedAccounts} mail accounts without a match.`,
     )
   }
@@ -219,7 +219,10 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
   if (probe?.access === 'granted' && probe.schema) {
     try {
       const list = listMailboxesResult.parse(await runner.run('list-mailboxes', {}))
-      const parsed = list.mailboxes.map(parseMailbox)
+      // Rollen und Zaehler nur fuer lebende Konten; entfernte zaehlt ein eigener Pruefpunkt (AMM-21).
+      const removed = removedAccountIds(list)
+      const all = list.mailboxes.map(parseMailbox)
+      const parsed = all.filter((m) => !removed.has(m.accountId))
       const roles = new Map<MailboxRole, number>()
       for (const m of parsed) roles.set(m.role, (roles.get(m.role) ?? 0) + 1)
       const summary = [...roles].map(([r, n]) => `${r} ${n}`).join(', ')
@@ -231,9 +234,19 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
           ? `Roles: ${summary || 'none'}. No ${missing.join(' or ')} mailbox recognised although accounts exist.`
           : `Roles: ${summary}.`,
       )
+      const hiddenAccounts = new Set(all.filter((m) => removed.has(m.accountId)).map((m) => m.accountId)).size
+      const hiddenMailboxes = all.length - parsed.length
+      add(
+        'removed-accounts',
+        'ok',
+        hiddenAccounts === 0
+          ? 'No removed accounts in the Mail index.'
+          : `${hiddenAccounts} removed account${hiddenAccounts === 1 ? '' : 's'} hidden (${hiddenMailboxes} mailbox${hiddenMailboxes === 1 ? '' : 'es'}): still in the Mail index, but without a folder in the Mail directory.`,
+      )
       if (deps.verbose) {
         for (const m of parsed) verboseLines.push(`mailbox ${m.id}: ${m.name} (${m.role})`)
         for (const a of new Set(parsed.map((m) => m.accountId))) verboseLines.push(`account ${a}`)
+        for (const a of new Set(all.filter((m) => removed.has(m.accountId)).map((m) => m.accountId))) verboseLines.push(`account ${a} (removed, hidden)`)
       }
 
       if (deps.configResult.ok) {

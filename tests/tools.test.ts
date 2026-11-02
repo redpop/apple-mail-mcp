@@ -23,6 +23,7 @@ const mailboxes = {
     { uuid: 'ACC1', description: 'Privat', username: 'a@example.com' },
     { uuid: 'ACC2', description: 'Work', username: 'w@example.com' },
   ],
+  accountStores: [],
   accountNames: 'available',
 }
 
@@ -132,6 +133,19 @@ describe('list_mailboxes', () => {
     expect(accts.map((a: any) => a.name)).toEqual(['Privat', 'Work'])
     expect(accts[0].mailboxes.map((m: any) => m.name)).toEqual(['INBOX'])
     expect(accts[1].type).toBe('exchange')
+  })
+
+  it('hides accounts without a store directory and keeps them out of searches', async () => {
+    const removed = {
+      ...mailboxes,
+      mailboxes: [...mailboxes.mailboxes, { id: 9, url: 'imap://GONE/INBOX', total: 40, unread: 0 }],
+      accountStores: [{ uuid: 'ACC1', hasStore: true }, { uuid: 'GONE', hasStore: false }],
+    }
+    const { server, calls } = setup(() => ({ messages: [], hasMore: false, totalMatched: 0 }), {}, { mailboxes: removed })
+    const res = await call(server, 'list_mailboxes')
+    expect(res.structuredContent.accounts.map((a: any) => a.id)).toEqual(['ACC1', 'ACC2'])
+    await call(server, 'search_messages', {})
+    expect(calls.find((x) => x.command === 'search')!.payload.allowedMailboxIds).toEqual([1, 3])
   })
 })
 
@@ -396,7 +410,7 @@ describe('config and errors', () => {
 })
 
 describe('no visible mailbox', () => {
-  const none = { mailboxes: [{ id: 2, url: 'imap://ACC1/Junk', total: 5, unread: 5 }], accounts: mailboxes.accounts, accountNames: 'available' }
+  const none = { mailboxes: [{ id: 2, url: 'imap://ACC1/Junk', total: 5, unread: 5 }], accounts: mailboxes.accounts, accountStores: [], accountNames: 'available' }
 
   it('search answers empty with a note and no helper search', async () => {
     const { server, calls } = setup(() => ({}), {}, { mailboxes: none })
