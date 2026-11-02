@@ -6,7 +6,7 @@ const row = {
   sender: { address: 'anna@example.com', name: 'Anna Beispiel' },
   recipients: [{ type: 'to', address: 'ich@example.org', name: null }], recipientCount: 3,
   dateReceived: 1768000000, dateSent: 1767999000, mailboxIds: [12], read: false, flagged: false,
-  attachmentNames: ['angebot.pdf'], conversationId: 88123, file: 'full',
+  attachmentNames: ['angebot.pdf'], conversationId: 88123, file: 'full', category: 1, highImpact: false,
 }
 
 describe('schemas', () => {

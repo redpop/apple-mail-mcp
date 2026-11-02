@@ -15,6 +15,7 @@
     "mailDir" : "V10",
     "osVersion" : "0.0.0",
     "schema" : {
+      "categories" : true,
       "compatible" : true,
       "ddl" : [
         "CREATE TABLE action_flags (ROWID INTEGER PRIMARY KEY,\naction INTEGER REFERENCES local_message_actions(ROWID) ON DELETE CASCADE,\nflag_type INTEGER,\nflag_value INTEGER)",

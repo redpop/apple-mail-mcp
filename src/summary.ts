@@ -9,6 +9,15 @@ import { classify, redactSubject } from './securityMail.js'
 const Address = z.object({ address: z.string(), name: z.string().nullable() })
 const MailboxRef = z.object({ id: z.string(), name: z.string(), account: z.string() })
 
+/** Kategorien von Mail (AMM-19); der Index ist der Wert in der Datenbank. */
+export const CATEGORIES = ['primary', 'transactions', 'updates', 'promotions'] as const
+export type Category = (typeof CATEGORIES)[number]
+
+/** Unbekannte Zahlen ergeben null. */
+export function categoryName(value: number | null): Category | null {
+  return value === null ? null : (CATEGORIES[value] ?? null)
+}
+
 export const MessageSummary = z.object({
   id: z.string(),
   link: z.string().nullable(),
@@ -26,6 +35,8 @@ export const MessageSummary = z.object({
   attachmentCount: z.number().int(),
   threadId: z.string().nullable(),
   bodyLocal: z.enum(['full', 'partial', 'none']),
+  category: z.enum(CATEGORIES).nullable(),
+  important: z.boolean(),
   matchContext: z.string().optional(),
 })
 export type MessageSummary = z.infer<typeof MessageSummary>
@@ -61,5 +72,7 @@ export function toSummary(row: MessageRow, policy: Policy, config: Config, maxRe
     attachmentCount: row.attachmentCount ?? row.attachmentNames.length,
     threadId: row.conversationId ? String(row.conversationId) : null,
     bodyLocal: row.file,
+    category: categoryName(row.category),
+    important: row.highImpact,
   }
 }

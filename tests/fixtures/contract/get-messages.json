@@ -10,12 +10,14 @@
           "rechnung-2024-0815.pdf",
           "anlage.txt"
         ],
+        "category" : null,
         "conversationId" : 0,
         "dateReceived" : 1700001400,
         "dateSent" : 1700001340,
         "file" : "full",
         "flagged" : false,
         "gid" : 1011,
+        "highImpact" : false,
         "mailboxIds" : [
           1
         ],

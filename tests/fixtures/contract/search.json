@@ -9,12 +9,14 @@
         "attachmentNames" : [
 
         ],
+        "category" : null,
         "conversationId" : 0,
         "dateReceived" : 1700002200,
         "dateSent" : 1700002140,
         "file" : "full",
         "flagged" : false,
         "gid" : 1021,
+        "highImpact" : false,
         "mailboxIds" : [
           1
         ],
@@ -36,12 +38,14 @@
         "attachmentNames" : [
 
         ],
+        "category" : null,
         "conversationId" : 0,
         "dateReceived" : 1700002100,
         "dateSent" : 1700002040,
         "file" : "none",
         "flagged" : false,
         "gid" : 1018,
+        "highImpact" : false,
         "mailboxIds" : [
           5
         ],
@@ -66,12 +70,14 @@
         "attachmentNames" : [
 
         ],
+        "category" : null,
         "conversationId" : 0,
         "dateReceived" : 1700002000,
         "dateSent" : 1700001940,
         "file" : "full",
         "flagged" : false,
         "gid" : 1017,
+        "highImpact" : false,
         "mailboxIds" : [
           3
         ],
@@ -96,12 +102,14 @@
         "attachmentNames" : [
 
         ],
+        "category" : null,
         "conversationId" : 0,
         "dateReceived" : 1700001900,
         "dateSent" : 1700001840,
         "file" : "full",
         "flagged" : false,
         "gid" : 1016,
+        "highImpact" : false,
         "mailboxIds" : [
           8
         ],
@@ -119,12 +127,14 @@
         "attachmentNames" : [
 
         ],
+        "category" : null,
         "conversationId" : 0,
         "dateReceived" : 1700001800,
         "dateSent" : 1700001740,
         "file" : "full",
         "flagged" : false,
         "gid" : 1019,
+        "highImpact" : false,
         "mailboxIds" : [
           1
         ],

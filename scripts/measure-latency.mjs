@@ -51,6 +51,11 @@ try {
   await time('search, query', search({ query: term }))
   await time('search, unread', search({ unread: true }))
   await time('search, hasAttachment', search({ hasAttachment: true }))
+  // Kategorie (AMM-19); primary mit den erlaubten Eingaengen wie in searchMessages.ts.
+  const inboxes = [...policy.mailboxes.values()].filter((m) => m.role === 'inbox').map((m) => m.id)
+  await time('search, category primary', search({ category: 0, ...(inboxes.length > 0 ? { inboxMailboxIds: inboxes } : {}) }))
+  await time('search, category transactions', search({ category: 1 }))
+  await time('search, category promotions', search({ category: 3 }))
   // Breite Begriffe: fast jede Zeile trifft, die gid-Menge ist so gross wie die Ablage.
   await time('search, query broad ("e")', search({ query: 'e' }))
   await time('search, to broad ("@")', search({ to: '@' }))

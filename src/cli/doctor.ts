@@ -189,6 +189,9 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
     if (s) {
       add('schema', s.compatible ? 'ok' : 'fail', s.compatible ? `Schema compatible, fingerprint ${s.fingerprint}.` : `Schema not supported, missing columns: ${s.missing.join(', ')}; fingerprint ${s.fingerprint}.`)
     }
+    if (s?.compatible && s.categories !== undefined) {
+      add('categories', s.categories ? 'ok' : 'warn', s.categories ? 'Mail categories are available for the category filter.' : 'Mail categories are not available on this Mac; search_messages cannot filter by category.')
+    }
     if (c) add('counts', 'ok', `${c.mailboxes} mailboxes, ${c.messages} messages, ${c.uniqueMessages} unique.`)
   }
 

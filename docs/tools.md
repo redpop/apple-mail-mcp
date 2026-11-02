@@ -34,6 +34,8 @@ Conventions:
 | `attachmentNames`, `attachmentCount` | From Mail's database. |
 | `threadId` | Conversation id, or `null`. |
 | `bodyLocal` | `full`, `partial` (text present, attachments missing) or `none` (never downloaded). |
+| `category` | Mail's category: `primary`, `transactions`, `updates`, `promotions`, or `null` when Mail has not categorised the message (most older mail) or stores a value this server does not know. A sender override set in Mail ("Categorize Sender") wins over Mail's own value. See [Categories](#categories). |
+| `important` | `true` if Mail marks the message as important; it then also appears under `primary`. |
 | `matchContext` | Up to 160 characters around the first hit; only with `bodyContains`. |
 
 ## list_mailboxes
@@ -62,6 +64,7 @@ Searches, newest first. With no filter it returns the newest messages.
 | `mailboxIds` | Restrict to these mailbox ids from `list_mailboxes`, at most 50. |
 | `since`, `before` | Date range on the received date. |
 | `unread`, `flagged`, `hasAttachment` | Boolean filters. |
+| `category` | `primary`, `transactions`, `updates` or `promotions`. See [Categories](#categories). |
 | `limit` | 1 to 100, default 20, capped by `APPLE_MAIL_MAX_RESULTS`. |
 | `cursor` | `nextCursor` from the previous page, with the same filters. |
 
@@ -97,7 +100,30 @@ in more than 200,000 indexed messages, and when another server with a different 
 holds the index. `totalMatched` is never returned for a body search.
 
 Errors: `MAILBOX_NOT_FOUND` (unknown or hidden mailbox id; both look the same), `INVALID_CURSOR`,
-`INVALID_INPUT`.
+`INVALID_INPUT`, `CATEGORY_UNSUPPORTED`.
+
+### Categories
+
+Mail sorts incoming mail into four categories on the Mac itself. `category` filters by the
+same rules as Mail's category buttons, checked against Mail's interface on 2026-11-02:
+
+| Value | In Mail | Matches |
+|---|---|---|
+| `primary` | Primary | Category primary, or marked important. In an inbox also every message without a category, because Mail shows those under Primary. |
+| `transactions` | Transactions | Category transactions. |
+| `updates` | Updates | Category updates. |
+| `promotions` | Promotions | Category promotions. |
+
+A message can match two values, as in Mail: an important message in `updates` also matches
+`primary`. A sender override set with "Categorize Sender" in Mail takes precedence over Mail's own
+value, also after it was set back. Mail categorises mainly newer mail, so older messages have no
+category and match no filter, except `primary` in an inbox. Every result of a `category` search
+has a `note` that says this. Mail's due reminders (Remind Me) are not a category and are not
+covered.
+
+On a Mac whose Mail database has no category columns, `category` fails with
+`CATEGORY_UNSUPPORTED`, and summaries carry `category: null` and `important: false`. `doctor`
+reports whether the columns are there.
 
 ## get_message
 
@@ -152,6 +178,7 @@ Every error carries a sentence for the model. The codes:
 | `MAILBOX_NOT_FOUND` | No such mailbox or not visible. Use `list_mailboxes`. |
 | `INVALID_CURSOR` | The cursor is from a different search or from before a settings change. Search again without it. |
 | `INVALID_INPUT` | A parameter is invalid; the message names it. Also used when `bodyContains` is disabled. |
+| `CATEGORY_UNSUPPORTED` | The Mail database has no category columns (older macOS or Mail). Search without `category`. |
 | `CONFIG_INVALID` | A server setting is invalid; the message names it. The user must fix it and restart the client. |
 | `HELPER_MISSING` | The helper app is not in the installation. Reinstall. |
 | `HELPER_CRASHED` | The helper stopped. Retrying starts it again. |

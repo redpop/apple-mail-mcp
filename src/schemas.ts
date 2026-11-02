@@ -20,6 +20,9 @@ export const messageRow = z.object({
   attachmentCount: z.number().int().optional(),
   conversationId: z.number().int().nullable(),
   file: z.enum(['full', 'partial', 'none']),
+  // Effektive Kategorie aus Mail (AMM-19), roh; summary.ts bildet sie auf Namen ab.
+  category: z.number().int().nullable(),
+  highImpact: z.boolean(),
 })
 
 export const searchResult = z.object({
@@ -62,7 +65,7 @@ export const probeResult = z.object({
   mailDir: z.string().nullable(),
   access: z.enum(['granted', 'denied', 'no_mail_data', 'untrusted_signature']),
   // ddl: CREATE-TABLE-Anweisungen des Fingerabdrucks, nur fuer `doctor --schema` (Spec 14.5).
-  schema: z.object({ compatible: z.boolean(), missing: z.array(z.string()), fingerprint: z.string(), ddl: z.array(z.string()).optional() }).optional(),
+  schema: z.object({ compatible: z.boolean(), missing: z.array(z.string()), fingerprint: z.string(), categories: z.boolean().optional(), ddl: z.array(z.string()).optional() }).optional(),
   counts: z.object({ mailboxes: z.number().int(), messages: z.number().int(), uniqueMessages: z.number().int() }).optional(),
   accountNames: z.object({ status: z.enum(['available', 'unavailable']), unmatchedAccounts: z.number().int(), reason: z.string().nullable().optional() }),
 })

@@ -10,6 +10,7 @@ public enum ErrorCode: String, Codable, Sendable {
     case messageNotFound = "MESSAGE_NOT_FOUND"
     case helperUntrustedSignature = "HELPER_UNTRUSTED_SIGNATURE"
     case invalidInput = "INVALID_INPUT"
+    case categoryUnsupported = "CATEGORY_UNSUPPORTED"
 }
 
 /// Fehler mit Code und festem englischem Satz. `message` enthaelt nie Nutzerdaten

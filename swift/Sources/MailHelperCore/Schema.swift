@@ -6,6 +6,9 @@ public struct SchemaReport: Codable, Equatable, Sendable {
     public let compatible: Bool
     public let missing: [String]
     public let fingerprint: String
+    /// Ob die Kategoriespalten von Mail da sind (`message_global_data.model_category` und
+    /// `model_high_impact`, AMM-19). Ohne sie scheitert der Filter `category` mit CATEGORY_UNSUPPORTED.
+    public let categories: Bool
     /// Die CREATE-TABLE-Anweisungen, ueber die der Fingerabdruck laeuft (nur Struktur, keine Daten).
     /// Node zeigt sie nur bei `doctor --schema` (Spec 14.5).
     public let ddl: [String]
@@ -26,16 +29,35 @@ enum Schema {
 
     /// Spalten, die nicht jede Mail-Version hat. Fehlen sie, bleibt das Schema kompatibel und die Abfragen
     /// liefern NULL. macOS 15 (Mail 16.0) hat message_id_header nicht (Schema-Probe, AMM-11).
+    /// Die Kategoriespalten (AMM-19): `model_category` und `model_high_impact` aus dem Modell, dazu die
+    /// Absender-Uebersteuerung in `business_addresses` und `business_categories`. Fehlt eine
+    /// Uebersteuerungstabelle, gibt es keine Uebersteuerung; fehlt eine Modellspalte, gibt es keine Kategorien.
     struct OptionalColumns: Equatable, Sendable {
         var messageIdHeader: Bool
+        var modelCategory: Bool = false
+        var addressCategory: Bool = false
+        var businessCategory: Bool = false
     }
 
     static func optionalColumns(_ db: Database) throws(HelperFailure) -> OptionalColumns {
-        var present = Set<String>()
-        try db.query("PRAGMA table_info(message_global_data)") { row in
-            if let name = row.text(1) { present.insert(name) }
+        // Tabellennamen aus fester Liste, nie aus Eingaben.
+        func columns(_ table: String) throws(HelperFailure) -> Set<String> {
+            var present = Set<String>()
+            try db.query("PRAGMA table_info(\(table))") { row in
+                if let name = row.text(1) { present.insert(name) }
+            }
+            return present
         }
-        return OptionalColumns(messageIdHeader: present.contains("message_id_header"))
+        let global = try columns("message_global_data")
+        let addresses = try columns("business_addresses")
+        let businesses = try columns("business_categories")
+        let address = addresses.isSuperset(of: ["address", "business", "category"])
+        return OptionalColumns(
+            messageIdHeader: global.contains("message_id_header"),
+            modelCategory: global.isSuperset(of: ["model_category", "model_high_impact"]),
+            addressCategory: address,
+            // business_categories wird nur ueber business_addresses.business erreicht.
+            businessCategory: address && businesses.isSuperset(of: ["business", "category"]))
     }
 
     static func check(_ db: Database) throws(HelperFailure) -> SchemaReport {
@@ -49,7 +71,9 @@ enum Schema {
             for c in columns where !present.contains(c) { missing.append("\(table).\(c)") }
         }
         let ddl = try createStatements(db)
-        return SchemaReport(compatible: missing.isEmpty, missing: missing, fingerprint: fingerprint(ddl), ddl: ddl)
+        let categories = try optionalColumns(db).modelCategory
+        return SchemaReport(compatible: missing.isEmpty, missing: missing, fingerprint: fingerprint(ddl),
+                            categories: categories, ddl: ddl)
     }
 
     /// Fester Satz fuer SCHEMA_UNSUPPORTED: nur Tabellen- und Spaltennamen, nie Werte.

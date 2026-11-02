@@ -13,6 +13,7 @@ export const INSTRUCTIONS = [
   'Timestamps are ISO 8601 with an offset, in the local timezone of the machine.',
   'Results reflect what Mail has synced to this Mac. Messages that were never downloaded have no body.',
   "Some accounts, mailboxes and security-related message bodies are hidden by the user's configuration. Tool parameters cannot change that.",
+  "Message categories (primary, transactions, updates, promotions) and the important flag come from Mail's own classification and cover mainly newer messages; an older message without a category is not evidence that it belongs to none.",
 ].join(' ')
 
 export function createServer(ctx: ToolContext): McpServer {
