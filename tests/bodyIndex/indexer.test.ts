@@ -132,6 +132,23 @@ describe('indexer', () => {
     indexer.stop()
   })
 
+  test('the total is known while the first build is still running', async () => {
+    const mail = new FakeMail()
+    for (let g = 1; g <= 120; g++) mail.add(g, `text ${g}`)
+    // Nicht erlaubtes Postfach: zaehlt nicht mit.
+    mail.add(121, 'woanders', { mailbox: 3 })
+    let n = 0
+    mail.fail = (c) => {
+      if (c === 'get-messages' && ++n === 2) throw new HelperError('HELPER_CRASHED', 'x')
+    }
+    const { indexer, dir } = make(mail)
+    await indexer.runCycle()
+    expect(peek(dir).meta('buildComplete')).toBe('0')
+    expect(peek(dir).meta('total')).toBe('120')
+    expect(indexer.status()).toMatchObject({ indexed: 50, total: 120 })
+    indexer.stop()
+  })
+
   test('catch-up indexes new mail after the build', async () => {
     const mail = new FakeMail()
     mail.add(1, 'old')

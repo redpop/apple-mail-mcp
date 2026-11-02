@@ -302,16 +302,21 @@ export function createIndexer(deps: IndexerDeps): Indexer {
     }
   }
 
-  /** Abgleich mit allen erlaubten gid: Loeschen, Einengen, Erweitern, spaet geladene Bodys (Spec 5.5). */
-  async function reconcile(mailboxIds: number[]): Promise<void> {
+  /** Alle erlaubten gid mit hasFile, ueber index-gids. */
+  async function liveGids(mailboxIds: number[]): Promise<Map<number, boolean>> {
     const live = new Map<number, boolean>()
     let after = 0
     for (;;) {
       const page = indexGidsResult.parse(await deps.runner.run('index-gids', { allowedMailboxIds: mailboxIds, afterGid: after, limit: GIDS_PAGE }))
       for (const [gid, hasFile] of page.gids) live.set(gid, hasFile)
-      if (!page.hasMore || page.gids.length === 0) break
+      if (!page.hasMore || page.gids.length === 0) return live
       after = page.gids[page.gids.length - 1]![0]
     }
+  }
+
+  /** Abgleich mit allen erlaubten gid: Loeschen, Einengen, Erweitern, spaet geladene Bodys (Spec 5.5). */
+  async function reconcile(mailboxIds: number[]): Promise<void> {
+    const live = await liveGids(mailboxIds)
     const s = checkpoint()
     s.tx(() => {
       for (const gid of s.docGids()) if (!live.has(gid)) s.remove(gid)
@@ -362,7 +367,14 @@ export function createIndexer(deps: IndexerDeps): Indexer {
     let needReconcile = full || lastReconcile === 0 || now() - lastReconcile >= RECONCILE_INTERVAL_MS
     if (full || deadline === null) needReconcile = (await consistency(mailboxIds)) || needReconcile
     const s = checkpoint()
-    if (s.meta('buildComplete') !== '1') state = 'building'
+    if (s.meta('buildComplete') !== '1') {
+      state = 'building'
+      // Ohne total kein Fortschritt in doctor und note; sonst setzt es erst der Abgleich nach dem Aufbau.
+      if (deadline === null && (needReconcile || s.meta('total') === null)) {
+        const total = (await liveGids(mailboxIds)).size
+        checkpoint().tx(() => checkpoint().setMeta('total', String(total)))
+      }
+    }
     reachedEnd = await feed(mailboxIds, deadline)
     if (!reachedEnd || deadline !== null) return
     if (needReconcile) await reconcile(mailboxIds)
