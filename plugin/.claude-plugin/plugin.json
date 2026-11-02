@@ -1,0 +1,113 @@
+{
+  "name": "apple-mail-mcp",
+  "displayName": "Apple Mail MCP",
+  "version": "0.2.0",
+  "description": "Search and read your Apple Mail on macOS, read-only. Full Disk Access goes to a small signed helper app, not to Claude.",
+  "author": {
+    "name": "Martin Alker",
+    "url": "https://github.com/redpop"
+  },
+  "homepage": "https://github.com/redpop/apple-mail-mcp#readme",
+  "repository": "https://github.com/redpop/apple-mail-mcp",
+  "license": "MIT",
+  "keywords": [
+    "mail",
+    "apple-mail",
+    "macos",
+    "email",
+    "read-only"
+  ],
+  "icon": "./icon.png",
+  "documentationUrl": "https://github.com/redpop/apple-mail-mcp#readme",
+  "supportUrl": "https://github.com/redpop/apple-mail-mcp/issues",
+  "privacyPolicyUrl": "https://github.com/redpop/apple-mail-mcp#privacy-policy",
+  "mcpServers": {
+    "apple-mail": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@redpop/apple-mail-mcp@0.2.0"
+      ],
+      "env": {
+        "APPLE_MAIL_ACCOUNTS": "${user_config.accounts}",
+        "APPLE_MAIL_INCLUDE_JUNK": "${user_config.include_junk}",
+        "APPLE_MAIL_INCLUDE_TRASH": "${user_config.include_trash}",
+        "APPLE_MAIL_EXCLUDE_MAILBOXES": "${user_config.exclude_mailboxes}",
+        "APPLE_MAIL_SHOW_SECURITY_MAILS": "${user_config.show_security_mails}",
+        "APPLE_MAIL_BODY_SEARCH": "${user_config.body_search}",
+        "APPLE_MAIL_BODY_INDEX": "${user_config.body_index}",
+        "APPLE_MAIL_MAX_RESULTS": "${user_config.max_results}",
+        "APPLE_MAIL_MAX_BODY_CHARS": "${user_config.max_body_chars}"
+      }
+    }
+  },
+  "userConfig": {
+    "accounts": {
+      "type": "string",
+      "title": "Accounts",
+      "description": "Comma-separated accounts to include, by address, name or UUID. Empty means all accounts.",
+      "default": "",
+      "required": false
+    },
+    "include_junk": {
+      "type": "boolean",
+      "title": "Include junk",
+      "description": "Include mailboxes with the junk role.",
+      "default": false,
+      "required": false
+    },
+    "include_trash": {
+      "type": "boolean",
+      "title": "Include trash",
+      "description": "Include mailboxes with the trash role.",
+      "default": false,
+      "required": false
+    },
+    "exclude_mailboxes": {
+      "type": "string",
+      "title": "Excluded mailboxes",
+      "description": "Comma-separated mailboxes to hide, by name or by path with /.",
+      "default": "",
+      "required": false
+    },
+    "show_security_mails": {
+      "type": "boolean",
+      "title": "Show security mails",
+      "description": "Show sign-in codes and password reset mails unfiltered.",
+      "default": false,
+      "required": false
+    },
+    "body_search": {
+      "type": "boolean",
+      "title": "Body search",
+      "description": "Allow searching in message bodies.",
+      "default": true,
+      "required": false
+    },
+    "body_index": {
+      "type": "boolean",
+      "title": "Body index",
+      "description": "Keep a full-text index of message bodies on disk so body search finds every message. Turning it off deletes the index.",
+      "default": false,
+      "required": false
+    },
+    "max_results": {
+      "type": "number",
+      "title": "Maximum results",
+      "description": "Upper bound for the number of results of a search (1 to 100).",
+      "default": 50,
+      "min": 1,
+      "max": 100,
+      "required": false
+    },
+    "max_body_chars": {
+      "type": "number",
+      "title": "Maximum body length",
+      "description": "Upper bound for the characters of a message body (1000 to 100000).",
+      "default": 20000,
+      "min": 1000,
+      "max": 100000,
+      "required": false
+    }
+  }
+}

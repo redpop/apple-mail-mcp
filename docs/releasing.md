@@ -72,8 +72,17 @@ On the runner, the `.p12` and the `.p8` exist only inside the script that uses t
    ```
 
    The `version` hook runs `scripts/sync-versions.mjs`, which writes the version to
-   `server.json`, `manifest.json` and the Swift source, and stages them for the version commit.
+   `server.json`, `manifest.json`, the plugin (`plugin/.claude-plugin/plugin.json`, version and
+   `npx` pin) and the Swift source, and stages them for the version commit.
 4. Approve the run in the `release` environment.
+
+### The plugin follows `main`
+
+The marketplace in `.claude-plugin/marketplace.json` serves the plugin from the default branch,
+so the version commit pins plugin users to the new npm version before the run has published it.
+Until npm has the version, a plugin install or update fails to start the server. Approve the
+run right after the push. If the run fails before the npm step, release the next version
+instead of leaving `main` pinned to a version that does not exist.
 
 ## First publish to npm
 

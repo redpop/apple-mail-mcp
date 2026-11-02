@@ -30,3 +30,15 @@ test('docs never name a real mailbox domain outside example domains', () => {
     }
   }
 })
+
+test('README has a privacy policy that the manifest links to', () => {
+  // Pflicht fuer das Claude-Verzeichnis (AMM-18): Abschnitt "Privacy Policy" in der README mit den
+  // geforderten Punkten, und manifest.json verweist per HTTPS darauf.
+  const section = read('README.md').split(/^## /m).find((s) => s.startsWith('Privacy Policy\n'))
+  expect(section, 'README has a Privacy Policy section').toBeDefined()
+  for (const heading of ['What is collected', 'How it is used and stored', 'Sharing with third parties', 'Retention', 'Contact']) {
+    expect(section, heading).toMatch(new RegExp(`^### ${heading}$`, 'm'))
+  }
+  const manifest = JSON.parse(read('manifest.json')) as { privacy_policies?: unknown }
+  expect(manifest.privacy_policies).toEqual(['https://github.com/redpop/apple-mail-mcp#privacy-policy'])
+})
