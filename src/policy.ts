@@ -19,6 +19,9 @@ export interface Policy {
   /** Aus Mail entfernte Konten (ohne Store-Verzeichnis) und ihre Mailboxen, immer ausgeblendet. */
   removedAccounts: number
   removedMailboxes: number
+  /** Konten, fuer die Mail abgeschaltet ist (AMM-22), und ihre Mailboxen, immer ausgeblendet. */
+  mailDisabledAccounts: number
+  mailDisabledMailboxes: number
   accountNamesAvailable: boolean
   fingerprint: string
 }
@@ -59,12 +62,23 @@ export function removedAccountIds(raw: ListMailboxesResult): Set<string> {
   return new Set(raw.accountStores.filter((s) => !s.hasStore).map((s) => s.uuid))
 }
 
+/**
+ * Konten, fuer die Mail in Accounts4 abgeschaltet ist (AMM-22), etwa iCloud-Mail mit "Diesen Mac synchronisieren"
+ * aus. Nur ein eindeutiges false zaehlt; ein entferntes Konto zaehlt als entfernt, nicht hier.
+ */
+export function mailDisabledAccountIds(raw: ListMailboxesResult): Set<string> {
+  const removed = removedAccountIds(raw)
+  return new Set(raw.accounts.filter((a) => a.mailEnabled === false && !removed.has(a.uuid)).map((a) => a.uuid))
+}
+
 export function computePolicy(config: Config, raw: ListMailboxesResult): Policy {
   const namesAvailable = raw.accountNames === 'available'
-  // Entfernte Konten fallen vor allem anderen heraus, auch vor der Allowlist: sie sind keine Mail-Konten mehr.
+  // Entfernte und fuer Mail abgeschaltete Konten fallen vor allem anderen heraus, auch vor der Allowlist:
+  // Mail zeigt sie nicht.
   const removed = removedAccountIds(raw)
+  const disabled = mailDisabledAccountIds(raw)
   const all = raw.mailboxes.map(parseMailbox)
-  const parsed = all.filter((mb) => !removed.has(mb.accountId))
+  const parsed = all.filter((mb) => !removed.has(mb.accountId) && !disabled.has(mb.accountId))
 
   // Konten aus den Mailbox-URLs, ergaenzt um Namen aus dem Helper.
   const info = new Map(raw.accounts.map((a) => [a.uuid, a]))
@@ -117,7 +131,9 @@ export function computePolicy(config: Config, raw: ListMailboxesResult): Policy 
     accounts: views.filter((v) => accountsWithMail.has(v.id)),
     unmatchedAllowlistEntries: unmatched,
     removedAccounts: new Set(all.filter((mb) => removed.has(mb.accountId)).map((mb) => mb.accountId)).size,
-    removedMailboxes: all.length - parsed.length,
+    removedMailboxes: all.filter((mb) => removed.has(mb.accountId)).length,
+    mailDisabledAccounts: new Set(all.filter((mb) => disabled.has(mb.accountId)).map((mb) => mb.accountId)).size,
+    mailDisabledMailboxes: all.filter((mb) => disabled.has(mb.accountId)).length,
     accountNamesAvailable: namesAvailable,
     fingerprint: fingerprintOf(config),
   }

@@ -11,7 +11,7 @@ import { formatLocal } from '../dates.js'
 import { describeError, HelperError } from '../errors.js'
 import type { HelperRunner } from '../helper.js'
 import { parseMailbox, type MailboxRole } from '../mailboxes.js'
-import { computePolicy, indexFingerprintOf, removedAccountIds } from '../policy.js'
+import { computePolicy, indexFingerprintOf, mailDisabledAccountIds, removedAccountIds } from '../policy.js'
 import { helloResult, listMailboxesResult, probeResult, searchResult, type ProbeResult } from '../schemas.js'
 import { RELEASE_BUNDLE_ID, readBundleId, readBundleName } from '../signing.js'
 import { defaultStateDir, readState } from '../state.js'
@@ -219,10 +219,12 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
   if (probe?.access === 'granted' && probe.schema) {
     try {
       const list = listMailboxesResult.parse(await runner.run('list-mailboxes', {}))
-      // Rollen und Zaehler nur fuer lebende Konten; entfernte zaehlt ein eigener Pruefpunkt (AMM-21).
+      // Rollen und Zaehler nur fuer sichtbare Konten; entfernte (AMM-21) und fuer Mail abgeschaltete (AMM-22)
+      // zaehlen eigene Pruefpunkte.
       const removed = removedAccountIds(list)
+      const disabled = mailDisabledAccountIds(list)
       const all = list.mailboxes.map(parseMailbox)
-      const parsed = all.filter((m) => !removed.has(m.accountId))
+      const parsed = all.filter((m) => !removed.has(m.accountId) && !disabled.has(m.accountId))
       const roles = new Map<MailboxRole, number>()
       for (const m of parsed) roles.set(m.role, (roles.get(m.role) ?? 0) + 1)
       const summary = [...roles].map(([r, n]) => `${r} ${n}`).join(', ')
@@ -235,7 +237,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
           : `Roles: ${summary}.`,
       )
       const hiddenAccounts = new Set(all.filter((m) => removed.has(m.accountId)).map((m) => m.accountId)).size
-      const hiddenMailboxes = all.length - parsed.length
+      const hiddenMailboxes = all.filter((m) => removed.has(m.accountId)).length
       add(
         'removed-accounts',
         'ok',
@@ -243,10 +245,20 @@ export async function runDoctor(deps: DoctorDeps): Promise<number> {
           ? 'No removed accounts in the Mail index.'
           : `${hiddenAccounts} removed account${hiddenAccounts === 1 ? '' : 's'} hidden (${hiddenMailboxes} mailbox${hiddenMailboxes === 1 ? '' : 'es'}): still in the Mail index, but without a folder in the Mail directory.`,
       )
+      const offAccounts = new Set(all.filter((m) => disabled.has(m.accountId)).map((m) => m.accountId)).size
+      const offMailboxes = all.filter((m) => disabled.has(m.accountId)).length
+      add(
+        'mail-disabled-accounts',
+        'ok',
+        offAccounts === 0
+          ? 'No accounts with Mail switched off.'
+          : `${offAccounts} account${offAccounts === 1 ? '' : 's'} with Mail switched off hidden (${offMailboxes} mailbox${offMailboxes === 1 ? '' : 'es'}): Mail is switched off for ${offAccounts === 1 ? 'this account' : 'these accounts'} in System Settings.`,
+      )
       if (deps.verbose) {
         for (const m of parsed) verboseLines.push(`mailbox ${m.id}: ${m.name} (${m.role})`)
         for (const a of new Set(parsed.map((m) => m.accountId))) verboseLines.push(`account ${a}`)
         for (const a of new Set(all.filter((m) => removed.has(m.accountId)).map((m) => m.accountId))) verboseLines.push(`account ${a} (removed, hidden)`)
+        for (const a of new Set(all.filter((m) => disabled.has(m.accountId)).map((m) => m.accountId))) verboseLines.push(`account ${a} (Mail switched off, hidden)`)
       }
 
       if (deps.configResult.ok) {

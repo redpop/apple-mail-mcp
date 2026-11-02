@@ -147,6 +147,19 @@ describe('list_mailboxes', () => {
     await call(server, 'search_messages', {})
     expect(calls.find((x) => x.command === 'search')!.payload.allowedMailboxIds).toEqual([1, 3])
   })
+
+  it('hides accounts with Mail switched off and keeps them out of searches', async () => {
+    const off = {
+      ...mailboxes,
+      mailboxes: [...mailboxes.mailboxes, { id: 9, url: 'imap://OFF/INBOX', total: 40, unread: 0 }],
+      accounts: [...mailboxes.accounts, { uuid: 'OFF', description: 'iCloud', username: 'i@example.com', mailEnabled: false }],
+    }
+    const { server, calls } = setup(() => ({ messages: [], hasMore: false, totalMatched: 0 }), {}, { mailboxes: off })
+    const res = await call(server, 'list_mailboxes')
+    expect(res.structuredContent.accounts.map((a: any) => a.id)).toEqual(['ACC1', 'ACC2'])
+    await call(server, 'search_messages', {})
+    expect(calls.find((x) => x.command === 'search')!.payload.allowedMailboxIds).toEqual([1, 3])
+  })
 })
 
 describe('search_messages', () => {

@@ -20,6 +20,14 @@ struct Row {
         guard let p = sqlite3_column_text(stmt, i) else { return nil }
         return String(cString: p)
     }
+    /// Nur fuer Spalten vom Typ BLOB; sonst nil (kein Umwandeln von Text in Bytes).
+    func blob(_ i: Int32) -> Data? {
+        guard sqlite3_column_type(stmt, i) == SQLITE_BLOB else { return nil }
+        let n = Int(sqlite3_column_bytes(stmt, i))
+        guard n > 0, let p = sqlite3_column_blob(stmt, i) else { return Data() }
+        return Data(bytes: p, count: n)
+    }
+    func isText(_ i: Int32) -> Bool { sqlite3_column_type(stmt, i) == SQLITE_TEXT }
 }
 
 /// Geraet und Inode einer geoeffneten Datei.

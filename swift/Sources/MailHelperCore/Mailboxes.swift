@@ -35,14 +35,16 @@ public struct ListMailboxesResult: Codable, Equatable, Sendable {
 }
 
 extension AccountInfo {
-    enum CodingKeys: String, CodingKey { case uuid, description, username }
+    enum CodingKeys: String, CodingKey { case uuid, description, username, mailEnabled }
 
-    // description/username sind fuer zod nullable, nicht optional: null bleibt null.
+    // description/username sind fuer zod nullable, nicht optional: null bleibt null. mailEnabled fehlt,
+    // wenn unbestimmt.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(uuid, forKey: .uuid)
         try c.encode(description, forKey: .description)
         try c.encode(username, forKey: .username)
+        try c.encodeIfPresent(mailEnabled, forKey: .mailEnabled)
     }
 }
 

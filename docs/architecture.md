@@ -198,6 +198,48 @@ are never in `allowedMailboxIds`, and `list_mailboxes` does not show them. There
 show them again; without files there would be no body anyway. `doctor` reports the number of
 hidden accounts and mailboxes under `removed-accounts`, and `--verbose` lists their UUIDs.
 
+### Accounts with Mail switched off
+
+An account can be live, with its directory and files, while Mail does not show it: Mail is
+switched off for it in System Settings. Measured on 2026-11-02 with
+`scripts/check-mail-enabled.py` (counters and Apple identifiers only): of 6 live accounts, one
+IMAP account under an iCloud parent was not shown in Mail, and "Sync this Mac" for iCloud Mail
+was off. `ZACTIVE`, `ZVISIBLE`, `ZAUTHENTICATED` and the provisioned dataclasses did not tell it
+apart from the others. The enabled Mail dataclass did: the account has no enabled dataclasses
+of its own, and its parent has `com.apple.Dataclass.Mail` provisioned but not enabled.
+
+Accounts4 (macOS 27) keeps enabled dataclasses in the CoreData link table
+`Z_2ENABLEDDATACLASSES(Z_2ENABLEDACCOUNTS, Z_7ENABLEDDATACLASSES)`. The numbers are entity ids
+from `Z_PRIMARYKEY`: 2 is `Account`, 7 is `Dataclass`, stored in `ZDATACLASS`. `ZNAME` is a BLOB,
+a binary plist written by `NSKeyedArchiver` whose root object is the identifier string.
+
+The rule: Mail is enabled for an account if `com.apple.Dataclass.Mail` is among its enabled
+dataclasses. If the account has no enabled dataclasses of its own, those of its parent
+(`ZPARENTACCOUNT`) count. `list-mailboxes` reports the result as `mailEnabled` on each entry of
+`accounts`: `true`, `false`, or absent when it cannot be decided.
+
+The helper does not assume the names. It looks for exactly one table `Z_<n>ENABLEDDATACLASSES`,
+reads its two columns with `PRAGMA table_info`, checks in `Z_PRIMARYKEY` that the entities are
+`Account` and `Dataclass`, and requires `ZDATACLASS(Z_PK, ZNAME)`. Names from the schema enter
+the SQL only in the form `Z_` plus up to four digits plus a fixed suffix; all values are bound.
+`ZNAME` is read with `PropertyListSerialization`, without `NSKeyedUnarchiver` and without
+classes. The root UID of an archive is opaque to Swift, so only the shape of an archived string
+is accepted: `$objects` is exactly `["$null", <string>]`. The string must match
+`^com\.apple\.Dataclass\.[A-Za-z0-9.]{1,80}$`; a plain text `ZNAME` is accepted under the same
+rule.
+
+The rule fails open. A missing or unreadable Accounts4, any deviation in the schema, a link to a
+missing dataclass row or a name that cannot be read leaves `mailEnabled` absent, unless Mail is
+found among the readable names. So does an account where neither it nor its parent has enabled
+dataclasses. Only a clear `false` hides an account.
+
+`computePolicy` drops these accounts before the account allowlist, like removed accounts; an
+account that is both removed and switched off counts as removed. There is no switch to show them
+again, since Mail does not show them either. `doctor` reports the number of hidden accounts and
+mailboxes under `mail-disabled-accounts`, and `--verbose` lists their UUIDs. The result is cached
+with the account names for the life of the helper; after switching Mail on or off for an
+account, restart the client.
+
 ### Deduplication
 
 The table `messages` holds about twice as many rows as there are distinct mails, because a mail
@@ -538,7 +580,8 @@ content.
 ### Policy enforcement
 
 Node computes the set of allowed mailbox ids from configuration (account allowlist, junk and
-trash roles, excluded mailboxes), always without removed accounts, and sends it with every read command. The helper rejects a
+trash roles, excluded mailboxes), always without removed accounts and accounts with Mail
+switched off, and sends it with every read command. The helper rejects a
 missing or empty set and adds `mailbox IN (...)` to each query, before `LIMIT`. Consequences:
 pages are full; a mail that exists only in excluded mailboxes is `MESSAGE_NOT_FOUND`; a mail
 with copies in both shows only the allowed ones. Against another local process that starts the

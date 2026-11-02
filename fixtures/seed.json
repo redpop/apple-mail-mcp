@@ -6,7 +6,15 @@
    "type": "imap",
    "description": "Privat",
    "username": "anna@example.com",
-   "inAccounts4": true
+   "inAccounts4": true,
+   "enabledDataclasses": [
+    "Mail",
+    "Notes"
+   ],
+   "provisionedDataclasses": [
+    "Mail",
+    "Notes"
+   ]
   },
   {
    "name": "B",
@@ -40,6 +48,30 @@
    "username": "alt@example.org",
    "inAccounts4": false,
    "hasStore": false
+  },
+  {
+   "name": "P",
+   "uuid": "E0000000-0000-4000-8000-000000000013",
+   "type": "appleaccount",
+   "description": "iCloud",
+   "username": "anna@example.org",
+   "inAccounts4": true,
+   "enabledDataclasses": [
+    "Notes"
+   ],
+   "provisionedDataclasses": [
+    "Mail",
+    "Notes"
+   ]
+  },
+  {
+   "name": "D",
+   "uuid": "D15AB1ED-0000-4000-8000-000000000014",
+   "type": "imap",
+   "description": "",
+   "username": "anna@example.org",
+   "inAccounts4": true,
+   "parent": "P"
   }
  ],
  "mailboxes": [
@@ -137,6 +169,15 @@
    "name": "entfernt",
    "account": "R",
    "url": "imap://DE1E7ED0-0000-4000-8000-000000000012/INBOX",
+   "total": 0,
+   "unread": 0,
+   "stores": []
+  },
+  {
+   "id": 10,
+   "name": "abgeschaltet",
+   "account": "D",
+   "url": "imap://D15AB1ED-0000-4000-8000-000000000014/INBOX",
    "total": 0,
    "unread": 0,
    "stores": []
