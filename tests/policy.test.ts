@@ -126,3 +126,43 @@ test('a live account with a store keeps all its mailboxes', () => {
   expect(pol.allowedMailboxIds).toEqual([1, 4, 5, 6, 7, 8])
   expect(pol.removedAccounts).toBe(0)
 })
+
+// AMM-22: Konten, fuer die Mail abgeschaltet ist, sind immer ausgeblendet; nur ein eindeutiges false zaehlt.
+const D = 'EEEEEEEE-0000-0000-0000-000000000004'
+const withDisabled = (mailEnabled: boolean | undefined, over: Partial<ListMailboxesResult> = {}) =>
+  raw({
+    mailboxes: [...raw().mailboxes, mb(9, `imap://${D}/INBOX`), mb(10, `imap://${D}/Notes`)],
+    accounts: [...raw().accounts, { uuid: D, description: 'iCloud', username: 'me@icloud.example', ...(mailEnabled === undefined ? {} : { mailEnabled }) }],
+    ...over,
+  })
+
+test('accounts with Mail switched off are hidden and counted', () => {
+  const pol = computePolicy(base, withDisabled(false))
+  expect(pol.allowedMailboxIds).toEqual([1, 4, 5, 6])
+  expect(pol.accounts.map((a) => a.id)).toEqual([A, B])
+  expect(pol.mailDisabledAccounts).toBe(1)
+  expect(pol.mailDisabledMailboxes).toBe(2)
+  expect(pol.removedAccounts).toBe(0)
+})
+test('accounts with Mail switched off stay hidden with an allowlist naming them', () => {
+  for (const e of [D, 'me@icloud.example', 'iCloud']) {
+    const pol = computePolicy(cfg({ includeJunk: true, includeTrash: true, accounts: [e] }), withDisabled(false))
+    expect(pol.allowedMailboxIds).toEqual([])
+    expect(pol.unmatchedAllowlistEntries).toBe(1)
+  }
+})
+test('mailEnabled true or missing keeps the account visible', () => {
+  for (const v of [true, undefined]) {
+    const pol = computePolicy(base, withDisabled(v))
+    expect(pol.allowedMailboxIds).toEqual([1, 4, 5, 6, 9, 10])
+    expect(pol.mailDisabledAccounts).toBe(0)
+    expect(pol.mailDisabledMailboxes).toBe(0)
+  }
+})
+test('a removed account with Mail switched off counts as removed only', () => {
+  const pol = computePolicy(base, withDisabled(false, { accountStores: [{ uuid: D, hasStore: false }] }))
+  expect(pol.allowedMailboxIds).toEqual([1, 4, 5, 6])
+  expect(pol.removedAccounts).toBe(1)
+  expect(pol.removedMailboxes).toBe(2)
+  expect(pol.mailDisabledAccounts).toBe(0)
+})

@@ -13,6 +13,11 @@ struct Seed: Codable, Sendable {
         let inAccounts4: Bool
         /// false: entferntes Konto, ohne Verzeichnis `V10/<uuid>/` (AMM-21); fehlt der Schluessel, gilt true.
         let hasStore: Bool?
+        /// Elternkonto per Name (AMM-22): IMAP unter iCloud oder Google.
+        let parent: String?
+        /// Kurznamen ohne `com.apple.Dataclass.`, z. B. "Mail"; fehlt der Schluessel, keine Zeilen.
+        let enabledDataclasses: [String]?
+        let provisionedDataclasses: [String]?
     }
     struct Mailbox: Codable, Sendable {
         let id: Int64
@@ -154,6 +159,7 @@ private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self
 enum SQLValue {
     case int(Int64)
     case text(String)
+    case blob(Data)
     case null
 }
 
@@ -193,6 +199,7 @@ final class SQLiteHandle {
             switch p {
             case .int(let v): sqlite3_bind_int64(stmt, idx, v)
             case .text(let s): sqlite3_bind_text(stmt, idx, s, -1, sqliteTransient)
+            case .blob(let d): _ = d.withUnsafeBytes { sqlite3_bind_blob(stmt, idx, $0.baseAddress, Int32(d.count), sqliteTransient) }
             case .null: sqlite3_bind_null(stmt, idx)
             }
         }
@@ -558,13 +565,36 @@ enum FixtureBuilder {
         let db = try SQLiteHandle(path: f.accountsDB.path)
         let ddl = try String(contentsOf: root.appending(path: "fixtures/schema/accounts4-min.sql"), encoding: .utf8)
         try db.exec(ddl)
-        var pk: Int64 = 1
-        for a in f.seed.accounts where a.inAccounts4 {
-            let bundle = a.type == "imap" ? "com.apple.mail" : "com.apple.calendar"
-            try db.run("INSERT INTO ZACCOUNT (Z_PK, ZIDENTIFIER, ZACCOUNTDESCRIPTION, ZUSERNAME, ZOWNINGBUNDLEID) VALUES (?, ?, ?, ?, ?)",
-                       [.int(pk), .text(a.uuid), .text(a.description), .text(a.username), .text(bundle)])
-            pk += 1
+        try db.exec("INSERT INTO Z_PRIMARYKEY VALUES (1, 'AccessOptionsKey', 0, 0), (2, 'Account', 0, 0), (7, 'Dataclass', 0, 0)")
+        let inDB = f.seed.accounts.filter(\.inAccounts4)
+        // Dataclasses wie im echten Accounts4 als NSKeyedArchiver-bplist; Z_PK in alphabetischer Reihenfolge.
+        let dataclasses = Set(inDB.flatMap { ($0.enabledDataclasses ?? []) + ($0.provisionedDataclasses ?? []) }).sorted()
+        for (i, name) in dataclasses.enumerated() {
+            try db.run("INSERT INTO ZDATACLASS (Z_PK, Z_ENT, Z_OPT, ZNAME, ZENUMVALUE) VALUES (?, 7, 1, ?, ?)",
+                       [.int(Int64(i + 1)), .blob(try archivedDataclass(name)), .int(name == "Mail" ? 0 : 2147483647)])
         }
+        let pks = Dictionary(uniqueKeysWithValues: inDB.enumerated().map { ($1.name, Int64($0 + 1)) })
+        for a in inDB {
+            let pk = pks[a.name]!
+            let bundle: SQLValue = switch a.type {
+            case "imap": .text("com.apple.mail")
+            case "caldav": .text("com.apple.calendar")
+            default: .null
+            }
+            let parent: SQLValue = a.parent.flatMap { pks[$0] }.map { .int($0) } ?? .null
+            try db.run("INSERT INTO ZACCOUNT (Z_PK, ZIDENTIFIER, ZACCOUNTDESCRIPTION, ZUSERNAME, ZOWNINGBUNDLEID, ZPARENTACCOUNT) VALUES (?, ?, ?, ?, ?, ?)",
+                       [.int(pk), .text(a.uuid), .text(a.description), .text(a.username), bundle, parent])
+            for (table, names) in [("Z_2ENABLEDDATACLASSES", a.enabledDataclasses), ("Z_2PROVISIONEDDATACLASSES", a.provisionedDataclasses)] {
+                for n in names ?? [] {
+                    try db.run("INSERT INTO \(table) VALUES (?, ?)", [.int(pk), .int(Int64(dataclasses.firstIndex(of: n)! + 1))])
+                }
+            }
+        }
+    }
+
+    /// ZNAME wie in Accounts4: ein mit NSKeyedArchiver archivierter String.
+    static func archivedDataclass(_ short: String) throws -> Data {
+        try NSKeyedArchiver.archivedData(withRootObject: "com.apple.Dataclass.\(short)" as NSString, requiringSecureCoding: true)
     }
 
     private static func writeMailTree(_ f: Fixture) throws {

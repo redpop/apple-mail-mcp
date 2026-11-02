@@ -25,9 +25,11 @@ import Testing
         let r = try MailStore(config: f.config).listMailboxes()
         #expect(r.accountNames == .available)
         #expect(r.accountNamesReason == nil)
-        #expect(Set(r.accounts.map(\.uuid)) == [f.accountUUID("A")])   // B/L/R fehlen in Accounts4, C ist kein Mail-Konto
-        #expect(r.accounts.first?.description == "Privat")
-        #expect(r.accounts.first?.username == "anna@example.com")
+        // B/L/R fehlen in Accounts4, C ist kein Mail-Konto, P (iCloud) hat keine Mailbox.
+        #expect(Set(r.accounts.map(\.uuid)) == [f.accountUUID("A"), f.accountUUID("D")])
+        let a = try #require(r.accounts.first { $0.uuid == f.accountUUID("A") })
+        #expect(a.description == "Privat")
+        #expect(a.username == "anna@example.com")
     }
 
     @Test func missingAccountsDbIsUnavailableNotError() throws {
@@ -66,7 +68,7 @@ import Testing
     @Test func probeCountsUnmatchedMailAccounts() throws {
         let f = try FixtureBuilder.build()
         let p = MailStore(config: f.config).probe()
-        // Mail-Konten im Index: A, B, L, R; nur A steht in Accounts4.
+        // Mail-Konten im Index: A, B, D, L, R; nur A und D stehen in Accounts4.
         #expect(p.accountNames == AccountNamesState(status: .available, unmatchedAccounts: 3))
     }
 
@@ -77,7 +79,7 @@ import Testing
         try FileManager.default.removeItem(at: f.accountsDB)
         let r = try store.listMailboxes()
         #expect(r.accountNames == .available)
-        #expect(r.accounts.count == 1)
+        #expect(r.accounts.count == 2)
     }
 
     @Test func accountUUIDParsing() {
@@ -141,13 +143,13 @@ import Testing
         try FileManager.default.moveItem(at: saved, to: f.accountsDB)
         let r = try store.listMailboxes()
         #expect(r.accountNames == .available)
-        #expect(r.accounts.count == 1)
+        #expect(r.accounts.count == 2)
     }
 
     @Test func accountNamesRecomputedWhenAccountSetChanges() throws {
         let f = try FixtureBuilder.build()
         let store = MailStore(config: f.config)
-        #expect(try store.listMailboxes().accounts.count == 1)
+        #expect(try store.listMailboxes().accounts.count == 2)
         let newUUID = "D0000000-0000-4000-8000-00000000000E"
         let acc = try SQLiteHandle(path: f.accountsDB.path)
         try acc.run("INSERT INTO ZACCOUNT (Z_PK, ZIDENTIFIER, ZACCOUNTDESCRIPTION, ZUSERNAME, ZOWNINGBUNDLEID) VALUES (?, ?, ?, ?, ?)",
@@ -156,7 +158,7 @@ import Testing
         try env.run("INSERT INTO mailboxes (ROWID, url, total_count, unread_count) VALUES (?, ?, ?, ?)",
                     [.int(902), .text("imap://\(newUUID)/INBOX"), .int(0), .int(0)])
         let r = try store.listMailboxes()
-        #expect(Set(r.accounts.map(\.uuid)) == [f.accountUUID("A"), newUUID])
+        #expect(Set(r.accounts.map(\.uuid)) == [f.accountUUID("A"), f.accountUUID("D"), newUUID])
     }
     // Kindkonten (IMAP unter Google/iCloud) haben oft keine eigene Beschreibung; Mail zeigt die des Elternkontos.
     @Test func childAccountWithoutDescriptionUsesParentDescription() throws {
@@ -172,7 +174,7 @@ import Testing
                     [.int(903), .text("imap://\(child)/INBOX"), .int(0), .int(0)])
         let r = try MailStore(config: f.config).listMailboxes()
         // Das Elternkonto selbst hat keine Mailbox und erscheint nicht; sein ZUSERNAME wird nicht gelesen.
-        #expect(Set(r.accounts.map(\.uuid)) == [f.accountUUID("A"), child])
+        #expect(Set(r.accounts.map(\.uuid)) == [f.accountUUID("A"), f.accountUUID("D"), child])
         let c = try #require(r.accounts.first { $0.uuid == child })
         #expect(c.description == "Google")
         #expect(c.username == nil)
@@ -206,7 +208,10 @@ import Testing
         try h.exec("ALTER TABLE ZACCOUNT DROP COLUMN ZPARENTACCOUNT")
         let r = try MailStore(config: f.config).listMailboxes()
         #expect(r.accountNames == .available)
-        #expect(r.accounts.map(\.description) == ["Privat"])
+        #expect(r.accounts.first { $0.uuid == f.accountUUID("A") }?.description == "Privat")
+        // Ohne ZPARENTACCOUNT weder Beschreibung noch Mail-Dataclass vom Elternkonto.
+        #expect(r.accounts.first { $0.uuid == f.accountUUID("D") }?.description == nil)
+        #expect(r.accounts.allSatisfy { $0.mailEnabled == nil })
     }
 
     // AMM-21: Konten ohne Verzeichnis V10/<uuid>/ sind aus Mail entfernt.
@@ -218,6 +223,7 @@ import Testing
             AccountStore(uuid: f.accountUUID("L"), hasStore: true),
             AccountStore(uuid: f.accountUUID("A"), hasStore: true),
             AccountStore(uuid: f.accountUUID("B"), hasStore: true),
+            AccountStore(uuid: f.accountUUID("D"), hasStore: true),
             AccountStore(uuid: f.accountUUID("R"), hasStore: false),
         ].sorted { $0.uuid < $1.uuid })
         // Die Mailbox des entfernten Kontos meldet der Helper weiter; ausgeblendet wird in Node.

@@ -337,6 +337,31 @@ describe('doctor', () => {
     expect(v.text()).toContain('account REMOVED-UUID (removed, hidden)')
   })
 
+  it('doctor counts accounts with Mail switched off without naming them', async () => {
+    const s = sink()
+    const m = { ...mailboxes([{ id: 7, url: 'imap://OFF-UUID/INBOX' }]),
+      accounts: [{ uuid: UUID, description: 'Work Account', username: 'alice@example.com', mailEnabled: true },
+        { uuid: 'OFF-UUID', description: 'iCloud', username: 'off@example.com', mailEnabled: false }] }
+    await runDoctor(doctorDeps(s, goodRunner({ 'list-mailboxes': () => m }), { json: true }))
+    const o = JSON.parse(s.text()) as { checks: Array<{ id: string; status: string; message: string }> }
+    const c = o.checks.find((x) => x.id === 'mail-disabled-accounts')!
+    expect(c.status).toBe('ok')
+    expect(c.message).toContain('1 account with Mail switched off hidden (1 mailbox)')
+    expect(o.checks.find((x) => x.id === 'removed-accounts')?.message).toBe('No removed accounts in the Mail index.')
+    expect(o.checks.find((x) => x.id === 'config')?.message).toContain('2 of 4 mailboxes visible')
+    expect(s.text()).not.toContain('OFF-UUID')
+    const v = sink()
+    await runDoctor(doctorDeps(v, goodRunner({ 'list-mailboxes': () => m }), { verbose: true }))
+    expect(v.text()).toContain('account OFF-UUID (Mail switched off, hidden)')
+  })
+
+  it('doctor says when no account has Mail switched off', async () => {
+    const s = sink()
+    await runDoctor(doctorDeps(s, goodRunner(), { json: true }))
+    const o = JSON.parse(s.text()) as { checks: Array<{ id: string; message: string }> }
+    expect(o.checks.find((x) => x.id === 'mail-disabled-accounts')?.message).toBe('No accounts with Mail switched off.')
+  })
+
   it('doctor says when there are no removed accounts', async () => {
     const s = sink()
     await runDoctor(doctorDeps(s, goodRunner(), { json: true }))

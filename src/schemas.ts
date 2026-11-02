@@ -49,7 +49,8 @@ export const threadResult = z.object({
 
 export const listMailboxesResult = z.object({
   mailboxes: z.array(z.object({ id: z.number().int(), url: z.string(), total: z.number().int(), unread: z.number().int() })),
-  accounts: z.array(z.object({ uuid: z.string(), description: z.string().nullable(), username: z.string().nullable() })),
+  // mailEnabled fehlt, wenn unbestimmt (AMM-22); nur false blendet aus.
+  accounts: z.array(z.object({ uuid: z.string(), description: z.string().nullable(), username: z.string().nullable(), mailEnabled: z.boolean().optional() })),
   // Je imap://- und local://-Konto, ob sein Verzeichnis V<n>/<uuid>/ existiert (AMM-21).
   accountStores: z.array(z.object({ uuid: z.string(), hasStore: z.boolean() })),
   accountNames: z.enum(['available', 'unavailable']),

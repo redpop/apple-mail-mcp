@@ -6,8 +6,15 @@
     "accounts" : [
       {
         "description" : "Privat",
+        "mailEnabled" : true,
         "username" : "anna@example.com",
         "uuid" : "A0000000-0000-4000-8000-00000000000A"
+      },
+      {
+        "description" : "iCloud",
+        "mailEnabled" : false,
+        "username" : "anna@example.org",
+        "uuid" : "D15AB1ED-0000-4000-8000-000000000014"
       }
     ],
     "accountStores" : [
@@ -22,6 +29,10 @@
       {
         "hasStore" : true,
         "uuid" : "B0000000-0000-4000-8000-00000000000B"
+      },
+      {
+        "hasStore" : true,
+        "uuid" : "D15AB1ED-0000-4000-8000-000000000014"
       },
       {
         "hasStore" : false,
@@ -82,6 +93,12 @@
         "total" : 0,
         "unread" : 0,
         "url" : "imap://DE1E7ED0-0000-4000-8000-000000000012/INBOX"
+      },
+      {
+        "id" : 10,
+        "total" : 0,
+        "unread" : 0,
+        "url" : "imap://D15AB1ED-0000-4000-8000-000000000014/INBOX"
       }
     ]
   }

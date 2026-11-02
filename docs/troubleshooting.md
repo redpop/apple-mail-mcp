@@ -109,6 +109,12 @@ stayed in Mail's index are hidden automatically: they have no folder under the M
 and `doctor` counts them under `removed-accounts`. An account that is still shown by its UUID
 has a folder; it has no description in System Settings, or macOS has no entry for it at all.
 
+**An account from Mail's index is missing.**
+If Mail is switched off for the account in System Settings (Internet Accounts, or iCloud Mail
+with "Sync this Mac" off), it is hidden, as it is in Mail. `doctor` counts such accounts under
+`mail-disabled-accounts`; `--verbose` lists their UUIDs. Switch Mail on for the account and
+restart the client. No setting shows them while Mail is off.
+
 **A message has no body.**
 `bodyUnavailableReason` tells why: `not_downloaded` (Mail never fetched it; open it in Mail),
 `file_not_found`, `withheld_security` (looks like a verification or reset mail; see
