@@ -1,7 +1,9 @@
 # Releasing
 
-For the maintainer. Only the maintainer runs releases, and only in CI: the release bundle id and
-the Developer ID signature never exist on a local machine.
+For the maintainer. Releases run only in CI: the release bundle id and the Developer ID signature
+never exist on a local machine. The maintainer checks the candidate and approves every run in the
+`release` environment; step 3 below an agent may do when the maintainer asks for a release by
+version.
 
 ## What a release produces
 
@@ -64,7 +66,7 @@ On the runner, the `.p12` and the `.p8` exist only inside the script that uses t
    - update from one candidate to the next: the grant stays and no second entry appears;
    - `doctor` with and without `--verbose`;
    - record the measurements in [`architecture.md`](./architecture.md).
-3. Bump the version and push the tag:
+3. Bump the version and push the tag (the maintainer, or an agent asked to "release x.y.z"):
 
    ```bash
    npm version 0.1.0

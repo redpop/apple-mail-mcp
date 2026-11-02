@@ -31,6 +31,8 @@ After changing `swift/`, run `npm run build:helper` and restart the client. Afte
 
 Agents must not run `setup`, grant Full Disk Access, or sign with a Developer ID. Granting access to the Dev bundle is a manual step by the maintainer.
 
+Agents may bump the version and push the release tag, but only when the maintainer says "release x.y.z" in chat (this narrows the global "only Martin runs releases" for this repository). On an up-to-date `main` with a clean tree, run `npm version x.y.z` and `git push --follow-tags`; that version commit is the only direct push to `main` an agent may make. The release then waits for the maintainer's approval in the `release` environment. Agents never approve a run, never change the environment, its reviewers, the tag ruleset or the secrets, and never check a release candidate on the Mac (that needs a Full Disk Access grant).
+
 ## The architecture constraint that explains everything
 
 Apple Mail's files under `~/Library/Mail` need Full Disk Access (FDA). macOS attributes that permission to the **responsible process**, which for a child of a GUI client or terminal is the client or terminal. Granting FDA to either would hand them every protected file on the Mac.
