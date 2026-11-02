@@ -112,6 +112,7 @@ export class FakeMail {
         return {
           mailboxes: ids.map((id) => ({ id, url: id === 1 ? 'imap://ACC1/INBOX' : `imap://ACC1/Folder${id}`, total: 0, unread: 0 })),
           accounts: [{ uuid: 'ACC1', description: 'Privat', username: 'a@example.com' }],
+          accountStores: [{ uuid: 'ACC1', hasStore: true }],
           accountNames: 'available',
         }
       }

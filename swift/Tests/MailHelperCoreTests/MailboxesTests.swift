@@ -25,7 +25,7 @@ import Testing
         let r = try MailStore(config: f.config).listMailboxes()
         #expect(r.accountNames == .available)
         #expect(r.accountNamesReason == nil)
-        #expect(Set(r.accounts.map(\.uuid)) == [f.accountUUID("A")])   // B/L fehlen in Accounts4, C ist kein Mail-Konto
+        #expect(Set(r.accounts.map(\.uuid)) == [f.accountUUID("A")])   // B/L/R fehlen in Accounts4, C ist kein Mail-Konto
         #expect(r.accounts.first?.description == "Privat")
         #expect(r.accounts.first?.username == "anna@example.com")
     }
@@ -66,8 +66,8 @@ import Testing
     @Test func probeCountsUnmatchedMailAccounts() throws {
         let f = try FixtureBuilder.build()
         let p = MailStore(config: f.config).probe()
-        // Mail-Konten im Index: A, B, L; nur A steht in Accounts4.
-        #expect(p.accountNames == AccountNamesState(status: .available, unmatchedAccounts: 2))
+        // Mail-Konten im Index: A, B, L, R; nur A steht in Accounts4.
+        #expect(p.accountNames == AccountNamesState(status: .available, unmatchedAccounts: 3))
     }
 
     @Test func accountNamesAreCachedForHelperLifetime() throws {
@@ -91,7 +91,9 @@ import Testing
     @Test func jsonMatchesNodeSchema() throws {
         let f = try FixtureBuilder.build()
         let ok = try JSONSerialization.jsonObject(with: JSONEncoder().encode(MailStore(config: f.config).listMailboxes())) as! [String: Any]
-        #expect(Set(ok.keys) == ["mailboxes", "accounts", "accountNames"])
+        #expect(Set(ok.keys) == ["mailboxes", "accounts", "accountStores", "accountNames"])
+        let st = try #require((ok["accountStores"] as? [[String: Any]])?.first)
+        #expect(Set(st.keys) == ["uuid", "hasStore"])
         let mb = try #require((ok["mailboxes"] as? [[String: Any]])?.first)
         #expect(Set(mb.keys) == ["id", "url", "total", "unread"])
         try FileManager.default.removeItem(at: f.accountsDB)
@@ -205,5 +207,57 @@ import Testing
         let r = try MailStore(config: f.config).listMailboxes()
         #expect(r.accountNames == .available)
         #expect(r.accounts.map(\.description) == ["Privat"])
+    }
+
+    // AMM-21: Konten ohne Verzeichnis V10/<uuid>/ sind aus Mail entfernt.
+    @Test func reportsWhichAccountsHaveAStoreDirectory() throws {
+        let f = try FixtureBuilder.build()
+        let r = try MailStore(config: f.config).listMailboxes()
+        // C hat nur caldav:// und fehlt; L (local://) hat ein Verzeichnis wie IMAP-Konten.
+        #expect(r.accountStores == [
+            AccountStore(uuid: f.accountUUID("L"), hasStore: true),
+            AccountStore(uuid: f.accountUUID("A"), hasStore: true),
+            AccountStore(uuid: f.accountUUID("B"), hasStore: true),
+            AccountStore(uuid: f.accountUUID("R"), hasStore: false),
+        ].sorted { $0.uuid < $1.uuid })
+        // Die Mailbox des entfernten Kontos meldet der Helper weiter; ausgeblendet wird in Node.
+        #expect(r.mailboxes.contains { $0.id == f.mailboxId(named: "entfernt") })
+    }
+
+    @Test func storeCheckIgnoresEwsAndOtherSchemes() throws {
+        let f = try FixtureBuilder.build()
+        let env = try SQLiteHandle(path: f.envelopeIndex.path)
+        try env.run("INSERT INTO mailboxes (ROWID, url, total_count, unread_count) VALUES (?, ?, ?, ?)",
+                    [.int(910), .text("ews://E0000000-0000-4000-8000-000000000013/Inbox"), .int(0), .int(0)])
+        let r = try MailStore(config: f.config).listMailboxes()
+        #expect(!r.accountStores.contains { $0.uuid.hasPrefix("E0000000") })
+        #expect(!r.accountStores.contains { $0.uuid == f.accountUUID("C") })
+    }
+
+    @Test func storeOutsideTheMailDirectoryOrNotADirectoryDoesNotCount() throws {
+        let f = try FixtureBuilder.build()
+        let v10 = f.mailRoot.appending(path: "V10")
+        let outside = f.mailRoot.deletingLastPathComponent().appending(path: "draussen")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        let link = "F0000000-0000-4000-8000-000000000014", file = "F0000000-0000-4000-8000-000000000015"
+        try FileManager.default.createSymbolicLink(at: v10.appending(path: link), withDestinationURL: outside)
+        try Data().write(to: v10.appending(path: file))
+        let root = v10.path
+        #expect(MailStore.hasStore(versionDir: root, realRoot: realpathOf(root), host: link) == false)
+        #expect(MailStore.hasStore(versionDir: root, realRoot: realpathOf(root), host: file) == false)
+        #expect(MailStore.hasStore(versionDir: root, realRoot: realpathOf(root), host: f.accountUUID("A")))
+        // Ein Link innerhalb des Mail-Verzeichnisses zaehlt.
+        try FileManager.default.createSymbolicLink(at: v10.appending(path: "F0000000-0000-4000-8000-000000000016"),
+                                                   withDestinationURL: v10.appending(path: f.accountUUID("A")))
+        #expect(MailStore.hasStore(versionDir: root, realRoot: realpathOf(root), host: "F0000000-0000-4000-8000-000000000016"))
+        for bad in ["", ".", "..", "a%2Fb", "%00", "%E0"] {
+            #expect(MailStore.hasStore(versionDir: root, realRoot: realpathOf(root), host: bad) == false, "\(bad)")
+        }
+    }
+
+    private func realpathOf(_ path: String) -> String? {
+        guard let p = realpath(path, nil) else { return nil }
+        defer { free(p) }
+        return String(cString: p)
     }
 }

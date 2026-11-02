@@ -171,11 +171,32 @@ UUIDs, 6 have a row. The other 8 are removed accounts. None has a `V<n>/<uuid>` 
 an `.emlx` file, yet 7 still have message rows, because Mail does not purge the index. No other
 source names them: no other Accounts4 column, no other Envelope Index table, no plist under
 `MailData`; `com.apple.mail.plist` mentions 4 of them only in ordering lists without a name.
-They keep their UUID as name, and `doctor` counts them as accounts without a match. One of them
+They have no name and are hidden, see Removed accounts below. One of them
 is a stale `local://` account with one empty mailbox; the active local account has a row of
 type `com.apple.account.OnMyDevice` with its localized name, so no "On My Mac" fallback is
 needed. Two matched IMAP accounts had no description but a parent account (iCloud, Google)
 with one, hence the parent fallback.
+
+### Removed accounts
+
+When an account is removed from Mail, its rows stay in the Envelope Index, but its directory
+`V<n>/<uuid>/` and its `.emlx` files are gone. Measured on 2026-11-02 (counters only): 8 of 14
+accounts were removed, with about 117,000 rows, almost half of all rows. Their messages came
+back with `file_not_found` and duplicated the messages of accounts that had been added again.
+
+`list-mailboxes` therefore reports `accountStores`: for every account with an `imap://` or
+`local://` mailbox, whether `V<n>/<uuid>` is a directory. The helper derives the path from the
+mailbox URL itself (segment decoded and checked as for `.emlx` paths), resolves it with
+`realpath` and requires it to stay under the Mail directory; the caller passes no path. A
+missing entry, a link pointing outside and a plain file count as no store. Any other error
+leaves the question open, and the account counts as present. Other schemes (`ews://`) get no
+entry, because their layout on disk is not known, and stay visible.
+
+`computePolicy` drops accounts without a store before anything else, including the account
+allowlist: an `APPLE_MAIL_ACCOUNTS` entry that names one counts as unmatched. Their mailboxes
+are never in `allowedMailboxIds`, and `list_mailboxes` does not show them. There is no switch to
+show them again; without files there would be no body anyway. `doctor` reports the number of
+hidden accounts and mailboxes under `removed-accounts`, and `--verbose` lists their UUIDs.
 
 ### Deduplication
 
@@ -517,7 +538,7 @@ content.
 ### Policy enforcement
 
 Node computes the set of allowed mailbox ids from configuration (account allowlist, junk and
-trash roles, excluded mailboxes) and sends it with every read command. The helper rejects a
+trash roles, excluded mailboxes), always without removed accounts, and sends it with every read command. The helper rejects a
 missing or empty set and adds `mailbox IN (...)` to each query, before `LIMIT`. Consequences:
 pages are full; a mail that exists only in excluded mailboxes is `MESSAGE_NOT_FOUND`; a mail
 with copies in both shows only the allowed ones. Against another local process that starts the

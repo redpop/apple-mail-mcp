@@ -28,10 +28,13 @@ describe('schemas', () => {
   it('list-mailboxes with accounts block', () => {
     const r = listMailboxesResult.parse({
       mailboxes: [{ id: 12, url: 'imap://x/INBOX', total: 290, unread: 3 }],
-      accounts: [{ uuid: 'u', description: 'd', username: null }], accountNames: 'available',
+      accounts: [{ uuid: 'u', description: 'd', username: null }], accountStores: [{ uuid: 'x', hasStore: false }],
+      accountNames: 'available',
     })
     expect(r.accounts[0]!.username).toBeNull()
-    expect(() => listMailboxesResult.parse({ mailboxes: [], accounts: [], accountNames: 'maybe' })).toThrow()
+    expect(r.accountStores[0]!.hasStore).toBe(false)
+    expect(() => listMailboxesResult.parse({ mailboxes: [], accounts: [], accountStores: [], accountNames: 'maybe' })).toThrow()
+    expect(() => listMailboxesResult.parse({ mailboxes: [], accounts: [], accountNames: 'available' })).toThrow()
   })
   it('probe granted and denied', () => {
     expect(probeResult.parse({

@@ -14,7 +14,7 @@ import Testing
         #expect(p.counts?.uniqueMessages == Int64(Set(f.seed.messages.map(\.gid)).count))
         #expect(p.counts?.messages == Int64(f.seed.messages.count))
         #expect(p.counts?.mailboxes == Int64(f.seed.mailboxes.count))
-        #expect(p.accountNames == AccountNamesState(status: .available, unmatchedAccounts: 2))
+        #expect(p.accountNames == AccountNamesState(status: .available, unmatchedAccounts: 3))
     }
 
     @Test func probeWithoutMailDirIsNoMailData() throws {
@@ -196,7 +196,7 @@ import Testing
         #expect(o["access"] as? String == "granted")
         let names = try #require(o["accountNames"] as? [String: Any])
         #expect(names["status"] as? String == "available")
-        #expect(names["unmatchedAccounts"] as? Int == 2)
+        #expect(names["unmatchedAccounts"] as? Int == 3)
         let no = try JSONSerialization.jsonObject(with: JSONEncoder().encode(
             MailStore(config: MailStoreConfig(mailRoot: f.mailRoot.appending(path: "nope"), accountsDB: f.accountsDB)).probe())) as! [String: Any]
         #expect(no["mailDir"] is NSNull)

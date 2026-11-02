@@ -194,6 +194,7 @@ const mailboxes = (extra: Array<{ id: number; url: string }> = []) => ({
     ...extra.map((e) => ({ ...e, total: 1, unread: 0 })),
   ],
   accounts: [{ uuid: UUID, description: 'Work Account', username: 'alice@example.com' }],
+  accountStores: [],
   accountNames: 'available',
 })
 const searchRes = () => ({
@@ -318,6 +319,29 @@ describe('doctor', () => {
     await runDoctor(doctorDeps(s, goodRunner({ 'list-mailboxes': () => m }), { json: true }))
     const o = JSON.parse(s.text()) as { checks: Array<{ id: string; status: string }> }
     expect(o.checks.find((c) => c.id === 'mailbox-roles')?.status).toBe('warn')
+  })
+
+  it('doctor counts hidden removed accounts without naming them', async () => {
+    const s = sink()
+    const m = { ...mailboxes([{ id: 7, url: 'imap://REMOVED-UUID/INBOX' }, { id: 8, url: 'imap://REMOVED-UUID/Archive' }]),
+      accountStores: [{ uuid: UUID, hasStore: true }, { uuid: 'REMOVED-UUID', hasStore: false }] }
+    await runDoctor(doctorDeps(s, goodRunner({ 'list-mailboxes': () => m }), { json: true }))
+    const o = JSON.parse(s.text()) as { checks: Array<{ id: string; status: string; message: string }> }
+    const c = o.checks.find((x) => x.id === 'removed-accounts')!
+    expect(c.status).toBe('ok')
+    expect(c.message).toContain('1 removed account hidden (2 mailboxes)')
+    expect(o.checks.find((x) => x.id === 'config')?.message).toContain('2 of 4 mailboxes visible')
+    expect(s.text()).not.toContain('REMOVED-UUID')
+    const v = sink()
+    await runDoctor(doctorDeps(v, goodRunner({ 'list-mailboxes': () => m }), { verbose: true }))
+    expect(v.text()).toContain('account REMOVED-UUID (removed, hidden)')
+  })
+
+  it('doctor says when there are no removed accounts', async () => {
+    const s = sink()
+    await runDoctor(doctorDeps(s, goodRunner(), { json: true }))
+    const o = JSON.parse(s.text()) as { checks: Array<{ id: string; message: string }> }
+    expect(o.checks.find((x) => x.id === 'removed-accounts')?.message).toBe('No removed accounts in the Mail index.')
   })
 
   it('doctor exit code is 1 on any fail', async () => {

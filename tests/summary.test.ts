@@ -12,6 +12,7 @@ const A = 'AAAAAAAA-0000-0000-0000-000000000001'
 const raw: ListMailboxesResult = {
   mailboxes: [{ id: 1, url: `imap://${A}/INBOX`, total: 1, unread: 0 }, { id: 2, url: `imap://${A}/Junk`, total: 1, unread: 0 }],
   accounts: [{ uuid: A, description: 'Work', username: 'me@work.example' }],
+  accountStores: [],
   accountNames: 'available',
 }
 const policy = computePolicy(config, raw)

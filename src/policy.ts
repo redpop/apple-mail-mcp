@@ -16,6 +16,9 @@ export interface Policy {
   mailboxes: Map<number, ParsedMailbox>
   accounts: AccountView[]
   unmatchedAllowlistEntries: number
+  /** Aus Mail entfernte Konten (ohne Store-Verzeichnis) und ihre Mailboxen, immer ausgeblendet. */
+  removedAccounts: number
+  removedMailboxes: number
   accountNamesAvailable: boolean
   fingerprint: string
 }
@@ -48,9 +51,20 @@ export function indexFingerprintOf(config: Config): string {
   return hash16({ accounts: config.accounts, includeJunk: config.includeJunk, includeTrash: config.includeTrash, excludeMailboxes: config.excludeMailboxes })
 }
 
+/**
+ * Konten, die im Envelope Index stehen, deren Verzeichnis V<n>/<uuid>/ aber fehlt (AMM-21): aus Mail entfernt,
+ * ohne Dateien. Ein Konto ohne Eintrag in accountStores (anderes Schema) gilt nicht als entfernt.
+ */
+export function removedAccountIds(raw: ListMailboxesResult): Set<string> {
+  return new Set(raw.accountStores.filter((s) => !s.hasStore).map((s) => s.uuid))
+}
+
 export function computePolicy(config: Config, raw: ListMailboxesResult): Policy {
   const namesAvailable = raw.accountNames === 'available'
-  const parsed = raw.mailboxes.map(parseMailbox)
+  // Entfernte Konten fallen vor allem anderen heraus, auch vor der Allowlist: sie sind keine Mail-Konten mehr.
+  const removed = removedAccountIds(raw)
+  const all = raw.mailboxes.map(parseMailbox)
+  const parsed = all.filter((mb) => !removed.has(mb.accountId))
 
   // Konten aus den Mailbox-URLs, ergaenzt um Namen aus dem Helper.
   const info = new Map(raw.accounts.map((a) => [a.uuid, a]))
@@ -102,6 +116,8 @@ export function computePolicy(config: Config, raw: ListMailboxesResult): Policy 
     mailboxes,
     accounts: views.filter((v) => accountsWithMail.has(v.id)),
     unmatchedAllowlistEntries: unmatched,
+    removedAccounts: new Set(all.filter((mb) => removed.has(mb.accountId)).map((mb) => mb.accountId)).size,
+    removedMailboxes: all.length - parsed.length,
     accountNamesAvailable: namesAvailable,
     fingerprint: fingerprintOf(config),
   }

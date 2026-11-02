@@ -254,8 +254,8 @@ npx -y @redpop/apple-mail-mcp doctor        # from source: node dist/index.js do
 ```
 
 `doctor` checks the macOS version, the helper's signature, Full Disk Access, the database
-layout, how many messages have a local file, the mailbox roles, the effective settings and the
-state of the body index. Its default output contains no names, addresses or subjects, so you
+layout, how many messages have a local file, the mailbox roles, how many removed accounts are
+hidden, the effective settings and the state of the body index. Its default output contains no names, addresses or subjects, so you
 can paste it into an issue as it is. `--verbose` adds mailbox names and account identifiers;
 `--json` is for machines; `--schema` prints only the database fingerprint, any missing columns
 and the `CREATE TABLE` statements of Mail's database (structure, no data). Exit code 1 means at

@@ -45,7 +45,9 @@ Result: `accounts`, each with `id`, `name` (the account description from macOS, 
 account UUID), `address`, `type` (`imap`, `local`, `exchange`,
 `other`) and `mailboxes`. Each mailbox has `id`, `name`, `path`, `role` (`inbox`, `sent`,
 `drafts`, `archive`, `junk`, `trash`, `allmail`, `other`), `total` and `unread`. Accounts and
-mailboxes excluded by configuration are absent, not marked. If an entry of
+mailboxes excluded by configuration are absent, not marked. So are accounts that were removed
+from Mail but still have rows in its index (no folder under the Mail directory); they are hidden
+from every tool. If an entry of
 `APPLE_MAIL_ACCOUNTS` matches nothing, `note` says so without repeating the entry.
 
 ## search_messages

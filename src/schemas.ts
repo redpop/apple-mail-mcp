@@ -50,6 +50,8 @@ export const threadResult = z.object({
 export const listMailboxesResult = z.object({
   mailboxes: z.array(z.object({ id: z.number().int(), url: z.string(), total: z.number().int(), unread: z.number().int() })),
   accounts: z.array(z.object({ uuid: z.string(), description: z.string().nullable(), username: z.string().nullable() })),
+  // Je imap://- und local://-Konto, ob sein Verzeichnis V<n>/<uuid>/ existiert (AMM-21).
+  accountStores: z.array(z.object({ uuid: z.string(), hasStore: z.boolean() })),
   accountNames: z.enum(['available', 'unavailable']),
   accountNamesReason: z.string().nullable().optional(),
 })

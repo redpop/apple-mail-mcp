@@ -11,6 +11,8 @@ struct Seed: Codable, Sendable {
         let description: String
         let username: String
         let inAccounts4: Bool
+        /// false: entferntes Konto, ohne Verzeichnis `V10/<uuid>/` (AMM-21); fehlt der Schluessel, gilt true.
+        let hasStore: Bool?
     }
     struct Mailbox: Codable, Sendable {
         let id: Int64
@@ -568,7 +570,8 @@ enum FixtureBuilder {
     private static func writeMailTree(_ f: Fixture) throws {
         let fm = FileManager.default
         // Info.plist fuer jede .mbox entlang der Pfade, auch fuer Elternordner ohne Nachrichten.
-        for b in f.seed.mailboxes {
+        let removed = Set(f.seed.accounts.filter { $0.hasStore == false }.map(\.name))
+        for b in f.seed.mailboxes where !removed.contains(b.account) {
             let leaf = mboxDirectory(root: f.mailRoot, url: b.url)
             var dir = leaf
             var chain: [URL] = []

@@ -31,6 +31,15 @@
    "description": "Kalender",
    "username": "kalender@example.org",
    "inAccounts4": true
+  },
+  {
+   "name": "R",
+   "uuid": "DE1E7ED0-0000-4000-8000-000000000012",
+   "type": "imap",
+   "description": "Entfernt",
+   "username": "alt@example.org",
+   "inAccounts4": false,
+   "hasStore": false
   }
  ],
  "mailboxes": [
@@ -122,6 +131,15 @@
    "stores": [
     "5D0E0008-0000-4000-8000-000000000001"
    ]
+  },
+  {
+   "id": 9,
+   "name": "entfernt",
+   "account": "R",
+   "url": "imap://DE1E7ED0-0000-4000-8000-000000000012/INBOX",
+   "total": 0,
+   "unread": 0,
+   "stores": []
   }
  ],
  "messages": [
