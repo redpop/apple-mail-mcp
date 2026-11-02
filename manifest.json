@@ -17,6 +17,9 @@
   "documentation": "https://github.com/redpop/apple-mail-mcp#readme",
   "support": "https://github.com/redpop/apple-mail-mcp/issues",
   "license": "MIT",
+  "privacy_policies": [
+    "https://github.com/redpop/apple-mail-mcp#privacy-policy"
+  ],
   "icon": "icon.png",
   "keywords": [
     "mail",

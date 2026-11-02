@@ -274,6 +274,56 @@ Security problems go through GitHub Security Advisories, see [`SECURITY.md`](./S
 Sending, replying, drafts, moving, deleting, flagging, attachment contents, semantic search,
 link extraction. A read-only server is easier to trust.
 
+## Privacy Policy
+
+This policy covers the server and its helper app, as published on npm, in the GitHub releases
+and in the MCP Registry.
+
+### What is collected
+
+Nothing is collected by the author or by any service. The server has no telemetry, analytics or
+crash reporting, and neither the server nor the helper opens a network connection.
+
+On your Mac, the server reads what its tools need: Mail's local index and message files under
+`~/Library/Mail`, and the name and user name of mail accounts from
+`~/Library/Accounts/Accounts4.sqlite`. Your configuration limits what is read (accounts, junk,
+trash, excluded mailboxes, security mails).
+
+### How it is used and stored
+
+Data is read only when your AI client calls a tool, and the result goes back only to that
+client. The server keeps two kinds of files, both under
+`~/Library/Application Support/apple-mail-mcp/`, directory 0700, files 0600:
+
+- `state.json`: when access to Mail last worked, plus the helper's version and checksum. No
+  mail data.
+- The body index, only if you set `APPLE_MAIL_BODY_INDEX=true`: a full-text copy of the bodies
+  of the messages your configuration makes visible, never of security mails. See
+  [Body index](#body-index) and [`SECURITY.md`](./SECURITY.md).
+
+With `APPLE_MAIL_MCP_DEBUG=true` the server writes one line per request to stderr, with timings
+and counts but no mail content. Your client decides whether it keeps that output in its logs.
+
+### Sharing with third parties
+
+The server shares nothing with anyone. What your AI client does with a tool result is covered by
+the client's and the model provider's privacy policies: a cloud-hosted model receives the results
+the client sends it. Installing or updating through npm or `npx` downloads the package from the
+npm registry, under npm's terms.
+
+### Retention
+
+`state.json` is overwritten in place and stays until you delete it. The body index stays current
+while it is on and is deleted at the next server start after you turn it off. To remove
+everything, delete `~/Library/Application Support/apple-mail-mcp/`. The server never changes
+or deletes anything under `~/Library/Mail`.
+
+### Contact
+
+Questions about this policy: open an issue at
+<https://github.com/redpop/apple-mail-mcp/issues>. Security problems: report them privately as
+[`SECURITY.md`](./SECURITY.md#reporting-a-vulnerability) describes.
+
 ## License
 
 MIT, see [`LICENSE`](./LICENSE).
