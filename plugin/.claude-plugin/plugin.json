@@ -1,7 +1,7 @@
 {
   "name": "apple-mail-mcp",
   "displayName": "Apple Mail MCP",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Search and read your Apple Mail on macOS, read-only. Full Disk Access goes to a small signed helper app, not to Claude.",
   "author": {
     "name": "Martin Alker",
@@ -26,7 +26,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@redpop/apple-mail-mcp@0.2.0"
+        "@redpop/apple-mail-mcp@0.3.0"
       ],
       "env": {
         "APPLE_MAIL_ACCOUNTS": "${user_config.accounts}",
