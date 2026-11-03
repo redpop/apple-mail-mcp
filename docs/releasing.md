@@ -74,17 +74,27 @@ On the runner, the `.p12` and the `.p8` exist only inside the script that uses t
    ```
 
    The `version` hook runs `scripts/sync-versions.mjs`, which writes the version to
-   `server.json`, `manifest.json`, the plugin (`plugin/.claude-plugin/plugin.json`, version and
-   `npx` pin) and the Swift source, and stages them for the version commit.
+   `server.json`, `manifest.json` and the Swift source, and stages them for the version commit.
+   The plugin is not part of it; see below.
 4. Approve the run in the `release` environment.
 
-### The plugin follows `main`
+### The plugin follows npm after seven days
 
-The marketplace in `.claude-plugin/marketplace.json` serves the plugin from the default branch,
-so the version commit pins plugin users to the new npm version before the run has published it.
-Until npm has the version, a plugin install or update fails to start the server. Approve the
-run right after the push. If the run fails before the npm step, release the next version
-instead of leaving `main` pinned to a version that does not exist.
+The plugin starts the package with `npx`, pinned to one exact version, and the marketplace in
+`.claude-plugin/marketplace.json` serves it from `main`. Many users set an npm release cooldown
+(`min-release-age`); npm then refuses a version younger than that, and `npx` does not fall back
+to an older one. A pin to a fresh release would break the plugin for them until the cooldown
+ends. We do not lift the user's cooldown.
+
+So the pin trails npm. `.github/workflows/plugin-pin.yml` runs daily, takes the highest stable
+version that is at least seven days old (`scripts/plugin-pin.mjs next`), pins it with the
+settings and environment of `manifest.json` at that version's tag (`scripts/plugin-pin.mjs
+apply`), runs `tests/plugin.test.ts` and opens a PR `plugin-pin/v<version>`. Merge it. A PR
+opened with the workflow token does not start `ci.yml`; close and reopen it to run the full CI.
+For an urgent fix, run the workflow by hand with `min_days` set to `0`.
+
+The workflow needs "Allow GitHub Actions to create and approve pull requests" under Settings →
+Actions → General.
 
 ## First publish to npm
 

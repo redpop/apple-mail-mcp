@@ -1,8 +1,9 @@
 // Haelt alle Versionsangaben mit package.json im Gleichklang.
 //
 // Die Version steht ausser in package.json noch in server.json (Server, beide Pakete und die
-// URL des MCPB-Assets), in manifest.json (sobald es existiert), im Plugin (Version und npx-Pin)
-// und im Swift-Quelltext des Helpers. tests/packaging.test.ts meldet eine Abweichung, dieses Skript verhindert sie.
+// URL des MCPB-Assets), in manifest.json (sobald es existiert) und im Swift-Quelltext des Helpers.
+// tests/packaging.test.ts meldet eine Abweichung, dieses Skript verhindert sie. Das Plugin folgt
+// npm bewusst spaeter und getrennt (scripts/plugin-pin.mjs).
 //
 // Laeuft als npm-"version"-Hook, also zwischen Versionsbump und Commit, und im Release-Workflow
 // (dort prueft scripts/release/check-tag.sh, dass es nichts mehr aendert).
@@ -30,23 +31,6 @@ if (existsSync(path('manifest.json'))) {
   const manifest = readJson('manifest.json')
   manifest.version = version
   writeJson('manifest.json', manifest)
-
-  // Das Plugin (AMM-18) startet das veroeffentlichte Paket per npx, exakt gepinnt (das Verzeichnis
-  // lehnt Spannen und @latest ab). Einstellungen und Umgebung kommen aus dem MCPB-Manifest, damit
-  // beide Installationswege dieselben Optionen haben.
-  if (existsSync(path('plugin/.claude-plugin/plugin.json'))) {
-    const plugin = readJson('plugin/.claude-plugin/plugin.json')
-    plugin.version = version
-    plugin.mcpServers = {
-      'apple-mail': {
-        command: 'npx',
-        args: ['-y', `@redpop/apple-mail-mcp@${version}`],
-        env: manifest.server.mcp_config.env,
-      },
-    }
-    plugin.userConfig = manifest.user_config
-    writeJson('plugin/.claude-plugin/plugin.json', plugin)
-  }
 }
 
 // Gleicher Text wie in swift/build.sh, damit build.sh die Datei danach unveraendert laesst.

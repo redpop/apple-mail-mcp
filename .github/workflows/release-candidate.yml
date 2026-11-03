@@ -34,6 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          fetch-depth: 0 # tests/plugin.test.ts liest manifest.json am Tag der Plugin-Version
           # Kein Token in .git/config fuer die spaeteren Schritte.
           persist-credentials: false
 
