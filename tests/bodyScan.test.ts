@@ -318,7 +318,8 @@ describe('scanBodies', () => {
     }
     for (const r of results) expect(r).toEqual(results[0])
     expect(results[0]).toEqual({ scan: { scanned: 3, unavailable: 0, stoppedBy: null, complete: true }, resumeAfter: null })
-  })
+    // 30.000 verschachtelte divs: lokal ~2,5 s, auf dem CI-Runner ueber 5 s (Lauf 41675601831).
+  }, 30_000)
 
   describe('html prefilter recall: whatever the full parse matches, the scan matches', () => {
     const cases: Array<[string, string, string]> = [
