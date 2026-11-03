@@ -85,4 +85,4 @@ Runtime dependencies are limited to `@modelcontextprotocol/server`, `zod`, `post
 
 ## Scope
 
-Four tools, `setup` and `doctor`. Out on purpose: sending, drafts, moving, deleting, flagging, `extract_links`, attachment contents, embeddings. Opt-in and off by default: the body index (`APPLE_MAIL_BODY_INDEX`, `src/bodyIndex/`), a plain-text copy of mail bodies on disk; see `SECURITY.md`. Released: 0.1.0 (2026-11-01) on npm, as a GitHub release with the `.mcpb`, and in the MCP Registry; the next npm publish goes through trusted publishing (`docs/releasing.md`).
+Four tools, `setup` and `doctor`. Out on purpose: sending, drafts, moving, deleting, flagging, `extract_links`, attachment contents, embeddings. Opt-in and off by default: the body index (`APPLE_MAIL_BODY_INDEX`, `src/bodyIndex/`), a plain-text copy of mail bodies on disk; see `SECURITY.md`. Latest release: 0.3.0 (2026-11-03) on npm (trusted publishing with provenance), as a GitHub release with the `.mcpb`, and in the MCP Registry; `plugin/` holds the Claude plugin for Claude Code and Cowork, pinned to the same version. `docs/releasing.md` has the process.
