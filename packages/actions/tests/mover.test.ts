@@ -227,6 +227,15 @@ describe('before the first move', () => {
     expect((err as ActionsError).code).toBe(code)
   })
 
+  test.each(['HELPER_MISSING', 'HELPER_CRASHED', 'HELPER_TIMEOUT', 'HELPER_VERSION_MISMATCH'])('a %s error from the actions bundle becomes ACTIONS_UNAVAILABLE', async (code) => {
+    const mail = new FakeMail([message(1)])
+    mail.permissionError = new HelperError(code, 'x')
+    const err = await moveMessages(deps(mail), [mv(1)]).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ActionsError)
+    expect((err as ActionsError).code).toBe('ACTIONS_UNAVAILABLE')
+    expect(mail.moveCalls).toEqual([])
+  })
+
   test('an unknown permission status stops everything', async () => {
     const mail = new FakeMail([message(1)])
     mail.permission = { status: 'maybe' }

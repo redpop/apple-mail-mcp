@@ -26,6 +26,11 @@
     "test:swift": "swift test --package-path swift"
   },
   "dependencies": {
-    "@redpop/apple-mail-mcp": "0.3.1"
+    "@modelcontextprotocol/server": "^2.3.1",
+    "@redpop/apple-mail-mcp": "0.3.1",
+    "zod": "^4.6.7"
+  },
+  "bin": {
+    "apple-mail-actions-mcp": "dist/index.js"
   }
 }

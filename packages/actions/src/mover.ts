@@ -43,6 +43,8 @@ async function requirePermission(actions: ActionsRunner): Promise<void> {
     out = await actions.run('permission', {})
   } catch (e) {
     if (e instanceof HelperError && (e.code === 'MAIL_NOT_RUNNING' || e.code === 'AUTOMATION_NOT_GRANTED')) throw new ActionsError(e.code)
+    // Startfehler des Actions-Bundles (HELPER_*) duerfen nicht als Fehler des Lese-Helpers beim Modell ankommen.
+    if (e instanceof HelperError && e.code.startsWith('HELPER_')) throw new ActionsError('ACTIONS_UNAVAILABLE')
     throw e
   }
   const status = (out as { status?: unknown } | null)?.status
