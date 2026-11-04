@@ -1,0 +1,31 @@
+{
+  "name": "@redpop/apple-mail-actions-mcp",
+  "version": "0.3.1",
+  "description": "MCP server for Apple Mail on macOS that moves messages between mailboxes, driven by a signed helper app",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/redpop/apple-mail-mcp.git",
+    "directory": "packages/actions"
+  },
+  "os": [
+    "darwin"
+  ],
+  "engines": {
+    "node": "^22.16 || >=24"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build:helper": "bash swift/build.sh",
+    "test:swift": "swift test --package-path swift"
+  },
+  "dependencies": {
+    "@redpop/apple-mail-mcp": "0.3.1"
+  }
+}

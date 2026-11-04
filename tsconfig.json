@@ -10,7 +10,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": { "@redpop/apple-mail-mcp/dist/*": ["./src/*"] }
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "vitest.config.ts", "packages/actions/src/**/*.ts", "packages/actions/tests/**/*.ts"]
 }
