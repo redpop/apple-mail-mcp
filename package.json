@@ -49,7 +49,7 @@
     "build:helper": "bash swift/build.sh",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:swift": "swift test --package-path swift",
+    "test:swift": "swift test --package-path swift && swift test --package-path packages/actions/swift",
     "version": "node scripts/sync-versions.mjs && git add server.json manifest.json swift/Sources/MailHelperCore/Version.generated.swift packages/actions/package.json packages/actions/manifest.json packages/actions/server.json packages/actions/swift/Sources/MailActionsCore/Version.generated.swift package-lock.json",
     "prepublishOnly": "node scripts/release/check-publish.mjs"
   },

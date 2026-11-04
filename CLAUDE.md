@@ -15,14 +15,14 @@ npx vitest run -t "name fragment"         # one test by name
 npm run typecheck                         # tsc --noEmit (src/ and tests/)
 npm run build                             # tsc -> dist/ (src/ only)
 npm run build:helper                      # swift/build.sh -> bin/Mail MCP Helper (Dev).app
-npm run test:swift                        # swift test --package-path swift
+npm run test:swift                        # swift test for swift/ and packages/actions/swift
 node scripts/sync-versions.mjs            # package.json version -> server.json, manifest.json, Swift, and the same files of packages/actions
 npm run build --workspace packages/actions               # tsc -> packages/actions/dist/
 npm run build:helper --workspace packages/actions        # packages/actions/swift/build.sh -> packages/actions/bin/Mail MCP Actions (Dev).app
 npm run test:swift --workspace packages/actions          # swift test for the actions bundle
 ```
 
-Releases run only in CI: `release.yml` (tag `v*`), `release-candidate.yml` (manual, publishes nothing) and `registry.yml` (MCP Registry retry), all in the `release` environment except `registry.yml`. They call the scripts in `scripts/release/`; `docs/releasing.md` has the process. `ci.yml` runs `verify-bundle.sh` against the ad-hoc bundle and expects it to fail, and validates `manifest.json`.
+Releases run only in CI: `release.yml` (tag `v*`), `release-candidate.yml` (manual, publishes nothing) and `registry.yml` (MCP Registry retry), all in the `release` environment except `registry.yml`. They call the scripts in `scripts/release/`; `docs/releasing.md` has the process. `ci.yml` runs `verify-bundle.sh` against both ad-hoc bundles and expects it to fail, and validates both manifests. Every release step of `packages/actions` is gated on `scripts/release/actions-enabled.sh`: while its `package.json` says `"private": true`, a tag releases only the read package. The maintainer removes `private` by hand; agents do not.
 
 Run the built server against your local helper:
 

@@ -4,8 +4,15 @@ name: MCP Registry
 # nicht erreichbar war. Baut und veroeffentlicht nichts: der Eintrag verweist auf das schon
 # veroeffentlichte npm-Paket und das .mcpb-Asset des Release, dessen Pruefsumme das Skript
 # aus dem heruntergeladenen Asset berechnet. Ein erneuter Lauf ist folgenlos.
+# Jeder Lauf traegt einen Eintrag ein; "actions" bricht ab, solange das Actions-Paket privat ist.
 on:
   workflow_dispatch:
+    inputs:
+      package:
+        description: Which registry entry to publish
+        type: choice
+        options: [read, actions]
+        default: read
 
 permissions:
   contents: read
@@ -25,6 +32,7 @@ jobs:
       # Die Version stammt aus package.json auf dem gewaehlten Stand; fuer eine aeltere Version
       # den passenden Tag als Referenz waehlen.
       - name: Publish to the MCP Registry
-        run: scripts/publish-registry.sh
+        run: scripts/publish-registry.sh --package "$PACKAGE"
         env:
           GH_TOKEN: ${{ github.token }}
+          PACKAGE: ${{ inputs.package }}

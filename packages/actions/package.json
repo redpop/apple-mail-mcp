@@ -24,7 +24,8 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "build:helper": "bash swift/build.sh",
-    "test:swift": "swift test --package-path swift"
+    "test:swift": "swift test --package-path swift",
+    "prepublishOnly": "node ../../scripts/release/check-publish.mjs \"Mail MCP Actions.app\""
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",

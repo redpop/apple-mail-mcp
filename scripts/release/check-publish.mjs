@@ -1,4 +1,5 @@
 // prepublishOnly-Hook: npm publish nur aus dem Release-Workflow und nur mit dem Release-Bundle.
+// Das Actions-Paket ruft ihn mit dem Namen seines Bundles auf, sonst gilt der Helper.
 //
 // "files" nimmt ganz bin/ ins Paket. Ein lokaler Checkout hat dort das Dev- oder Ad-hoc-Bundle;
 // veroeffentlicht schaltete es beim Nutzer nichts frei, wuerde aber nie von Developer ID
@@ -8,11 +9,11 @@ import { fileURLToPath } from 'node:url'
 
 const RELEASE_BUNDLE = 'Mail MCP Helper.app'
 
-export function checkPublish(env, binEntries) {
+export function checkPublish(env, binEntries, releaseBundle = RELEASE_BUNDLE) {
   if (env.CI !== 'true') return 'npm publish runs only from the release workflow (CI=true).'
-  const others = binEntries.filter((e) => e !== RELEASE_BUNDLE)
-  if (others.length > 0) return `bin/ must contain only ${RELEASE_BUNDLE}; found: ${others.join(', ')}.`
-  if (!binEntries.includes(RELEASE_BUNDLE)) return `bin/${RELEASE_BUNDLE} is missing.`
+  const others = binEntries.filter((e) => e !== releaseBundle)
+  if (others.length > 0) return `bin/ must contain only ${releaseBundle}; found: ${others.join(', ')}.`
+  if (!binEntries.includes(releaseBundle)) return `bin/${releaseBundle} is missing.`
   return null
 }
 
@@ -24,7 +25,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   } catch {
     // Kein bin/: checkPublish meldet das fehlende Bundle.
   }
-  const error = checkPublish(process.env, entries)
+  const error = checkPublish(process.env, entries, process.argv[2])
   if (error) {
     console.error(`check-publish: ${error}`)
     process.exit(1)
