@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { defaultStateDir } from '@redpop/apple-mail-mcp/dist/state.js'
 import { ActionsError } from './errors.js'
@@ -15,6 +15,25 @@ const DEFAULT_RETRY: LockRetry = { tries: 50, waitMs: 20 }
 
 function sleep(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+// lstat, nicht stat: ein Symlink ohne Ziel liegt im Weg, auch wenn stat ihn als fehlend meldet.
+function staleness(path: string): 'gone' | 'fresh' | 'stale' {
+  try {
+    // Echte Uhr: der mtime der Datei kommt vom Dateisystem, nicht aus der injizierten Zeit.
+    return Date.now() - lstatSync(path).mtimeMs > SIDECAR_STALE_MS ? 'stale' : 'fresh'
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return 'gone'
+    throw new ActionsError('LOCK_UNAVAILABLE')
+  }
+}
+
+function removeFile(path: string): void {
+  try {
+    unlinkSync(path)
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw new ActionsError('LOCK_UNAVAILABLE')
+  }
 }
 
 /** Standardpfad der Sperrdatei; gehoert in das Zustandsverzeichnis des Lesepakets. */
@@ -66,7 +85,11 @@ export class MoveLocks {
         fd = openSync(side, 'wx', 0o600)
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw new ActionsError('LOCK_UNAVAILABLE')
-        if (this.removeIfStale(side)) continue
+        // Auch das Entfernen zaehlt gegen die Grenze, sonst kann die Schleife nie enden.
+        if (this.removeIfStale(side)) {
+          if (i > this.retry.tries) throw new ActionsError('LOCK_UNAVAILABLE')
+          continue
+        }
         if (i >= this.retry.tries) throw new ActionsError('LOCK_UNAVAILABLE')
         sleep(this.retry.waitMs)
       }
@@ -74,28 +97,61 @@ export class MoveLocks {
     try {
       return fn()
     } finally {
+      this.release(side, fd)
+    }
+  }
+
+  // Nur die eigene Sidecar-Datei entfernen: wurde sie gebrochen, kann dort schon die eines anderen liegen.
+  // Der offene Deskriptor haelt die Inode belegt, sie kann nicht neu vergeben sein.
+  private release(side: string, fd: number): void {
+    try {
+      if (lstatSync(side).ino === fstatSync(fd).ino) unlinkSync(side)
+    } catch {
+      // Fehlt die Sidecar-Datei schon, ist nichts zu tun.
+    }
+    try {
+      closeSync(fd)
+    } catch {
+      // Schliessen darf das Ergebnis nicht kippen.
+    }
+  }
+
+  /**
+   * Entfernt eine verwaiste Sidecar-Datei; true heisst, der naechste Versuch lohnt sofort. Pruefen und
+   * Entfernen laufen unter einer zweiten O_EXCL-Datei und mit neuer Altersprobe, sonst koennte ein
+   * Prozess die frische Datei eines anderen loeschen, und beide hielten die Sperre.
+   */
+  private removeIfStale(side: string): boolean {
+    const state = staleness(side)
+    if (state !== 'stale') return state === 'gone'
+    const guard = `${side}.break`
+    let fd: number
+    try {
+      fd = openSync(guard, 'wx', 0o600)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw new ActionsError('LOCK_UNAVAILABLE')
+      // Eine alte Bruchdatei stammt von einem Absturz im Bruchfenster.
+      const guardState = staleness(guard)
+      if (guardState === 'fresh') return false
+      if (guardState === 'stale') removeFile(guard)
+      return true
+    }
+    try {
+      const now = staleness(side)
+      if (now === 'fresh') return false
+      if (now === 'stale') removeFile(side)
+      return true
+    } finally {
       try {
         closeSync(fd)
       } catch {
         // Schliessen darf das Ergebnis nicht kippen.
       }
       try {
-        unlinkSync(side)
+        unlinkSync(guard)
       } catch {
-        // Fehlt die Sidecar-Datei schon, ist nichts zu tun.
+        // Fehlt die Bruchdatei schon, ist nichts zu tun.
       }
-    }
-  }
-
-  private removeIfStale(side: string): boolean {
-    try {
-      // Echte Uhr: der mtime der Datei kommt vom Dateisystem, nicht aus der injizierten Zeit.
-      if (Date.now() - statSync(side).mtimeMs <= SIDECAR_STALE_MS) return false
-      unlinkSync(side)
-      return true
-    } catch {
-      // Verschwunden zwischen open und stat: gleich nochmal versuchen.
-      return true
     }
   }
 

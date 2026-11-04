@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import { chmodSync, existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -77,9 +77,8 @@ test('tryLockSecondInstanceGetsFalse', () => {
   expect(existsSync(`${file}.lock`)).toBe(false)
 })
 
-test('concurrentLocksAcrossProcessesLoseNoEntry', () => {
-  // Zwei Kindprozesse sperren je 40 verschiedene gids gleichzeitig; kein Eintrag darf verloren gehen.
-  // Die Quellen werden mit Node (stripTypeScriptTypes, Modus transform) in das Temp-Verzeichnis uebersetzt; der Zustandspfad wird durch einen Stub ersetzt.
+// Uebersetzt die Quellen mit Node (stripTypeScriptTypes, Modus transform) in das Temp-Verzeichnis; der Zustandspfad wird durch einen Stub ersetzt.
+function compileLocks(): string {
   const out = (name: string): string => join(dir, name)
   const compile = (src: string): string => stripTypeScriptTypes(readFileSync(new URL(`../src/${src}`, import.meta.url), 'utf8'), { mode: 'transform' } as unknown as { mode: 'strip' })
   writeFileSync(out('errors.mjs'), compile('errors.ts'))
@@ -89,27 +88,129 @@ test('concurrentLocksAcrossProcessesLoseNoEntry', () => {
       .replace(/import \{ defaultStateDir \} from [^\n]*\n/, 'const defaultStateDir = () => ""\n')
       .replace("'./errors.js'", "'./errors.mjs'"),
   )
-  const lockFile = join(dir, 'conc', 'move-locks.json')
+  return out('locks.mjs')
+}
+
+function runLockers(lockFile: string, bases: number[]): Promise<void[]> {
   const script = `
-    const { MoveLocks } = await import(${JSON.stringify(out('locks.mjs'))})
+    const { MoveLocks } = await import(${JSON.stringify(compileLocks())})
     const base = Number(process.argv[1])
     const l = new MoveLocks(${JSON.stringify(lockFile)}, Date.now, { tries: 2000, waitMs: 5 })
     for (let i = 0; i < 40; i++) if (!l.tryLock(base + i)) process.exit(3)
   `
   return Promise.all(
-    [1000, 2000].map(
+    bases.map(
       (base) =>
         new Promise<void>((resolve, reject) => {
           const c = spawn(process.execPath, ['--input-type=module', '-e', script, String(base)], { stdio: 'inherit' })
           c.on('exit', (code: number | null) => (code === 0 ? resolve() : reject(new Error(`child exit ${code}`))))
         }),
     ),
-  ).then(() => {
-    const keys = Object.keys(JSON.parse(readFileSync(lockFile, 'utf8')))
-    expect(keys).toHaveLength(80)
-    expect(readdirSync(join(dir, 'conc'))).toEqual(['move-locks.json'])
-  })
+  )
+}
+
+// Laeuft im Kindprozess mit Zeitlimit: eine Endlosschleife soll den Test scheitern lassen, nicht den Testlauf aufhaengen.
+function tryLockInChild(readOnlyDir = false): { status: number | null; out: string } {
+  const script = `
+    const { MoveLocks } = await import(${JSON.stringify(compileLocks())})
+    const l = new MoveLocks(${JSON.stringify(file)}, Date.now, { tries: 3, waitMs: 1 })
+    try {
+      console.log(l.tryLock(1))
+    } catch (e) {
+      console.log(e.code)
+    }
+  `
+  if (readOnlyDir) chmodSync(dir, 0o500)
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 10_000 })
+  chmodSync(dir, 0o700)
+  return { status: r.status, out: r.stdout.trim() }
+}
+
+function age(path: string): void {
+  const old = new Date(Date.now() - SIDECAR_STALE_MS - 5_000)
+  utimesSync(path, old, old)
+}
+
+test('concurrentLocksAcrossProcessesLoseNoEntry', async () => {
+  // Zwei Kindprozesse sperren je 40 verschiedene gids gleichzeitig; kein Eintrag darf verloren gehen.
+  const lockFile = join(dir, 'conc', 'move-locks.json')
+  await runLockers(lockFile, [1000, 2000])
+  expect(Object.keys(JSON.parse(readFileSync(lockFile, 'utf8')))).toHaveLength(80)
+  expect(readdirSync(join(dir, 'conc'))).toEqual(['move-locks.json'])
 }, 60_000)
+
+test('staleSidecarBrokenByManyProcessesLosesNoEntry', async () => {
+  const lockFile = join(dir, 'conc', 'move-locks.json')
+  mkdirSync(join(dir, 'conc'))
+  writeFileSync(`${lockFile}.lock`, '')
+  age(`${lockFile}.lock`)
+  await runLockers(lockFile, [1000, 2000, 3000, 4000])
+  expect(Object.keys(JSON.parse(readFileSync(lockFile, 'utf8')))).toHaveLength(160)
+  expect(readdirSync(join(dir, 'conc'))).toEqual(['move-locks.json'])
+}, 60_000)
+
+test('staleDanglingSymlinkSidecarIsCleared', () => {
+  const side = `${file}.lock`
+  symlinkSync(join(dir, 'nowhere'), side)
+  const old = new Date(Date.now() - SIDECAR_STALE_MS - 5_000)
+  lutimesSync(side, old, old)
+  expect(tryLockInChild()).toEqual({ status: 0, out: 'true' })
+  expect(() => lstatSync(side)).toThrow()
+})
+
+test('freshDanglingSymlinkSidecarGivesUpAfterBoundedRetry', () => {
+  symlinkSync(join(dir, 'nowhere'), `${file}.lock`)
+  expect(tryLockInChild()).toEqual({ status: 0, out: 'LOCK_UNAVAILABLE' })
+})
+
+test('staleDirectorySidecarGivesUp', () => {
+  mkdirSync(`${file}.lock`)
+  age(`${file}.lock`)
+  expect(tryLockInChild()).toEqual({ status: 0, out: 'LOCK_UNAVAILABLE' })
+  expect(statSync(`${file}.lock`).isDirectory()).toBe(true)
+})
+
+test('staleSidecarInReadOnlyDirectoryGivesUp', () => {
+  writeFileSync(`${file}.lock`, '')
+  age(`${file}.lock`)
+  expect(tryLockInChild(true)).toEqual({ status: 0, out: 'LOCK_UNAVAILABLE' })
+})
+
+test('freshBreakGuardKeepsStaleSidecar', () => {
+  // Ein anderer Prozess bricht gerade: die alte Sidecar-Datei bleibt ihm ueberlassen.
+  writeFileSync(`${file}.lock`, '')
+  age(`${file}.lock`)
+  writeFileSync(`${file}.lock.break`, '')
+  const l = new MoveLocks(file, Date.now, { tries: 2, waitMs: 1 })
+  expect(() => l.tryLock(1)).toThrowError(expect.objectContaining({ code: 'LOCK_UNAVAILABLE' }))
+  expect(existsSync(`${file}.lock`)).toBe(true)
+  expect(existsSync(`${file}.lock.break`)).toBe(true)
+})
+
+test('staleBreakGuardIsCleared', () => {
+  // Absturz im Bruchfenster darf die Sperre nicht dauerhaft blockieren.
+  writeFileSync(`${file}.lock`, '')
+  age(`${file}.lock`)
+  writeFileSync(`${file}.lock.break`, '')
+  age(`${file}.lock.break`)
+  const l = new MoveLocks(file, Date.now, { tries: 5, waitMs: 1 })
+  expect(l.tryLock(1)).toBe(true)
+  expect(readdirSync(dir)).toEqual(['move-locks.json'])
+})
+
+test('holderDoesNotRemoveForeignSidecar', () => {
+  // Waehrend der Halter arbeitet, bricht ein anderer seine Sidecar-Datei und legt eine eigene an.
+  const side = `${file}.lock`
+  const l = new MoveLocks(file, () => {
+    if (readdirSync(dir).includes('foreign')) return 5
+    writeFileSync(join(dir, 'foreign'), '')
+    rmSync(side)
+    writeFileSync(side, 'foreign')
+    return 5
+  })
+  expect(l.tryLock(1)).toBe(true)
+  expect(readFileSync(side, 'utf8')).toBe('foreign')
+})
 
 test('heldSidecarLeadsToLockUnavailableAfterBoundedRetry', () => {
   writeFileSync(`${file}.lock`, '')
