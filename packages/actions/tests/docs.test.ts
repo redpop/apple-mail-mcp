@@ -56,6 +56,8 @@ describe('README', () => {
     expect(t).toMatch(/5 minutes/)
     expect(t).toMatch(/never held a message/i)
     expect(t).toMatch(/macOS 15/)
+    expect(t).toMatch(/2026-11-04.*one test mail was moved to a subfolder and back.*INBOX and back.*single test mails/)
+    expect(t).not.toMatch(/moves from or to INBOX are not/)
   })
 
   test('has a privacy policy that the manifest links to', () => {
@@ -71,6 +73,9 @@ describe('SECURITY.md', () => {
     expect(t).toMatch(/damage is limited to moving/i)
     expect(t).toMatch(/subject only/i)
     expect(t).toMatch(/harmless subject/i)
+    expect(t).toMatch(/message text is not read/i)
+    expect(t).not.toMatch(/subject and sender/i)
+    expect(t).toMatch(/starts a Dev or Ad hoc bundle only when/i)
   })
   test('says what the app does not have and what status means', () => {
     expect(t).toMatch(/no credentials/i)

@@ -58,7 +58,7 @@ those.
 Messages are skipped, never moved, in these cases:
 
 - The message looks like a security mail (verification code, password reset, sign-in link).
-  The check looks at the subject only. `APPLE_MAIL_SHOW_SECURITY_MAILS` does not lift it.
+  The check looks at the subject only; the message text is not read. `APPLE_MAIL_SHOW_SECURITY_MAILS` does not lift it.
 - The message was moved in the last 5 minutes. Rapid back and forth can create a copy on the
   mail server, so each moved message is locked for 5 minutes, across processes. Moves you make
   yourself in Mail are not known to the lock.
@@ -78,8 +78,10 @@ arrived halfway.
 A folder that never held a message is not in Mail's index, so it does not appear in
 `list_mailboxes` and cannot be a target. Put one message in it by hand first.
 
-Only moves between top-level folders have been tested. Subfolders and moves from or to INBOX
-are not.
+Subfolders and INBOX have had one manual test: on 2026-11-04, on macOS 27 with one IMAP
+account at mailbox.org, one test mail was moved to a subfolder and back, and one test mail to
+INBOX and back, 60 seconds apart, with no copy in the webmail. These were single test mails,
+not a series.
 
 ## Requirements
 

@@ -51,13 +51,14 @@ your terminal or Node.
 
 As with the read helper, a program of your user can build an ad-hoc bundle with the release
 bundle id and run it. macOS then turns the grant off. The server is blind until you switch it
-on again. Local builds use their own bundle ids, and the server refuses a release id whose
-signature does not verify.
+on again. Local builds use their own bundle ids. The server starts a bundle with the release id
+only if its signature verifies against the project's Developer ID requirement, and starts a Dev
+or Ad hoc bundle only when `APPLE_MAIL_ACTIONS_PATH` points at it; it refuses any other bundle id.
 
 ### The security-mail check looks at the subject only
 
 Messages that look like security mails are never moved. The check is the same heuristic as in
-the read server, applied to the subject and sender only. It does not load the body: the body
+the read server, applied to the subject only. The message text is not read, and the sender address does not change the result. It does not load the body: the body
 check also flags ordinary mail with a word like "code" and would block normal moves, and it
 could not judge mail that was never downloaded. So a security mail with a harmless subject
 can be moved, to a folder you allow. Moving does not read it or send it anywhere. The check

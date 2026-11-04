@@ -19,7 +19,8 @@ here: an empty list makes every call fail.
 The plugin starts one local MCP server, the npm package
 [`@redpop/apple-mail-actions-mcp`](https://www.npmjs.com/package/@redpop/apple-mail-actions-mcp),
 pinned to the plugin's version and started with `npx`. The package contains a small app, "Mail
-MCP Actions", signed with a Developer ID and notarized by Apple. It asks Mail to do the move and
+MCP Actions". Release builds will be signed with a Developer ID and notarized by Apple in CI;
+that has not been exercised for this app yet. It asks Mail to do the move and
 holds the Automation permission for Mail, not Claude.
 
 The package is not published yet, so this plugin does not start until the first release. The
