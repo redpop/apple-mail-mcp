@@ -55,6 +55,9 @@ confirm it within 10 seconds. Both describe the local state in Mail, not the mai
 `failed` and the `skipped_*` statuses say why a message did not move; nothing was changed for
 those.
 
+Message ids are valid for the current index only. After Mail rebuilds a mailbox, or after a
+`skipped_not_found` status, search again and use the new ids.
+
 Messages are skipped, never moved, in these cases:
 
 - The message looks like a security mail (verification code, password reset, sign-in link).

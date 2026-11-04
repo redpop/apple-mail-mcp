@@ -112,7 +112,7 @@ describe('actions doctor', () => {
     const code = await runActionsDoctor(doctorDeps(mail, s))
     expect(code).toBe(0)
     expect(s.text()).toContain('[ok] actions-bundle:')
-    expect(s.text()).toContain('[ok] automation: Automation: Mail MCP Actions may control Mail.')
+    expect(s.text()).toContain('[ok] automation: Mail MCP Actions may control Mail.')
     expect(s.text()).toContain('[ok] accounts-config:')
     expect(s.text()).toContain('column exists')
     expect(s.text()).toContain('Account 1: supported.')
@@ -127,6 +127,12 @@ describe('actions doctor', () => {
       expect(s.text()).toContain('[warn] message-id-header:')
       expect(s.text()).toContain('the tool cannot move mail on this Mac')
     }
+  })
+
+  test('doctorIgnoresTablesWhoseNameOnlyStartsWithMessageGlobalData', async () => {
+    const s = sink()
+    await runActionsDoctor(doctorDeps(new FakeMail(), s, probeOk({ ddl: ['CREATE TABLE message_global_data_old (ROWID INTEGER)'] })))
+    expect(s.text()).not.toContain('the tool cannot move mail on this Mac')
   })
 
   test('doctorListsUnsupportedAccountsByReason', async () => {

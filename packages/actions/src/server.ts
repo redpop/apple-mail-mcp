@@ -12,7 +12,8 @@ export const INSTRUCTIONS =
   'Before calling move_messages, show the user the proposed moves: each message and its target folder. ' +
   'Where the app offers choices, offer: move all, move some, adjust first, move none. Move only what the user confirmed. ' +
   'A status of moved describes the local state in Mail, not the mail server. Folders that never held a message are not available as targets. ' +
-  'Do not move a message again right after moving it: that can create a copy on the mail server.'
+  'Do not move a message again right after moving it: that can create a copy on the mail server. ' +
+  'Use message ids from a search made just before the move, and search again if time has passed.'
 
 export function createServer(ctx: ActionsContext): McpServer {
   const server = new McpServer({ name: 'apple-mail-actions', version }, { instructions: INSTRUCTIONS })

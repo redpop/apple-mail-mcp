@@ -19,7 +19,8 @@
   },
   "files": [
     "dist",
-    "bin"
+    "bin",
+    "SECURITY.md"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",

@@ -52,7 +52,7 @@ function throwing(exec: DoctorExec): (file: string, args: string[]) => string {
 /** true: Spalte fehlt, false: vorhanden, null: unbekannt. Quelle sind `missing` und die CREATE-Zeilen der Probe. */
 function headerColumnMissing(schema: NonNullable<ProbeResult['schema']>): boolean | null {
   if (schema.missing.some((m) => m.includes('message_id_header'))) return true
-  const table = (schema.ddl ?? []).find((d) => /CREATE\s+TABLE\s+(IF NOT EXISTS\s+)?"?message_global_data"?/i.test(d))
+  const table = (schema.ddl ?? []).find((d) => /CREATE\s+TABLE\s+(IF NOT EXISTS\s+)?"?message_global_data"?(?!\w)/i.test(d))
   if (table === undefined) return null
   return !table.includes('message_id_header')
 }
@@ -85,13 +85,13 @@ export async function runActionsDoctor(deps: ActionsDoctorDeps): Promise<number>
   if (bundleFine) {
     try {
       const status = ((await deps.actions.run('permission', {})) as { status?: unknown } | null)?.status
-      if (status === 'granted') add('automation', 'ok', 'Automation: Mail MCP Actions may control Mail.')
-      else if (status === 'mail_not_running') add('automation', 'warn', 'Automation: unknown because Mail is not running. Open Mail and run doctor again.')
-      else if (status === 'denied') add('automation', 'fail', 'Automation: denied. Switch on Mail under "Mail MCP Actions" in System Settings > Privacy & Security > Automation.')
-      else if (status === 'undetermined') add('automation', 'warn', 'Automation: not asked yet. Run `setup` with Mail open.')
-      else add('automation', 'fail', 'Automation: the Actions app gave an unexpected answer.')
+      if (status === 'granted') add('automation', 'ok', 'Mail MCP Actions may control Mail.')
+      else if (status === 'mail_not_running') add('automation', 'warn', 'Unknown because Mail is not running. Open Mail and run doctor again.')
+      else if (status === 'denied') add('automation', 'fail', 'Denied. Switch on Mail under "Mail MCP Actions" in System Settings > Privacy & Security > Automation.')
+      else if (status === 'undetermined') add('automation', 'warn', 'Not asked yet. Run `setup` with Mail open.')
+      else add('automation', 'fail', 'The Actions app gave an unexpected answer.')
     } catch (e) {
-      add('automation', 'fail', e instanceof ActionsError ? describeActionsError(e.code) : e instanceof HelperError && e.code === 'MAIL_NOT_RUNNING' ? 'Automation: unknown because Mail is not running.' : describeActionsError('ACTIONS_UNAVAILABLE'))
+      add('automation', 'fail', e instanceof ActionsError ? describeActionsError(e.code) : e instanceof HelperError && e.code === 'MAIL_NOT_RUNNING' ? 'Unknown because Mail is not running.' : describeActionsError('ACTIONS_UNAVAILABLE'))
     }
   }
 
