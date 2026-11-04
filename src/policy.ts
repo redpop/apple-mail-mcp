@@ -49,9 +49,13 @@ export function fingerprintOf(config: Config): string {
   return hash16(effective)
 }
 
+// Erhoehen, wenn der Code die Sichtbarkeit aendert: Ein neuer Fingerprint loest beim naechsten Start
+// den Abgleich aus, der nicht mehr sichtbare Mails aus dem Body-Index entfernt.
+const MAILBOX_RULES = 2
+
 /** Nur was bestimmt, welche Mails in den Body-Index duerfen (Spec AMM-12 5.1). */
 export function indexFingerprintOf(config: Config): string {
-  return hash16({ accounts: config.accounts, includeJunk: config.includeJunk, includeTrash: config.includeTrash, excludeMailboxes: config.excludeMailboxes })
+  return hash16({ rules: MAILBOX_RULES, accounts: config.accounts, includeJunk: config.includeJunk, includeTrash: config.includeTrash, excludeMailboxes: config.excludeMailboxes })
 }
 
 /**
