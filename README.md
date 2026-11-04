@@ -188,8 +188,8 @@ saving its settings, keeps the running server and its old settings.
 | Variable | Default | Meaning |
 |---|---|---|
 | `APPLE_MAIL_ACCOUNTS` | empty (all accounts) | Comma-separated allowlist. An entry matches an account's UUID, address or name, ignoring case. A name shared by two accounts matches both; use the address or UUID to pick one. |
-| `APPLE_MAIL_INCLUDE_JUNK` | `false` | Include mailboxes with the junk role. |
-| `APPLE_MAIL_INCLUDE_TRASH` | `false` | Include mailboxes with the trash role. |
+| `APPLE_MAIL_INCLUDE_JUNK` | `false` | Include mailboxes with the junk role and their subfolders. |
+| `APPLE_MAIL_INCLUDE_TRASH` | `false` | Include mailboxes with the trash role and their subfolders. |
 | `APPLE_MAIL_EXCLUDE_MAILBOXES` | empty | Comma-separated mailboxes to hide. An entry matches a mailbox name (exact, ignoring case) or a path with `/`. |
 | `APPLE_MAIL_SHOW_SECURITY_MAILS` | `false` | Show messages detected as security mails without withholding the body or masking the subject. |
 | `APPLE_MAIL_BODY_SEARCH` | `true` | Allow `bodyContains` in `search_messages`. When `false`, using it is an `INVALID_INPUT` error. |

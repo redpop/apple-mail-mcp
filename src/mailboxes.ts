@@ -15,7 +15,7 @@ export interface ParsedMailbox {
 }
 
 // Namenslisten je Rolle (Deutsch, Englisch, Franzoesisch, Spanisch, Italienisch,
-// Niederlaendisch, Gmail). Verglichen wird nach fold() gegen das letzte Pfadsegment.
+// Niederlaendisch, Gmail). Verglichen wird nach fold() gegen das letzte Pfadsegment, bei Junk und Trash gegen alle.
 export const SENT_NAMES: readonly string[] = [
   'Sent', 'Sent Messages', 'Sent Items', 'Sent Mail',
   'Gesendet', 'Gesendete Objekte', 'Gesendete Elemente', 'Gesendete Nachrichten',
@@ -52,12 +52,15 @@ export const ALLMAIL_NAMES: readonly string[] = [
 ]
 export const INBOX_NAME = 'INBOX'
 
+const JUNK_SET: ReadonlySet<string> = new Set(JUNK_NAMES.map(fold))
+const TRASH_SET: ReadonlySet<string> = new Set(TRASH_NAMES.map(fold))
+
 const ROLE_LISTS: readonly [MailboxRole, ReadonlySet<string>][] = [
   ['sent', new Set(SENT_NAMES.map(fold))],
   ['drafts', new Set(DRAFTS_NAMES.map(fold))],
   ['archive', new Set(ARCHIVE_NAMES.map(fold))],
-  ['junk', new Set(JUNK_NAMES.map(fold))],
-  ['trash', new Set(TRASH_NAMES.map(fold))],
+  ['junk', JUNK_SET],
+  ['trash', TRASH_SET],
   ['allmail', new Set(ALLMAIL_NAMES.map(fold))],
 ]
 
@@ -89,29 +92,33 @@ function decodePath(tail: string): string[] | null {
 
 function roleOf(path: string[]): MailboxRole {
   if (path.length === 0) return 'other'
+  // Unterordner von Junk und Trash erben die Rolle, sonst waeren sie trotz Ausschluss sichtbar.
+  // Das naechste Segment von unten gewinnt. Andere Rollen vererben sich nicht (Archive/2024).
+  for (let i = path.length - 1; i >= 0; i--) {
+    const seg = fold(path[i]!)
+    if (JUNK_SET.has(seg)) return 'junk'
+    if (TRASH_SET.has(seg)) return 'trash'
+  }
   const last = fold(path[path.length - 1]!)
   if (path.length === 1 && last === fold(INBOX_NAME)) return 'inbox'
   for (const [role, names] of ROLE_LISTS) if (names.has(last)) return role
   return 'other'
 }
 
-// Rolle bei unzulaessigem Pfad: letztes nicht leeres Roh-Segment, nach Moeglichkeit
-// dekodiert, sonst roh. Nie inbox. So bleiben Junk/Trash trotzdem ausgeschlossen.
+// Rolle bei unzulaessigem Pfad: alle nicht leeren Roh-Segmente, nach Moeglichkeit dekodiert,
+// sonst roh. Nie inbox. So bleiben Junk/Trash und ihre Unterordner trotzdem ausgeschlossen.
 function bestEffortRole(tail: string): MailboxRole {
-  const segs = tail.split('/')
-  for (let i = segs.length - 1; i >= 0; i--) {
-    let t = segs[i]!
+  const path = tail.split('/').flatMap((seg) => {
+    let t = seg
     try {
-      t = decodeURIComponent(t)
+      t = decodeURIComponent(seg)
     } catch {
       // roher Text
     }
-    const last = t.split('/').filter((x) => x !== '').pop()
-    if (last === undefined) continue
-    const r = roleOf([last, last])
-    return r === 'inbox' ? 'other' : r
-  }
-  return 'other'
+    return t.split('/').filter((x) => x !== '')
+  })
+  const r = roleOf(path)
+  return r === 'inbox' ? 'other' : r
 }
 
 export function parseMailbox(raw: { id: number; url: string; total: number; unread: number }): ParsedMailbox {

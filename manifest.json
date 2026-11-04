@@ -86,14 +86,14 @@
     "include_junk": {
       "type": "boolean",
       "title": "Include junk",
-      "description": "Include mailboxes with the junk role.",
+      "description": "Include mailboxes with the junk role and their subfolders.",
       "default": false,
       "required": false
     },
     "include_trash": {
       "type": "boolean",
       "title": "Include trash",
-      "description": "Include mailboxes with the trash role.",
+      "description": "Include mailboxes with the trash role and their subfolders.",
       "default": false,
       "required": false
     },

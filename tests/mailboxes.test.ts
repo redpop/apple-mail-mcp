@@ -41,3 +41,14 @@ test.each([
 ])('role of %s is %s', (url, role) => expect(p(url).role).toBe(role))
 test('invalid url keeps empty path but classifies junk', () =>
   expect(p('imap://U/%ZZ/Junk')).toMatchObject({ path: [], role: 'junk' }))
+
+test.each([
+  ['imap://U/Trash/Crypto', 'trash'], ['imap://U/Papierkorb/2024/Alt', 'trash'], ['imap://U/Junk/Newsletter', 'junk'],
+  ['imap://U/%5BGmail%5D/Spam/x', 'junk'], ['imap://U/INBOX/Junk/x', 'junk'], ['imap://U/Trash/Sent', 'trash'],
+  ['imap://U/Junk/Archive', 'junk'], ['imap://U/Junk/Trash', 'trash'], ['imap://U/Trash/INBOX', 'trash'],
+  ['imap://U/Trash/%ZZ', 'trash'], ['imap://U/Junk//x', 'junk'], ['imap://U/a%2FTrash/x%2Fy/.', 'trash'],
+])('subfolder %s inherits role %s', (url, role) => expect(p(url).role).toBe(role))
+test.each([
+  ['imap://U/Sent/2024', 'other'], ['imap://U/Archive/2024', 'other'], ['imap://U/Drafts/x', 'other'],
+  ['imap://U/Finanzen/Trash-Belege', 'other'],
+])('only junk and trash are inherited: %s is %s', (url, role) => expect(p(url).role).toBe(role))

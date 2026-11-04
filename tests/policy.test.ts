@@ -35,6 +35,16 @@ test('includeJunk and includeTrash add them back', () => {
   expect(computePolicy(cfg({ includeJunk: true }), raw()).allowedMailboxIds).toEqual([1, 2, 4, 5, 6])
   expect(computePolicy(cfg({ includeTrash: true }), raw()).allowedMailboxIds).toEqual([1, 3, 4, 5, 6])
 })
+test('subfolders of junk and trash follow the same setting', () => {
+  const sub = raw({ mailboxes: [mb(1, `imap://${A}/INBOX`), mb(2, `imap://${A}/Junk/Newsletter`), mb(3, `imap://${A}/Trash/Crypto`)] })
+  expect(computePolicy(base, sub).allowedMailboxIds).toEqual([1])
+  expect(computePolicy(cfg({ includeJunk: true }), sub).allowedMailboxIds).toEqual([1, 2])
+  expect(computePolicy(cfg({ includeTrash: true }), sub).allowedMailboxIds).toEqual([1, 3])
+})
+test('index fingerprint changed with the role rules, so an existing index drops junk and trash subfolders', () => {
+  // Wert vor der Vererbung der Rollen an Unterordner. Bei neuen Sichtbarkeitsregeln MAILBOX_RULES erhoehen.
+  expect(indexFingerprintOf(base)).not.toBe('ba94a6a1648edd42')
+})
 test('allowlist matches uuid, address and description case-insensitively', () => {
   for (const e of [A.toLowerCase(), 'ME@WORK.EXAMPLE', 'work']) {
     const pol = computePolicy(cfg({ accounts: [e] }), raw())
