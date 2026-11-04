@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { HelperError } from '@redpop/apple-mail-mcp/dist/errors.js'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { loadActionsConfig } from '../src/config.js'
-import { ActionsError } from '../src/errors.js'
+import { ActionsError, describeActionsError } from '../src/errors.js'
 import { MoveLocks } from '../src/locks.js'
 import { moveMessages, type MoverDeps } from '../src/mover.js'
 import { ARCHIVE, FakeMail, HOME, INBOX, message, NESTED, WORK } from './fakes/fakeActions.js'
@@ -239,8 +239,9 @@ describe('before the first move', () => {
   test('an unknown permission status stops everything', async () => {
     const mail = new FakeMail([message(1)])
     mail.permission = { status: 'maybe' }
-    await expect(moveMessages(deps(mail), [mv(1)])).rejects.toBeInstanceOf(ActionsError)
+    await expect(moveMessages(deps(mail), [mv(1)])).rejects.toMatchObject({ code: 'ACTIONS_UNEXPECTED_ANSWER' })
     expect(mail.moveCalls).toEqual([])
+    expect(describeActionsError('ACTIONS_UNEXPECTED_ANSWER')).toMatch(/no move was attempted/)
   })
 
   test('an unreadable lock file before any move throws and moves nothing', async () => {
@@ -257,8 +258,10 @@ test('a lock failure after a move keeps the results and aborts', async () => {
   const d = deps(mail)
   d.locks = {
     isLocked: () => false,
-    lock: (gid) => {
+    lock: () => undefined,
+    tryLock: (gid) => {
       if (gid === 2) throw new ActionsError('LOCK_UNAVAILABLE')
+      return true
     },
   }
   const r = await moveMessages(d, [mv(1), mv(2), mv(3)])

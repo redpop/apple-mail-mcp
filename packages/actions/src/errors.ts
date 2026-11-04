@@ -1,4 +1,4 @@
-export type ActionsErrorCode = 'MAIL_NOT_RUNNING' | 'AUTOMATION_NOT_GRANTED' | 'MOVE_FAILED' | 'LOCK_UNAVAILABLE' | 'ACTIONS_BUNDLE_MISSING' | 'ACTIONS_SIGNATURE_INVALID' | 'ACTIONS_UNAVAILABLE'
+export type ActionsErrorCode = 'MAIL_NOT_RUNNING' | 'AUTOMATION_NOT_GRANTED' | 'MOVE_FAILED' | 'LOCK_UNAVAILABLE' | 'ACTIONS_BUNDLE_MISSING' | 'ACTIONS_SIGNATURE_INVALID' | 'ACTIONS_UNAVAILABLE' | 'ACTIONS_UNEXPECTED_ANSWER'
 
 /** Fehler mit einem Code, den describeActionsError in einen englischen Satz fuer das Modell uebersetzt. */
 export class ActionsError extends Error {
@@ -24,6 +24,8 @@ const TEXTS: Record<ActionsErrorCode, string> = {
     'The Mail MCP Actions app is not signed correctly and was not started, so no message was moved. The user should reinstall the package from the official source.',
   ACTIONS_UNAVAILABLE:
     'The Mail MCP Actions app could not be started or did not answer in time, so no message was moved. Retrying starts it again; if it persists, ask the user to run the doctor command.',
+  ACTIONS_UNEXPECTED_ANSWER:
+    'The Mail MCP Actions app gave an answer this server does not understand, so no move was attempted and nothing was changed. Ask the user to run the doctor command.',
 }
 
 export function describeActionsError(code: string): string {

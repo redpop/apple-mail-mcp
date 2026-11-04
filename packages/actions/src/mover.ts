@@ -13,7 +13,7 @@ export type ActionsRunner = HelperRunner
 export interface MoverDeps {
   helper: HelperRunner
   actions: ActionsRunner
-  locks: Pick<MoveLocks, 'isLocked' | 'lock'>
+  locks: Pick<MoveLocks, 'isLocked' | 'lock' | 'tryLock'>
   config: ActionsConfig
   now?: () => number
   sleep?: (ms: number) => Promise<void>
@@ -51,7 +51,8 @@ async function requirePermission(actions: ActionsRunner): Promise<void> {
   if (status === 'granted') return
   if (status === 'mail_not_running') throw new ActionsError('MAIL_NOT_RUNNING')
   if (status === 'denied' || status === 'undetermined') throw new ActionsError('AUTOMATION_NOT_GRANTED')
-  throw new ActionsError('MOVE_FAILED')
+  // Unbekannter Status: es wurde noch nichts verschoben.
+  throw new ActionsError('ACTIONS_UNEXPECTED_ANSWER')
 }
 
 // Nur die vier bekannten Antworten zaehlen; alles andere ist `failed` und beendet den Lauf, nie ein stilles `moved`.
@@ -144,11 +145,11 @@ export async function moveMessages(deps: MoverDeps, moves: MoveRequest[]): Promi
     const lockKey = gid!
 
     try {
-      if (locks.isLocked(lockKey)) {
+      // Pruefen und sperren in einem Schritt; die Sperre steht vor dem Versuch.
+      if (!locks.tryLock(lockKey)) {
         entry.status = 'skipped_locked'
         continue
       }
-      locks.lock(lockKey)
     } catch (e) {
       // Vor dem ersten Zug ist nichts passiert: als Fehler melden. Danach zaehlen die vorliegenden Ergebnisse.
       if (!attempted) throw e

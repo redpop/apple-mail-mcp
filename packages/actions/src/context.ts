@@ -14,7 +14,7 @@ export interface ActionsContext {
   helper: HelperRunner
   /** Actions-Bundle (permission, move). */
   actions: ActionsRunner
-  locks: Pick<MoveLocks, 'isLocked' | 'lock'>
+  locks: Pick<MoveLocks, 'isLocked' | 'lock' | 'tryLock'>
   /** Fuer respond() des Lesepakets: Fehler des Lese-Helpers (etwa FDA) laufen durch dessen Texte. */
   respondContext: ToolContext
 }
@@ -26,7 +26,7 @@ export function createActionsContext(deps: {
   /** Bundle des Lese-Helpers, nicht des Actions-Bundles. */
   helperBundlePath: string
   helperName?: string
-  locks?: Pick<MoveLocks, 'isLocked' | 'lock'>
+  locks?: Pick<MoveLocks, 'isLocked' | 'lock' | 'tryLock'>
   open?: OpenFn
 }): ActionsContext {
   const open = deps.open ?? defaultOpen
