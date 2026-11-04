@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "apple-mail-mcp",
-  "description": "Apple Mail MCP: search and read Apple Mail on macOS, read-only.",
+  "description": "Apple Mail MCP: search and read Apple Mail on macOS, read-only, and an optional second plugin that moves messages.",
   "owner": {
     "name": "Martin Alker",
     "url": "https://github.com/redpop"
@@ -10,6 +10,11 @@
     {
       "name": "apple-mail-mcp",
       "source": "./plugin",
+      "category": "productivity"
+    },
+    {
+      "name": "apple-mail-actions-mcp",
+      "source": "./packages/actions/plugin",
       "category": "productivity"
     }
   ]

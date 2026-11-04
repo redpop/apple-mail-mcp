@@ -53,6 +53,12 @@ mail in Mail.app, where Mail stores the Message-ID (not on macOS 15). Details: [
   mail about Thursday's meeting". Same conventions: timestamps in ISO 8601 with offset, and
   errors as an `isError` result with one plain-English sentence per error code.
 
+## Moving mail
+
+This package stays read-only. A separate package,
+[`@redpop/apple-mail-actions-mcp`](./packages/actions/README.md), adds one tool that moves
+messages between mailboxes of one account. It runs beside this server and is not installed with it.
+
 ## Requirements
 
 - macOS 15 or later. Verified with a real mailbox only on macOS 27.0.1 with Mail 16.0. The

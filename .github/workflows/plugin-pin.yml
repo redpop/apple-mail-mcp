@@ -1,6 +1,6 @@
 name: Plugin pin
 
-# Hebt den npx-Pin des Plugins auf die hoechste npm-Version, die mindestens --min-days alt ist,
+# Hebt den npx-Pin jedes Plugins (Lese-Paket und Actions-Paket, je ein Job) auf die hoechste npm-Version, die mindestens --min-days alt ist,
 # und oeffnet dafuer einen PR. Hintergrund in scripts/plugin-pin.mjs: ein npm-Cooldown beim
 # Nutzer lehnt frische Versionen ab, und npx faellt nicht auf eine aeltere zurueck.
 # Notfall (Sicherheitsfix): von Hand mit min_days 0 ausloesen.
@@ -17,13 +17,27 @@ permissions:
   contents: write
   pull-requests: write
 
-concurrency:
-  group: plugin-pin
-  cancel-in-progress: false
-
 jobs:
   pin:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: read
+            npm: '@redpop/apple-mail-mcp'
+            plugin_file: plugin/.claude-plugin/plugin.json
+            manifest_file: manifest.json
+            branch_prefix: plugin-pin/v
+          - package: actions
+            npm: '@redpop/apple-mail-actions-mcp'
+            plugin_file: packages/actions/plugin/.claude-plugin/plugin.json
+            manifest_file: packages/actions/manifest.json
+            branch_prefix: plugin-pin/actions-v
+    # Ein Job je Paket, jeder mit eigener Gruppe: sonst verdraengt der eine den wartenden anderen.
+    concurrency:
+      group: plugin-pin-${{ matrix.package }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
         with:
@@ -38,12 +52,14 @@ jobs:
         id: next
         env:
           MIN_DAYS: ${{ inputs.min_days || '7' }}
+          PACKAGE: ${{ matrix.package }}
+          BRANCH_PREFIX: ${{ matrix.branch_prefix }}
         run: |
           set -euo pipefail
-          VERSION="$(node scripts/plugin-pin.mjs next --min-days "$MIN_DAYS")"
+          VERSION="$(node scripts/plugin-pin.mjs next --package "$PACKAGE" --min-days "$MIN_DAYS")"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if [ -z "$VERSION" ]; then echo "Nothing to pin."; exit 0; fi
-          BRANCH="plugin-pin/v$VERSION"
+          BRANCH="$BRANCH_PREFIX$VERSION"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
             echo "Branch $BRANCH exists already; its PR is open or was closed on purpose."
@@ -54,9 +70,10 @@ jobs:
         if: steps.next.outputs.version != ''
         env:
           VERSION: ${{ steps.next.outputs.version }}
+          PACKAGE: ${{ matrix.package }}
         run: |
           set -euo pipefail
-          node scripts/plugin-pin.mjs apply "$VERSION"
+          node scripts/plugin-pin.mjs apply "$VERSION" --package "$PACKAGE"
           npm ci
           # PRs mit GITHUB_TOKEN loesen ci.yml nicht aus; die Plugin-Pruefungen laufen deshalb hier.
           npx vitest run tests/plugin.test.ts
@@ -67,15 +84,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.next.outputs.version }}
           BRANCH: ${{ steps.next.outputs.branch }}
+          NPM_NAME: ${{ matrix.npm }}
+          PLUGIN_FILE: ${{ matrix.plugin_file }}
+          MANIFEST_FILE: ${{ matrix.manifest_file }}
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git switch -c "$BRANCH"
-          git commit -am "Pin the plugin to $VERSION"
+          git commit -am "Pin the $NPM_NAME plugin to $VERSION"
           git push origin "$BRANCH"
-          gh pr create --base main --head "$BRANCH" --title "Pin the plugin to $VERSION" --body "$(cat <<EOF
-          Pins \`plugin/.claude-plugin/plugin.json\` to \`@redpop/apple-mail-mcp@$VERSION\`, with the settings and environment of \`manifest.json\` at \`v$VERSION\`. Opened by \`plugin-pin.yml\` once the version was old enough for an npm release cooldown.
+          gh pr create --base main --head "$BRANCH" --title "Pin the $NPM_NAME plugin to $VERSION" --body "$(cat <<EOF
+          Pins \`$PLUGIN_FILE\` to \`$NPM_NAME@$VERSION\`, with the settings and environment of \`$MANIFEST_FILE\` at \`v$VERSION\`. Opened by \`plugin-pin.yml\` once the version was old enough for an npm release cooldown.
 
           \`tests/plugin.test.ts\` passed in the workflow run. A PR opened with the workflow token does not start \`ci.yml\`; close and reopen it to run the full CI.
           EOF

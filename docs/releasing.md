@@ -74,7 +74,8 @@ On the runner, the `.p12` and the `.p8` exist only inside the script that uses t
    ```
 
    The `version` hook runs `scripts/sync-versions.mjs`, which writes the version to
-   `server.json`, `manifest.json` and the Swift source, and stages them for the version commit.
+   `server.json`, `manifest.json` and the Swift source, and stages them for the version commit;
+   it does the same for the files of `packages/actions`.
    The plugin is not part of it; see below.
 4. Approve the run in the `release` environment.
 
@@ -89,7 +90,10 @@ ends. We do not lift the user's cooldown.
 So the pin trails npm. `.github/workflows/plugin-pin.yml` runs daily, takes the highest stable
 version that is at least seven days old (`scripts/plugin-pin.mjs next`), pins it with the
 settings and environment of `manifest.json` at that version's tag (`scripts/plugin-pin.mjs
-apply`), runs `tests/plugin.test.ts` and opens a PR `plugin-pin/v<version>`. Merge it. A PR
+apply`), runs `tests/plugin.test.ts` and opens a PR `plugin-pin/v<version>`. Merge it. The plugin
+in `packages/actions/plugin` is pinned the same way (`--package actions`, manifest
+`packages/actions/manifest.json`), in its own job and PR `plugin-pin/actions-v<version>`; a
+package that npm does not know yet is skipped. A PR
 opened with the workflow token does not start `ci.yml`; close and reopen it to run the full CI.
 For an urgent fix, run the workflow by hand with `min_days` set to `0`.
 

@@ -1,0 +1,108 @@
+{
+  "manifest_version": "0.3",
+  "name": "apple-mail-actions-mcp",
+  "display_name": "Apple Mail Actions",
+  "version": "0.3.1",
+  "description": "Move messages between mailboxes in Apple Mail on macOS. Needs the Apple Mail read server beside it.",
+  "long_description": "An MCP server with one tool, move_messages, that moves messages to another mailbox of the same account in Apple Mail. It does not read mail, send, delete or flag. A signed app, Mail MCP Actions, asks Mail to do the move and is the only process that needs the Automation permission. The accounts it may touch are set below, never by the assistant. Install the Apple Mail read server beside it: that server provides the message and mailbox ids.",
+  "author": {
+    "name": "Martin Alker",
+    "url": "https://github.com/redpop"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/redpop/apple-mail-mcp"
+  },
+  "homepage": "https://github.com/redpop/apple-mail-mcp/tree/main/packages/actions",
+  "documentation": "https://github.com/redpop/apple-mail-mcp/blob/main/packages/actions/README.md",
+  "support": "https://github.com/redpop/apple-mail-mcp/issues",
+  "license": "MIT",
+  "privacy_policies": [
+    "https://github.com/redpop/apple-mail-mcp/blob/main/packages/actions/README.md#privacy-policy"
+  ],
+  "icon": "icon.png",
+  "keywords": [
+    "mail",
+    "email",
+    "apple-mail",
+    "macos",
+    "move"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/dist/index.js"
+      ],
+      "env": {
+        "APPLE_MAIL_ACCOUNTS": "${user_config.accounts}",
+        "APPLE_MAIL_INCLUDE_JUNK": "${user_config.include_junk}",
+        "APPLE_MAIL_INCLUDE_TRASH": "${user_config.include_trash}",
+        "APPLE_MAIL_EXCLUDE_MAILBOXES": "${user_config.exclude_mailboxes}",
+        "APPLE_MAIL_MAX_MOVES": "${user_config.max_moves}",
+        "APPLE_MAIL_MOVE_EXCLUDE_TARGETS": "${user_config.move_exclude_targets}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "move_messages",
+      "description": "Moves messages to another mailbox of the same account in Apple Mail."
+    }
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin"
+    ],
+    "runtimes": {
+      "node": "^22.16 || >=24"
+    }
+  },
+  "user_config": {
+    "accounts": {
+      "type": "string",
+      "title": "Accounts",
+      "description": "Comma-separated accounts that messages may be moved in, by address, name or UUID. Required: moving is never enabled for all accounts.",
+      "required": true
+    },
+    "include_junk": {
+      "type": "boolean",
+      "title": "Include junk",
+      "description": "Treat mailboxes with the junk role as visible. Set the same value in the read server.",
+      "default": false,
+      "required": false
+    },
+    "include_trash": {
+      "type": "boolean",
+      "title": "Include trash",
+      "description": "Treat mailboxes with the trash role as visible. Set the same value in the read server.",
+      "default": false,
+      "required": false
+    },
+    "exclude_mailboxes": {
+      "type": "string",
+      "title": "Excluded mailboxes",
+      "description": "Comma-separated mailboxes to hide, by name or by path with /. Set the same value in the read server.",
+      "default": "",
+      "required": false
+    },
+    "max_moves": {
+      "type": "number",
+      "title": "Maximum moves per call",
+      "description": "Upper bound for the number of messages one call may move (1 to 100).",
+      "default": 25,
+      "min": 1,
+      "max": 100,
+      "required": false
+    },
+    "move_exclude_targets": {
+      "type": "string",
+      "title": "Forbidden target mailboxes",
+      "description": "Comma-separated mailboxes that are never a target, by name or by path with /.",
+      "default": "",
+      "required": false
+    }
+  }
+}

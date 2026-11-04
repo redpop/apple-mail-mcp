@@ -1,22 +1,32 @@
-// Hebt den npx-Pin des Plugins (plugin/.claude-plugin/plugin.json) auf eine veroeffentlichte Version.
+// Hebt den npx-Pin eines Plugins auf eine veroeffentlichte Version: standardmaessig des Lese-Plugins
+// (plugin/.claude-plugin/plugin.json), mit --package actions des Actions-Plugins.
 //
 // Das Plugin pinnt exakt (das Verzeichnis lehnt Spannen und @latest ab). Viele Nutzer haben in npm
 // einen Cooldown (min-release-age): npm lehnt dann Versionen ab, die juenger sind, und npx faellt
 // nicht auf eine aeltere zurueck. Deshalb folgt der Pin npm erst, wenn eine Version MIN_DAYS alt
 // ist. Den Cooldown des Nutzers hebeln wir bewusst nicht aus.
 //
-//   node scripts/plugin-pin.mjs next [--min-days N]   gibt die naechste Pin-Version aus (oder nichts)
-//   node scripts/plugin-pin.mjs apply <version>       schreibt den Pin; Einstellungen und Umgebung
-//                                                     aus manifest.json am Tag v<version>
+//   node scripts/plugin-pin.mjs next [--min-days N] [--package read|actions]
+//                                                     gibt die naechste Pin-Version aus (oder nichts)
+//   node scripts/plugin-pin.mjs apply <version> [--package read|actions]
+//                                                     schreibt den Pin; Einstellungen und Umgebung
+//                                                     aus dem Manifest am Tag v<version>
 //
 // Laeuft im Workflow plugin-pin.yml, der daraus einen PR macht.
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-export const PACKAGE = '@redpop/apple-mail-mcp'
+export const PACKAGES = {
+  read: { name: '@redpop/apple-mail-mcp', pluginFile: 'plugin/.claude-plugin/plugin.json', manifestFile: 'manifest.json', server: 'apple-mail' },
+  actions: {
+    name: '@redpop/apple-mail-actions-mcp',
+    pluginFile: 'packages/actions/plugin/.claude-plugin/plugin.json',
+    manifestFile: 'packages/actions/manifest.json',
+    server: 'apple-mail-actions',
+  },
+}
 export const MIN_DAYS = 7
-const PLUGIN_FILE = 'plugin/.claude-plugin/plugin.json'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 // Nur x.y.z; Vorabversionen pinnen wir nie.
@@ -38,12 +48,14 @@ export function nextPin(time, current, now, minDays = MIN_DAYS) {
 }
 
 /** Plugin mit Pin auf `version`; Einstellungen und Umgebung aus dem Manifest dieser Version. */
-export function pinPlugin(plugin, version, manifest) {
+export function pinPlugin(plugin, version, manifest, which = 'read') {
+  const pkg = PACKAGES[which]
+  if (!pkg) throw new Error(`unknown package: ${which}`)
   return {
     ...plugin,
     version,
     mcpServers: {
-      'apple-mail': { command: 'npx', args: ['-y', `${PACKAGE}@${version}`], env: manifest.server.mcp_config.env },
+      [pkg.server]: { command: 'npx', args: ['-y', `${pkg.name}@${version}`], env: manifest.server.mcp_config.env },
     },
     userConfig: manifest.user_config,
   }
@@ -51,20 +63,40 @@ export function pinPlugin(plugin, version, manifest) {
 
 // Nur als Skript ausfuehren, nicht beim Import aus den Tests.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const [mode, arg, value] = process.argv.slice(2)
-  const plugin = JSON.parse(readFileSync(PLUGIN_FILE, 'utf8'))
+  const args = process.argv.slice(2)
+  // --package darf an beliebiger Stelle stehen; ohne die Option gilt das Lese-Plugin.
+  let which = 'read'
+  const at = args.indexOf('--package')
+  if (at !== -1) {
+    which = args[at + 1] ?? ''
+    args.splice(at, 2)
+  }
+  const pkg = PACKAGES[which]
+  if (!pkg) {
+    console.error(`unknown package: ${which}`)
+    process.exit(2)
+  }
+  const [mode, arg, value] = args
+  const plugin = JSON.parse(readFileSync(pkg.pluginFile, 'utf8'))
   if (mode === 'next') {
     const minDays = arg === '--min-days' ? Number(value) : MIN_DAYS
     if (!Number.isInteger(minDays) || minDays < 0) throw new Error(`invalid --min-days: ${value}`)
-    const time = JSON.parse(execFileSync('npm', ['view', PACKAGE, 'time', '--json'], { encoding: 'utf8' }))
+    let time
+    try {
+      time = JSON.parse(execFileSync('npm', ['view', pkg.name, 'time', '--json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }))
+    } catch (e) {
+      // Ein Paket, das npm noch nicht kennt (E404), hat nichts zu pinnen; jeder andere Fehler bleibt einer.
+      if (/E404/.test(`${e.stderr ?? ''}${e.stdout ?? ''}`)) process.exit(0)
+      throw e
+    }
     const next = nextPin(time, plugin.version, Date.now(), minDays)
     if (next) console.log(next)
   } else if (mode === 'apply' && parse(arg ?? '')) {
-    const manifest = JSON.parse(execFileSync('git', ['show', `v${arg}:manifest.json`], { encoding: 'utf8' }))
-    writeFileSync(PLUGIN_FILE, `${JSON.stringify(pinPlugin(plugin, arg, manifest), null, 2)}\n`)
+    const manifest = JSON.parse(execFileSync('git', ['show', `v${arg}:${pkg.manifestFile}`], { encoding: 'utf8' }))
+    writeFileSync(pkg.pluginFile, `${JSON.stringify(pinPlugin(plugin, arg, manifest, which), null, 2)}\n`)
     console.log(`Plugin pinned to ${arg}`)
   } else {
-    console.error('usage: plugin-pin.mjs next [--min-days N] | apply <x.y.z>')
+    console.error('usage: plugin-pin.mjs next [--min-days N] | apply <x.y.z> [--package read|actions]')
     process.exit(2)
   }
 }

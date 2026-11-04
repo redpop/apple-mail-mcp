@@ -7,7 +7,7 @@ const read = (p: string): string => readFileSync(join(root, p), 'utf8')
 
 // Dokumente im Repository: README, SECURITY, CLAUDE und docs/*.md. docs/superpowers, docs/spikes und
 // docs/decisions-* sind git-ignoriert und liegen nicht im Repository; docs/ wird nur auf der obersten Ebene gelesen.
-const userDocs = ['README.md', 'SECURITY.md', 'CLAUDE.md', ...readdirSync(join(root, 'docs')).filter((f) => f.endsWith('.md') && !f.startsWith('decisions-')).map((f) => `docs/${f}`)]
+const userDocs = ['README.md', 'SECURITY.md', 'CLAUDE.md', 'plugin/README.md', 'packages/actions/README.md', 'packages/actions/SECURITY.md', 'packages/actions/plugin/README.md', ...readdirSync(join(root, 'docs')).filter((f) => f.endsWith('.md') && !f.startsWith('decisions-')).map((f) => `docs/${f}`)]
 
 test('README config table lists every config variable', () => {
   const vars = new Set(read('src/config.ts').match(/APPLE_MAIL_[A-Z_]+/g))

@@ -1,5 +1,6 @@
 {
   "name": "@redpop/apple-mail-actions-mcp",
+  "mcpName": "io.github.redpop/apple-mail-actions-mcp",
   "version": "0.3.1",
   "description": "MCP server for Apple Mail on macOS that moves messages between mailboxes, driven by a signed helper app",
   "license": "MIT",
