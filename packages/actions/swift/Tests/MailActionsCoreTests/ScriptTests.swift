@@ -68,6 +68,15 @@ import Testing
         #expect(found.contains(#"<a\"b@example.com>"#))
     }
 
+    @Test func bracketedExpectedMessageIdIsNormalised() {
+        let text = script(expected: "<a@example.com>")
+        let found = literals(text)
+        #expect(found.contains("a@example.com"))
+        #expect(found.contains("<a@example.com>"))
+        #expect(!text.contains("<<"))
+        #expect(!text.contains(">>"))
+    }
+
     @Test func rowidIsDigitsOnly() throws {
         let text = script(rowid: 1234567)
         let line = try #require(lines(text).first { $0.contains("whose id is") })
