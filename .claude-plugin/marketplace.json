@@ -11,11 +11,6 @@
       "name": "apple-mail-mcp",
       "source": "./plugin",
       "category": "productivity"
-    },
-    {
-      "name": "apple-mail-actions-mcp",
-      "source": "./packages/actions/plugin",
-      "category": "productivity"
     }
   ]
 }

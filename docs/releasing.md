@@ -87,7 +87,10 @@ nothing.
    the name comes into existence. A workflow change for this is not prepared.
 2. Add the repository and `release.yml` as a trusted publisher for the new name. The expiry rule
    under [First publish to npm](#first-publish-to-npm) applies to it too.
-3. Remove `"private": true` from `packages/actions/package.json` in a normal PR.
+3. Remove `"private": true` from `packages/actions/package.json` in a normal PR, and in the same PR
+   add the `apple-mail-actions-mcp` entry (`"source": "./packages/actions/plugin"`) back to
+   `.claude-plugin/marketplace.json`. It is not listed while the package is private, because its
+   plugin runs an npm name that does not exist yet.
 4. Run the release candidate workflow from `main` and check it on a Mac: first Automation grant of
    the actions bundle, update from one candidate to the next keeps the grant, both bundles work
    from the actions `.mcpb`.

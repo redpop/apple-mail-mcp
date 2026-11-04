@@ -41,7 +41,7 @@ describe('Claude plugin', () => {
 
   test('marketplace lists the plugin folder', () => {
     const market = readJson('.claude-plugin/marketplace.json')
-    // Der Eintrag des Actions-Plugins steht dahinter und wird unten geprueft.
+    // Der Eintrag des Actions-Plugins steht erst nach dem Oeffnen des Gates dahinter und wird unten geprueft.
     expect(market.plugins[0]).toEqual(expect.objectContaining({ name: plugin.name, source: './plugin' }))
   })
 
@@ -108,12 +108,18 @@ describe('Claude plugin for the actions package', () => {
     }
   })
 
-  test('marketplace lists both plugin folders', () => {
+  test('marketplace does not list the actions plugin while the package is private', () => {
     const market = readJson('.claude-plugin/marketplace.json')
-    expect(market.plugins).toEqual([
-      expect.objectContaining({ name: 'apple-mail-mcp', source: './plugin' }),
-      expect.objectContaining({ name: plugin.name, source: './packages/actions/plugin' }),
-    ])
+    const names = market.plugins.map((p: { name: string }) => p.name)
+    if (pkg.private === true) {
+      expect(names).toEqual(['apple-mail-mcp'])
+      expect(JSON.stringify(market)).not.toContain('packages/actions')
+    } else {
+      expect(market.plugins).toEqual([
+        expect.objectContaining({ name: 'apple-mail-mcp', source: './plugin' }),
+        expect.objectContaining({ name: plugin.name, source: './packages/actions/plugin' }),
+      ])
+    }
   })
 
   test('folder passes the directory file rules', () => {
