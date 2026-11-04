@@ -113,6 +113,8 @@ if [ -z "$MCPB" ]; then
   gh release download "v$VERSION" --pattern "$MCPB_NAME-$VERSION.mcpb" --dir "$WORK_DIR"
   MCPB="$WORK_DIR/$MCPB_NAME-$VERSION.mcpb"
 fi
+# Das Token kann Schreibrechte haben und gilt nur fuer den Download: curl, npm und mcp-publisher sehen es nicht.
+unset GH_TOKEN
 fill_sha "$MCPB" "$WORK_DIR/server.json"
 
 case "$(/usr/bin/uname -s)/$(/usr/bin/uname -m)" in

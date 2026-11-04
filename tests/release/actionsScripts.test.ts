@@ -451,6 +451,89 @@ describe('publish-registry.sh --package', () => {
   })
 })
 
+describe('publish-registry.sh keeps GH_TOKEN away from everything but the download', () => {
+  // Attrappen protokollieren, ob sie das Token sehen. Der Publisher kommt als Tar-Archiv ueber eine
+  // Attrappe von curl; die gepinnten Pruefsummen zeigen in dieser Temp-Kopie auf dieses Archiv.
+  const LOG = 'echo "$(basename "$0") $1 token=${GH_TOKEN:-none}" >>"$CALLS"\n'
+  const FAKE_GH = `${LOG}
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --pattern) name="$2"; shift ;;
+    --dir) dir="$2"; shift ;;
+  esac
+  shift
+done
+echo bytes >"$dir/$name"
+`
+  const FAKE_CURL = `${LOG}
+while [ $# -gt 0 ]; do
+  if [ "$1" = -o ]; then cp "$PUBLISHER_TAR" "$2"; fi
+  shift
+done
+`
+  const FAKE_NPM = `${LOG}echo "\${4##*@}"\n`
+
+  function run(args: string[]) {
+    const dir = mkdtempSync(join(tmpdir(), 'registry-token-'))
+    try {
+      const work = join(dir, 'work')
+      const fakes = join(dir, 'fake')
+      mkdirSync(join(work, 'scripts/release'), { recursive: true })
+      mkdirSync(join(work, 'swift/Sources/MailHelperCore'), { recursive: true })
+      mkdirSync(join(work, 'packages/actions/swift/Sources/MailActionsCore'), { recursive: true })
+      for (const f of ['scripts/sync-versions.mjs', 'scripts/release/actions-enabled.sh', 'server.json', 'manifest.json', 'packages/actions/server.json', 'packages/actions/manifest.json']) {
+        cpSync(join(repoRoot, f), join(work, f))
+      }
+      writeFileSync(join(work, 'package.json'), JSON.stringify({ name: '@redpop/apple-mail-mcp', version: '0.1.0' }))
+      writeFileSync(join(work, 'packages/actions/package.json'), JSON.stringify({ name: '@redpop/apple-mail-actions-mcp', version: '0.1.0', dependencies: {} }))
+
+      fake(join(dir, 'tar'), 'mcp-publisher', `${LOG}`)
+      const tar = join(dir, 'publisher.tar.gz')
+      execFileSync('/usr/bin/tar', ['-czf', tar, '-C', join(dir, 'tar'), 'mcp-publisher'])
+      const sha = createHash('sha256').update(readFileSync(tar)).digest('hex')
+      const original = readFileSync(join(repoRoot, 'scripts/publish-registry.sh'), 'utf8')
+      writeFileSync(join(work, 'scripts/publish-registry.sh'), original.replace(/PUBLISHER_SHA256="[0-9a-f]{64}"/g, `PUBLISHER_SHA256="${sha}"`))
+
+      fake(fakes, 'gh', FAKE_GH)
+      fake(fakes, 'curl', FAKE_CURL)
+      fake(fakes, 'npm', FAKE_NPM)
+      const calls = join(dir, 'calls')
+      writeFileSync(calls, '')
+      const local = join(dir, 'local.mcpb')
+      writeFileSync(local, 'bytes')
+      const r = spawnSync('/bin/bash', [join(work, 'scripts/publish-registry.sh'), ...args.map((a) => (a === 'LOCAL' ? local : a))], {
+        encoding: 'utf8',
+        env: { PATH: `${fakes}:${process.env.PATH}`, CALLS: calls, GH_TOKEN: 'write-token', PUBLISHER_TAR: tar, REGISTRY_NPM_POLL_SECONDS: '0' },
+      })
+      return { status: r.status, stderr: r.stderr, calls: readFileSync(calls, 'utf8').trim().split('\n') }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  test.each([
+    ['the read entry', ['--package', 'read']],
+    ['the actions entry', ['--package', 'actions']],
+  ])('%s: only gh gets the token', (_label, args) => {
+    const r = run(args)
+    expect(r.stderr).toBe('')
+    expect(r.status).toBe(0)
+    expect(r.calls).toEqual([
+      'gh release token=write-token',
+      'curl -fsSL token=none',
+      'npm view token=none',
+      'mcp-publisher login token=none',
+      'mcp-publisher publish token=none',
+    ])
+  })
+
+  test('with a local .mcpb nothing gets the token', () => {
+    const r = run(['LOCAL'])
+    expect(r.status).toBe(0)
+    expect(r.calls).toEqual(['curl -fsSL token=none', 'npm view token=none', 'mcp-publisher login token=none', 'mcp-publisher publish token=none'])
+  })
+})
+
 describe('check-tag.sh with the actions package', () => {
   let dir: string
   let work: string
