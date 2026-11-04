@@ -86,6 +86,19 @@ export const indexGidsResult = z.object({
   hasMore: z.boolean(),
 })
 
+// `locate`: aktuelle ROWIDs der sichtbaren Kopien je gid (Mail-Aktionen).
+export const locateResult = z.object({
+  messages: z.array(
+    z.object({
+      gid: z.number().int(),
+      messageIdHeader: z.string().nullable(),
+      subject: z.string(),
+      fromAddress: z.string().nullable(),
+      copies: z.array(z.object({ rowid: z.number().int(), mailboxId: z.number().int() })),
+    }),
+  ),
+})
+
 export const helloResult = z.object({ protocolVersion: z.number().int(), helperVersion: z.string() })
 
 export type MessageRow = z.infer<typeof messageRow>
@@ -96,4 +109,5 @@ export type ListMailboxesResult = z.infer<typeof listMailboxesResult>
 export type ProbeResult = z.infer<typeof probeResult>
 export type HelloResult = z.infer<typeof helloResult>
 export type IndexFeedResult = z.infer<typeof indexFeedResult>
+export type LocateResult = z.infer<typeof locateResult>
 export type IndexGidsResult = z.infer<typeof indexGidsResult>

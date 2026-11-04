@@ -42,6 +42,7 @@ import Testing
             ("error", "thread", #"{"allowedMailboxIds":[\#(allowed)],"gid":999999,"limit":50,"maxRecipients":5}"#),
             ("index-feed", "index-feed", #"{"allowedMailboxIds":[\#(allowed)],"afterRowid":20,"limit":3}"#),
             ("index-gids", "index-gids", #"{"allowedMailboxIds":[\#(allowed)],"afterGid":1016,"limit":3}"#),
+            ("locate", "locate", #"{"allowedMailboxIds":[\#(allowed)],"gids":[\#(f.gid(named: "dup3")),\#(f.gid(named: "noHeader"))]}"#),
         ]
         let update = ProcessInfo.processInfo.environment["UPDATE_CONTRACT"] == "1"
         let dir = try Self.contractDir()

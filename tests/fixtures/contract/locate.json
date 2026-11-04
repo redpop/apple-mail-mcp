@@ -1,0 +1,40 @@
+{
+  "id" : 10,
+  "ok" : true,
+  "result" : {
+    "messages" : [
+      {
+        "copies" : [
+          {
+            "mailboxId" : 2,
+            "rowid" : 123456
+          },
+          {
+            "mailboxId" : 4,
+            "rowid" : 4712
+          },
+          {
+            "mailboxId" : 1,
+            "rowid" : 4711
+          }
+        ],
+        "fromAddress" : "alice@example.com",
+        "gid" : 1001,
+        "messageIdHeader" : "<dup3-1001@example.com>",
+        "subject" : "Dreifach vorhanden"
+      },
+      {
+        "copies" : [
+          {
+            "mailboxId" : 1,
+            "rowid" : 20
+          }
+        ],
+        "fromAddress" : null,
+        "gid" : 1003,
+        "messageIdHeader" : null,
+        "subject" : ""
+      }
+    ]
+  }
+}

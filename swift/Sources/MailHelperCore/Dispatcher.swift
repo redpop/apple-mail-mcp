@@ -76,6 +76,10 @@ public struct Dispatcher {
                 let r: IndexGidsRequest = try Self.decode(line, payload)
                 try requireTrusted()
                 return respond(id: id, result: try store.indexGids(r))
+            case "locate":
+                let r: LocateRequest = try Self.decode(line, payload)
+                try requireTrusted()
+                return respond(id: id, result: try store.locate(r))
             default:
                 return respond(id: id, failure: Self.invalid("Unknown command."))
             }

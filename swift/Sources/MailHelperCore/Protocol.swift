@@ -1,7 +1,7 @@
 import Foundation
 
 /// Version des NDJSON-Protokolls (Spec 7.1). Node vergleicht sie im `hello`.
-public let protocolVersion = 3
+public let protocolVersion = 4
 
 /// Spec 7.3 `hello`: Ergebnis.
 public struct HelloResult: Codable, Equatable, Sendable {
@@ -42,6 +42,10 @@ extension IndexFeedRequest: StrictPayload {
 
 extension IndexGidsRequest: StrictPayload {
     static let allowedKeys: Set<String> = ["allowedMailboxIds", "afterGid", "limit"]
+}
+
+extension LocateRequest: StrictPayload {
+    static let allowedKeys: Set<String> = ["allowedMailboxIds", "gids"]
 }
 
 /// hello, probe und list-mailboxes nehmen nur `{}`.
