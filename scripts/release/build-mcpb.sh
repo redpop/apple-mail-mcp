@@ -66,9 +66,21 @@ done
 /bin/cp "$ROOT/package.json" "$ROOT/package-lock.json" "$STAGING/"
 (cd "$STAGING" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund >&2)
 
+# Das Lesepaket darf keine Abhaengigkeit vom eigenen Namensraum mitbringen: Im .mcpb liegt es selbst,
+# nicht als Kopie unter node_modules.
+if [ "$PACKAGE_DIR" = "." ] && [ -e "$STAGING/node_modules/@redpop" ]; then
+  echo "build-mcpb: node_modules/@redpop must not exist in the read package" >&2
+  exit 1
+fi
+
 if [ "$PACKAGE_DIR" = "packages/actions" ]; then
   /bin/cp "$SOURCE/package.json" "$STAGING/package.json"
   /bin/rm -f "$STAGING/package-lock.json"
+  # Ein Symlink an dieser Stelle liesse die Kopien unten ins Quellverzeichnis schreiben.
+  if [ -L "$STAGING/$READ_COPY" ]; then
+    echo "build-mcpb: $READ_COPY in the staging directory is a symlink; refusing to copy through it" >&2
+    exit 1
+  fi
   /bin/mkdir -p "$STAGING/$READ_COPY/bin"
   /usr/bin/ditto "$ROOT/dist" "$STAGING/$READ_COPY/dist"
   /usr/bin/ditto "$ROOT/bin/$HELPER_APP" "$STAGING/$READ_COPY/bin/$HELPER_APP"

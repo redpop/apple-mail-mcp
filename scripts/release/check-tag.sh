@@ -38,7 +38,7 @@ for file in "${VERSION_FILES[@]}"; do
 done
 
 node scripts/sync-versions.mjs >/dev/null
-# Mit --untracked=normal: auch eine Datei, die das Skript erst neu angelegt hat, ist eine Abweichung.
+# Mit --untracked-files=normal: auch eine Datei, die das Skript erst neu angelegt hat, ist eine Abweichung.
 CHANGED="$(/usr/bin/git status --porcelain --untracked-files=normal)"
 if [ -n "$CHANGED" ]; then
   echo "check-tag: version files are out of sync with package.json; run node scripts/sync-versions.mjs and commit:" >&2

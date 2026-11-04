@@ -204,7 +204,7 @@ printf '[{"filename":"%s"}]' "$(basename "$TARBALL")"
   })
 })
 
-describe('build-mcpb.sh', () => {
+describe('build-mcpb.sh', { timeout: 60_000 }, () => {
   let dir: string
   let work: string
   let cdhash: Record<string, string>
@@ -222,6 +222,11 @@ esac
 mkdir -p node_modules/@modelcontextprotocol/server
 echo '{}' >node_modules/@modelcontextprotocol/server/package.json
 [ -n "\${SKIP_ZOD:-}" ] || cp -R "$REAL_ZOD" node_modules/zod
+[ -z "\${PLANT_REDPOP:-}" ] || mkdir -p node_modules/@redpop/other
+if [ -n "\${PLANT_LINK:-}" ]; then
+  mkdir -p node_modules/@redpop "$PLANT_LINK"
+  ln -s "$PLANT_LINK" node_modules/@redpop/apple-mail-mcp
+fi
 `
 
   beforeAll(() => {
@@ -321,6 +326,20 @@ echo '{}' >node_modules/@modelcontextprotocol/server/package.json
     const r = build(['packages/actions', cdhash.actions!, cdhash.helper!], { SKIP_ZOD: '1' })
     expect(r.status).toBe(1)
     expect(r.stderr).toContain('zod')
+  })
+
+  test('read package: anything under node_modules/@redpop is refused', () => {
+    const r = build(['.', cdhash.helper!], { PLANT_REDPOP: '1' })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('node_modules/@redpop must not exist')
+  })
+
+  test('actions package: a symlink in place of the read copy is refused and nothing is written through it', () => {
+    const target = join(dir, 'link-target')
+    const r = build(['packages/actions', cdhash.actions!, cdhash.helper!], { PLANT_LINK: target })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('is a symlink')
+    expect(readdirSync(target)).toEqual([])
   })
 
   test('an unknown package directory is refused', () => {
@@ -519,9 +538,9 @@ done
     expect(r.stderr).toBe('')
     expect(r.status).toBe(0)
     expect(r.calls).toEqual([
+      'npm view token=none',
       'gh release token=write-token',
       'curl -fsSL token=none',
-      'npm view token=none',
       'mcp-publisher login token=none',
       'mcp-publisher publish token=none',
     ])
@@ -530,7 +549,7 @@ done
   test('with a local .mcpb nothing gets the token', () => {
     const r = run(['LOCAL'])
     expect(r.status).toBe(0)
-    expect(r.calls).toEqual(['curl -fsSL token=none', 'npm view token=none', 'mcp-publisher login token=none', 'mcp-publisher publish token=none'])
+    expect(r.calls).toEqual(['npm view token=none', 'curl -fsSL token=none', 'mcp-publisher login token=none', 'mcp-publisher publish token=none'])
   })
 })
 

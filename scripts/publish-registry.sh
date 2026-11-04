@@ -108,13 +108,19 @@ SERVER="$PACKAGE_DIR/server.json" node -e '
 WORK_DIR="$(/usr/bin/mktemp -d "${RUNNER_TEMP:-/tmp}/registry.XXXXXX")"
 trap '/bin/rm -rf "$WORK_DIR"' EXIT
 
+# Das Token kann Schreibrechte haben und gilt nur fuer den Download: npm, curl und mcp-publisher sehen es
+# nicht. Es wird deshalb vor dem Warten auf npm aus der Umgebung genommen und nur an gh weitergereicht.
+DOWNLOAD_TOKEN="${GH_TOKEN:-}"
+unset GH_TOKEN
+
+wait_for_npm "$VERSION"
+
 MCPB="${1:-}"
 if [ -z "$MCPB" ]; then
-  gh release download "v$VERSION" --pattern "$MCPB_NAME-$VERSION.mcpb" --dir "$WORK_DIR"
+  env ${DOWNLOAD_TOKEN:+"GH_TOKEN=$DOWNLOAD_TOKEN"} gh release download "v$VERSION" --pattern "$MCPB_NAME-$VERSION.mcpb" --dir "$WORK_DIR"
   MCPB="$WORK_DIR/$MCPB_NAME-$VERSION.mcpb"
 fi
-# Das Token kann Schreibrechte haben und gilt nur fuer den Download: curl, npm und mcp-publisher sehen es nicht.
-unset GH_TOKEN
+unset DOWNLOAD_TOKEN
 fill_sha "$MCPB" "$WORK_DIR/server.json"
 
 case "$(/usr/bin/uname -s)/$(/usr/bin/uname -m)" in
@@ -132,8 +138,6 @@ if [ "$ACTUAL_SHA256" != "$PUBLISHER_SHA256" ]; then
   exit 1
 fi
 tar xzf "$WORK_DIR/mcp-publisher.tar.gz" -C "$WORK_DIR" mcp-publisher
-
-wait_for_npm "$VERSION"
 
 # GitHub-OIDC statt eines langlebigen Tokens: der Namensraum io.github.redpop haengt an der
 # Identitaet des Workflow-Laufs. publish liest server.json aus dem Arbeitsverzeichnis.
