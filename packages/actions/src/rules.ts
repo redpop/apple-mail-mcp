@@ -89,6 +89,13 @@ function folderPath(mb: ParsedMailbox): string | null {
   return mb.path.join('/')
 }
 
+// AppleScript vergleicht Namen ohne Gross- und Kleinschreibung: Bei "Archive" und "archive" koennte der Zug im
+// falschen Ordner landen. Aus den Rohdaten, denn auch ein ausgeblendeter Zwilling kann der Treffer sein.
+function hasCaseTwin(raw: ListMailboxesResult, mb: ParsedMailbox): boolean {
+  const path = fold(mb.path.join('/'))
+  return raw.mailboxes.map(parseMailbox).some((m) => m.accountId === mb.accountId && m.id !== mb.id && m.path.length > 0 && fold(m.path.join('/')) === path)
+}
+
 // Der Kopf aus der Mail ist fremder Inhalt: Was das Bundle ablehnen wuerde, gilt als nicht vorhanden.
 function usableMessageId(header: string | null): string | null {
   if (header === null || CONTROL_CHAR.test(header)) return null
@@ -130,6 +137,7 @@ export function checkMove(input: CheckMoveInput): CheckMoveResult {
   const sourcePath = folderPath(source)
   const targetPath = folderPath(target)
   if (sourcePath === null || targetPath === null) return skip('skipped_unsupported_folder')
+  if (hasCaseTwin(raw, source) || hasCaseTwin(raw, target)) return skip('skipped_unsupported_folder')
 
   // Betreff-Modus ohne Rueckgriff auf showSecurityMails: Sicherheitsmails werden nie verschoben.
   if (classify({ subject: located.subject, fromAddress: located.fromAddress }).security) return skip('skipped_security_mail')

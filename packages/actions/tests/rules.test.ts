@@ -3,7 +3,7 @@ import type { ListMailboxesResult } from '@redpop/apple-mail-mcp/dist/schemas.js
 import { describe, expect, test } from 'vitest'
 import { loadActionsConfig } from '../src/config.js'
 import { checkMove, type MoveStatus } from '../src/rules.js'
-import { ARCHIVE, DRAFTS, HOME_INBOX, INBOX, JUNK, message, NESTED, PRIVATE, rawMailboxes, SENT, TRASH, WORK, type LocatedMessage } from './fakes/fakeActions.js'
+import { ARCHIVE, DRAFTS, HOME, HOME_INBOX, INBOX, JUNK, message, NESTED, PRIVATE, rawMailboxes, SENT, TRASH, WORK, type LocatedMessage } from './fakes/fakeActions.js'
 
 function policyFor(raw: ListMailboxesResult, env: NodeJS.ProcessEnv = {}): Policy {
   const r = loadActionsConfig({ APPLE_MAIL_ACCOUNTS: raw.accounts.map((a) => a.uuid).join(','), ...env })
@@ -246,6 +246,33 @@ describe('skipped_unsupported_folder', () => {
   test('source path cannot be addressed', () => {
     const raw = withAccount((r) => r.mailboxes.push({ id: 60, url: `imap://${WORK}/A%0AB`, total: 1, unread: 0 }))
     expect(status(check({ raw, located: message(42, [{ rowid: 1, mailboxId: 60 }]) }))).toBe('skipped_unsupported_folder')
+  })
+})
+
+describe('folder names differing only in case', () => {
+  const twin = (url: string) => withAccount((r) => r.mailboxes.push({ id: 61, url, total: 1, unread: 0 }))
+
+  test('a visible target twin is refused', () => {
+    expect(status(check({ raw: twin(`imap://${WORK}/archive`) }))).toBe('skipped_unsupported_folder')
+  })
+  test('a target twin missing from the policy still counts', () => {
+    const raw = twin(`imap://${WORK}/archive`)
+    const policy = policyFor(raw)
+    policy.mailboxes.delete(61)
+    const r = checkMove({ move: { id: '42', targetMailboxId: String(ARCHIVE) }, located: message(42), policy, raw, excludeTargets: [] })
+    expect(r).toEqual({ ok: false, status: 'skipped_unsupported_folder' })
+  })
+  test('a source twin is refused', () => {
+    const raw = twin(`imap://${WORK}/projects/alpha`)
+    expect(status(check({ raw, located: message(42, [{ rowid: 1, mailboxId: NESTED }]) }))).toBe('skipped_unsupported_folder')
+  })
+  test('the same path in another account is no twin', () => {
+    const raw = twin(`imap://${HOME}/Archive`)
+    expect(status(check({ raw }))).toBe('ok')
+  })
+  test('a different path that only shares the folder name is no twin', () => {
+    const raw = twin(`imap://${WORK}/Projects/Archive`)
+    expect(status(check({ raw }))).toBe('ok')
   })
 })
 
