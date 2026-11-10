@@ -61,6 +61,15 @@ jobs:
       - name: Check tag
         run: scripts/release/check-tag.sh "$GITHUB_REF_NAME"
 
+      # Das Actions-Paket geht erst mit, wenn der Maintainer "private" aus seinem package.json entfernt.
+      # Bis dahin ueberspringt jeder Schritt mit diesem Gate; ein Lauf veroeffentlicht nur das Lesepaket.
+      - name: Is the actions package enabled?
+        id: actions
+        run: |
+          set -euo pipefail
+          ENABLED="$(scripts/release/actions-enabled.sh)"
+          echo "enabled=$ENABLED" >>"$GITHUB_OUTPUT"
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -74,6 +83,10 @@ jobs:
 
       - name: TypeScript build
         run: npm run build
+
+      - name: TypeScript build (actions)
+        if: steps.actions.outputs.enabled == 'true'
+        run: npm run build --workspace packages/actions
 
       # Vor Build und Notarisierung, damit ein fehlendes Secret nicht erst nach Minuten auffaellt.
       - name: Check secrets
@@ -96,6 +109,13 @@ jobs:
         env:
           CI: 'true'
 
+      # Vor dem Entfernen des Schluesselbunds: Es braucht dieselbe Developer-ID-Identitaet.
+      - name: Build actions bundle (Developer ID)
+        if: steps.actions.outputs.enabled == 'true'
+        run: npm run build:helper --workspace packages/actions
+        env:
+          CI: 'true'
+
       # Gleich nach dem Signieren: danach laeuft Fremdcode (mcpb per npx, Attestation, npm,
       # mcp-publisher), der die Developer-ID-Identitaet nicht mehr erreichen soll. Notarisieren und
       # Stapeln brauchen den Schluesselbund nicht.
@@ -109,11 +129,29 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
 
+      - name: Notarize and staple the actions bundle
+        if: steps.actions.outputs.enabled == 'true'
+        run: scripts/release/notarize.sh "packages/actions/bin/Mail MCP Actions.app" "$RUNNER_TEMP/mail-actions.zip"
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+
       - name: Verify bundle
         id: bundle
         run: |
           set -euo pipefail
-          CDHASH="$(scripts/release/verify-bundle.sh "bin/Mail MCP Helper.app")"
+          REQUIREMENT="$(node -p "require('./dist/signing.js').RELEASE_REQUIREMENT")"
+          CDHASH="$(scripts/release/verify-bundle.sh "bin/Mail MCP Helper.app" "$REQUIREMENT")"
+          echo "cdhash=$CDHASH" >>"$GITHUB_OUTPUT"
+
+      - name: Verify actions bundle
+        id: actions_bundle
+        if: steps.actions.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          REQUIREMENT="$(node -p "require('./packages/actions/dist/bundle.js').RELEASE_REQUIREMENT")"
+          CDHASH="$(scripts/release/verify-bundle.sh "packages/actions/bin/Mail MCP Actions.app" "$REQUIREMENT")"
           echo "cdhash=$CDHASH" >>"$GITHUB_OUTPUT"
 
       - name: Verify npm package
@@ -123,11 +161,27 @@ jobs:
           TARBALL="$(scripts/release/verify-npm-pack.sh "${{ steps.bundle.outputs.cdhash }}")"
           echo "tarball=$TARBALL" >>"$GITHUB_OUTPUT"
 
+      - name: Verify actions npm package
+        id: actions_npm
+        if: steps.actions.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          TARBALL="$(scripts/release/verify-npm-pack.sh "${{ steps.actions_bundle.outputs.cdhash }}" packages/actions)"
+          echo "tarball=$TARBALL" >>"$GITHUB_OUTPUT"
+
       - name: Build and verify MCPB
         id: mcpb
         run: |
           set -euo pipefail
-          MCPB="$(scripts/release/build-mcpb.sh "${{ steps.bundle.outputs.cdhash }}" "$RUNNER_TEMP/out")"
+          MCPB="$(scripts/release/build-mcpb.sh . "${{ steps.bundle.outputs.cdhash }}")"
+          echo "path=$MCPB" >>"$GITHUB_OUTPUT"
+
+      - name: Build and verify actions MCPB
+        id: actions_mcpb
+        if: steps.actions.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          MCPB="$(scripts/release/build-mcpb.sh packages/actions "${{ steps.actions_bundle.outputs.cdhash }}" "${{ steps.bundle.outputs.cdhash }}")"
           echo "path=$MCPB" >>"$GITHUB_OUTPUT"
 
       - uses: actions/attest-build-provenance@v4
@@ -136,6 +190,13 @@ jobs:
             ${{ runner.temp }}/mail-helper.zip
             ${{ steps.mcpb.outputs.path }}
 
+      - uses: actions/attest-build-provenance@v4
+        if: steps.actions.outputs.enabled == 'true'
+        with:
+          subject-path: |
+            ${{ runner.temp }}/mail-actions.zip
+            ${{ steps.actions_mcpb.outputs.path }}
+
       - name: Publish to npm and GitHub
         run: scripts/release/publish.sh "${{ steps.npm.outputs.tarball }}" "${{ steps.mcpb.outputs.path }}" "$RUNNER_TEMP/mail-helper.zip"
         env:
@@ -143,9 +204,28 @@ jobs:
           # Kein NODE_AUTH_TOKEN: seit 0.1.1 Trusted Publishing ueber OIDC (id-token: write). Der erste
           # Publish (AMM-9) lief mit NPM_TOKEN, das Secret ist geloescht.
 
+      # Nach dem Lesepaket. Scheitert das hier, endet der Lauf rot, das Lesepaket ist draussen und die
+      # Registry-Schritte unten laufen nicht; wie es weitergeht, steht in docs/releasing.md. Kein
+      # automatischer zweiter Versuch: publish.sh ueberspringt beim Re-Run, was schon draussen ist.
+      - name: Publish actions package to npm and GitHub
+        if: steps.actions.outputs.enabled == 'true'
+        run: scripts/release/publish.sh --actions "${{ steps.actions_npm.outputs.tarball }}" "${{ steps.actions_mcpb.outputs.path }}" "$RUNNER_TEMP/mail-actions.zip"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       # Zuletzt: scheitert die Registry, sind npm und Release trotzdem draussen; registry.yml holt nach.
+      # Ohne Pfad: Die Pruefsumme kommt vom veroeffentlichten Asset. Ein Re-Run baut das .mcpb neu, und
+      # dessen Bytes unterscheiden sich von dem, das im Release liegt.
       - name: Publish to the MCP Registry
-        run: scripts/publish-registry.sh "${{ steps.mcpb.outputs.path }}"
+        run: scripts/publish-registry.sh --package read
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Publish actions package to the MCP Registry
+        if: steps.actions.outputs.enabled == 'true'
+        run: scripts/publish-registry.sh --package actions
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       # Rueckfall, falls ein Schritt davor gescheitert ist.
       - name: Remove keychain

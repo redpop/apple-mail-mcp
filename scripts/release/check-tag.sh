@@ -1,6 +1,8 @@
 #!/bin/bash
 # Spec 16.2 Schritt 1: der Tag passt zur Version, sie ist keine Vorabversion, alle Versionsangaben sind synchron, und der
 # ausgecheckte Commit (der Tag) liegt auf main. Braucht origin/main (checkout mit fetch-depth: 0).
+# Die Versionsangaben: server.json, manifest.json, Swift, dazu vom Actions-Paket package.json mit dem
+# exakten Pin des Lesepakets, manifest.json, server.json, Swift und sein Eintrag in package-lock.json.
 # Aufruf: check-tag.sh <tag>
 set -euo pipefail
 
@@ -23,10 +25,24 @@ case "$VERSION" in
     exit 1 ;;
 esac
 
+# sync-versions.mjs ueberspringt fehlende JSON-Dateien; ohne diese Pruefung fiele das nicht auf.
+VERSION_FILES=(server.json manifest.json swift/Sources/MailHelperCore/Version.generated.swift)
+if [ -e packages/actions/package.json ]; then
+  VERSION_FILES+=(packages/actions/manifest.json packages/actions/server.json packages/actions/swift/Sources/MailActionsCore/Version.generated.swift)
+fi
+for file in "${VERSION_FILES[@]}"; do
+  if [ ! -e "$file" ]; then
+    echo "check-tag: version file $file is missing." >&2
+    exit 1
+  fi
+done
+
 node scripts/sync-versions.mjs >/dev/null
-if ! /usr/bin/git diff --quiet --exit-code; then
+# Mit --untracked-files=normal: auch eine Datei, die das Skript erst neu angelegt hat, ist eine Abweichung.
+CHANGED="$(/usr/bin/git status --porcelain --untracked-files=normal)"
+if [ -n "$CHANGED" ]; then
   echo "check-tag: version files are out of sync with package.json; run node scripts/sync-versions.mjs and commit:" >&2
-  /usr/bin/git diff --name-only >&2
+  printf '%s\n' "$CHANGED" >&2
   exit 1
 fi
 

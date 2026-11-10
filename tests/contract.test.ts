@@ -9,6 +9,7 @@ import {
   indexFeedResult,
   indexGidsResult,
   listMailboxesResult,
+  locateResult,
   probeResult,
   searchResult,
   threadResult,
@@ -40,6 +41,7 @@ const contracts: Record<string, z.ZodType> = {
   thread: ok(threadResult),
   'index-feed': ok(indexFeedResult),
   'index-gids': ok(indexGidsResult),
+  locate: ok(locateResult),
   error: z.strictObject({
     id: z.number().int(),
     ok: z.literal(false),
@@ -74,6 +76,12 @@ describe('helper contract (golden files)', () => {
     expect(gids.result.gids.map(([, hasFile]) => hasFile)).toEqual(expect.arrayContaining([true, false]))
   })
 
+  it('locate covers several copies and a null header', () => {
+    const loc = load('locate') as { result: { messages: Array<{ messageIdHeader: string | null; copies: unknown[] }> } }
+    expect(loc.result.messages.some((m) => m.copies.length > 1)).toBe(true)
+    expect(loc.result.messages.some((m) => m.messageIdHeader === null)).toBe(true)
+  })
+
   it('the error code has its own message in Node', () => {
     const e = load('error') as { error: { code: string } }
     expect(describeError(e.error.code)).not.toBe(describeError('NOT_A_CODE'))
@@ -90,5 +98,8 @@ describe('helper contract (golden files)', () => {
     const gids = load('index-gids') as { result: { gids: unknown[][] } }
     gids.result.gids[0]!.push(1)
     expect(contracts['index-gids']!.safeParse(gids).success).toBe(false)
+    const loc = load('locate') as { result: { messages: Array<{ copies: Array<Record<string, unknown>> }> } }
+    loc.result.messages[0]!.copies[0]!.surprise = 1
+    expect(contracts.locate!.safeParse(loc).success).toBe(false)
   })
 })

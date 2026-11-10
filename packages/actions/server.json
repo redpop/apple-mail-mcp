@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.redpop/apple-mail-actions-mcp",
+  "title": "Apple Mail Actions",
+  "description": "Move messages between mailboxes in Apple Mail on macOS. Needs the Apple Mail read server.",
+  "repository": {
+    "url": "https://github.com/redpop/apple-mail-mcp",
+    "source": "github",
+    "subfolder": "packages/actions"
+  },
+  "version": "0.3.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@redpop/apple-mail-actions-mcp",
+      "version": "0.3.1",
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/redpop/apple-mail-mcp/releases/download/v0.3.1/apple-mail-actions-mcp-0.3.1.mcpb",
+      "version": "0.3.1",
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

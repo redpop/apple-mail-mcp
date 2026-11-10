@@ -1,4 +1,6 @@
+import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 
 const root = new URL('../', import.meta.url)
@@ -40,5 +42,28 @@ describe('packaging metadata', () => {
     expect(pkg.homepage).toContain('https://github.com/redpop/apple-mail-mcp')
     expect(pkg.bugs.url).toContain('https://github.com/redpop/apple-mail-mcp')
     expect(pkg.keywords).toEqual(expect.arrayContaining(['mcp', 'apple-mail', 'macos']))
+  })
+})
+
+describe('workspace', () => {
+  const pkg = readJson('package.json')
+  const actions = readJson('packages/actions/package.json')
+
+  test('readPackageFilesExcludePackages', () => {
+    const out = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: fileURLToPath(root), encoding: 'utf8' })
+    const files: string[] = JSON.parse(out)[0].files.map((f: { path: string }) => f.path)
+    expect(files.length).toBeGreaterThan(0)
+    expect(files.filter((f) => f.startsWith('packages/') || f.includes('mail-actions'))).toEqual([])
+  })
+
+  test('actionsPinsReadPackageExactly', () => {
+    expect(pkg.workspaces).toEqual(['packages/actions'])
+    expect(actions.name).toBe('@redpop/apple-mail-actions-mcp')
+    expect(actions.version).toBe(pkg.version)
+    expect(actions.dependencies['@redpop/apple-mail-mcp']).toBe(pkg.version)
+  })
+
+  test('readmeStillSaysNoCodeMoves', () => {
+    expect(readFileSync(new URL('README.md', root), 'utf8').replace(/\s+/g, ' ')).toContain('There is no code that sends, drafts, moves, deletes or flags mail')
   })
 })

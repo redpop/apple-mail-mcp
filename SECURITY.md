@@ -35,6 +35,10 @@ Besides mail, the helper reads one other protected file: from
 `~/Library/Accounts/Accounts4.sqlite` it takes the account name and user name of accounts that
 have mailboxes, through one fixed query. Nothing else in that database is read.
 
+The package for moving mail, `@redpop/apple-mail-actions-mcp`, has its own threat model and
+residual risks: [`packages/actions/SECURITY.md`](./packages/actions/SECURITY.md). Everything in
+this file about the read-only package stays true; that package contains none of it.
+
 ## Prompt injection and exfiltration
 
 Mail is written by third parties. A message can contain text such as "ignore your instructions

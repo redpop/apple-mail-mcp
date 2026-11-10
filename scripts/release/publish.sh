@@ -4,11 +4,24 @@
 # Ein vorhandenes Release wird nie ueberschrieben: leer bekommt es alle Assets, vollstaendig bleibt
 # es, wie es ist, teilweise gefuellt bricht das Skript ab. Ein Re-Run baut neu, also mit anderen
 # Bytes; Pruefsummen, Attestation und Registry-Eintrag gehoeren aber zu den Assets des ersten Laufs.
-# Aufruf: publish.sh <tarball> <mcpb> <zip>; braucht GH_TOKEN fuer gh.
+# Mit --actions gilt dasselbe fuer das Actions-Paket: eigenes npm-Paket, eigene Assets und eine eigene
+# Pruefsummen-Datei im selben Release. Es laeuft nach dem Lesepaket und legt kein Release an; fehlt
+# das Release, bleibt auch npm unberuehrt. Die Version folgt dem Lesepaket (check-tag.sh).
+# Aufruf: publish.sh [--actions] <tarball> <mcpb> <zip>; braucht GH_TOKEN fuer gh.
 set -euo pipefail
 
+NPM_NAME="@redpop/apple-mail-mcp"
+SUMS="SHA256SUMS"
+ACTIONS=0
+if [ "${1:-}" = "--actions" ]; then
+  ACTIONS=1
+  NPM_NAME="@redpop/apple-mail-actions-mcp"
+  SUMS="SHA256SUMS-actions"
+  shift
+fi
+
 if [ $# -ne 3 ]; then
-  echo "usage: publish.sh <tarball> <mcpb> <zip>" >&2
+  echo "usage: publish.sh [--actions] <tarball> <mcpb> <zip>" >&2
   exit 2
 fi
 TARBALL="$1"
@@ -17,10 +30,15 @@ ZIP="$3"
 VERSION="$(node -p "require('./package.json').version")"
 TAG="v$VERSION"
 
+if [ "$ACTIONS" -eq 1 ] && ! gh release view "$TAG" --json assets --jq '.assets[].name' >/dev/null 2>&1; then
+  echo "publish: release $TAG does not exist; the read package publishes first and creates it. Nothing was published for $NPM_NAME." >&2
+  exit 1
+fi
+
 # --- npm ---
-PUBLISHED="$(npm view "@redpop/apple-mail-mcp@$VERSION" version 2>/dev/null || true)"
+PUBLISHED="$(npm view "$NPM_NAME@$VERSION" version 2>/dev/null || true)"
 if [ "$PUBLISHED" = "$VERSION" ]; then
-  echo "publish: @redpop/apple-mail-mcp@$VERSION is already on npm, skipping npm publish." >&2
+  echo "publish: $NPM_NAME@$VERSION is already on npm, skipping npm publish." >&2
 else
   npm publish "$TARBALL" --provenance --access public
 fi
@@ -29,10 +47,10 @@ fi
 ASSETS="$(/usr/bin/mktemp -d "${RUNNER_TEMP:-/tmp}/release-assets.XXXXXX")"
 trap '/bin/rm -rf "$ASSETS"' EXIT
 /bin/cp "$MCPB" "$ZIP" "$ASSETS/"
-(cd "$ASSETS" && /usr/bin/shasum -a 256 "$(/usr/bin/basename "$MCPB")" "$(/usr/bin/basename "$ZIP")" >SHA256SUMS)
-FILES=("$ASSETS/$(/usr/bin/basename "$MCPB")" "$ASSETS/$(/usr/bin/basename "$ZIP")" "$ASSETS/SHA256SUMS")
+(cd "$ASSETS" && /usr/bin/shasum -a 256 "$(/usr/bin/basename "$MCPB")" "$(/usr/bin/basename "$ZIP")" >"$SUMS")
+FILES=("$ASSETS/$(/usr/bin/basename "$MCPB")" "$ASSETS/$(/usr/bin/basename "$ZIP")" "$ASSETS/$SUMS")
 
-NAMES=("$(/usr/bin/basename "$MCPB")" "$(/usr/bin/basename "$ZIP")" SHA256SUMS)
+NAMES=("$(/usr/bin/basename "$MCPB")" "$(/usr/bin/basename "$ZIP")" "$SUMS")
 if EXISTING="$(gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null)"; then
   PRESENT=0
   for name in "${NAMES[@]}"; do
@@ -50,4 +68,4 @@ if EXISTING="$(gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev
 else
   gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes "${FILES[@]}"
 fi
-echo "Published $TAG."
+echo "Published $NPM_NAME $TAG."

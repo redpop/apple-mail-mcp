@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A read-only MCP server exposing Apple Mail on macOS. Two halves: a Swift helper (an `.app` bundle) that reads Mail's SQLite index and `.emlx` files, and a TypeScript MCP layer that drives it and parses the mail content.
 
+This repository holds a second package, `packages/actions` (`@redpop/apple-mail-actions-mcp`), the only code that moves mail: one tool `move_messages`, driven by its own signed Swift bundle that talks to Mail through Apple Events. The package at the root stays read-only and ships none of it. See "The actions package" below.
+
 ## Commands
 
 ```bash
@@ -13,11 +15,14 @@ npx vitest run -t "name fragment"         # one test by name
 npm run typecheck                         # tsc --noEmit (src/ and tests/)
 npm run build                             # tsc -> dist/ (src/ only)
 npm run build:helper                      # swift/build.sh -> bin/Mail MCP Helper (Dev).app
-npm run test:swift                        # swift test --package-path swift
-node scripts/sync-versions.mjs            # package.json version -> server.json, manifest.json, Swift
+npm run test:swift                        # swift test for swift/ and packages/actions/swift
+node scripts/sync-versions.mjs            # package.json version -> server.json, manifest.json, Swift, and the same files of packages/actions
+npm run build --workspace packages/actions               # tsc -> packages/actions/dist/
+npm run build:helper --workspace packages/actions        # packages/actions/swift/build.sh -> packages/actions/bin/Mail MCP Actions (Dev).app
+npm run test:swift --workspace packages/actions          # swift test for the actions bundle
 ```
 
-Releases run only in CI: `release.yml` (tag `v*`), `release-candidate.yml` (manual, publishes nothing) and `registry.yml` (MCP Registry retry), all in the `release` environment except `registry.yml`. They call the scripts in `scripts/release/`; `docs/releasing.md` has the process. `ci.yml` runs `verify-bundle.sh` against the ad-hoc bundle and expects it to fail, and validates `manifest.json`.
+Releases run only in CI: `release.yml` (tag `v*`), `release-candidate.yml` (manual, publishes nothing) and `registry.yml` (MCP Registry retry), all in the `release` environment except `registry.yml`. They call the scripts in `scripts/release/`; `docs/releasing.md` has the process. `ci.yml` runs `verify-bundle.sh` against both ad-hoc bundles and expects it to fail, and validates both manifests. Every release step of `packages/actions` is gated on `scripts/release/actions-enabled.sh`: while its `package.json` says `"private": true`, a tag releases only the read package. The maintainer removes `private` by hand; agents do not.
 
 Run the built server against your local helper:
 
@@ -53,7 +58,7 @@ Consequences:
 
 **stdout is protocol-only, on both legs.** Between client and Node it carries MCP messages; between Node and the helper it carries NDJSON. Logging goes to stderr. A stray `console.log` in `src/` corrupts the first leg; a stray `print()` in the helper corrupts the second. `setup` and `doctor` are separate CLI modes (`src/cli/`) and may write to stdout; the server mode may not.
 
-**No free SQL, no path parameters in the helper.** The helper has a fixed command set (`hello`, `probe`, `list-mailboxes`, `search`, `get-messages`, `thread`, `index-feed`, `index-gids`), parameterised queries only, and derives `.emlx` paths itself (checked with `realpath` under `~/Library/Mail`). A path or SQL fragment from the caller would turn it into a file or database oracle for any local process. Tests pass the mail root through the library API; the executable knows only `~/Library/Mail`. There is deliberately no `APPLE_MAIL_ROOT`.
+**No free SQL, no path parameters in the helper.** The helper has a fixed command set (`hello`, `probe`, `list-mailboxes`, `search`, `get-messages`, `thread`, `index-feed`, `index-gids`, `locate`), parameterised queries only, and derives `.emlx` paths itself (checked with `realpath` under `~/Library/Mail`). A path or SQL fragment from the caller would turn it into a file or database oracle for any local process. Tests pass the mail root through the library API; the executable knows only `~/Library/Mail`. There is deliberately no `APPLE_MAIL_ROOT`.
 
 **Node parses untrusted MIME, never Swift.** The helper does not even strip the `.emlx` length frame. A parser bug must hit a process without special rights.
 
@@ -75,6 +80,17 @@ Consequences:
 
 **Invalid configuration does not stop the server.** It starts and answers every tool call with `CONFIG_INVALID`. Invalid config never falls back to "allow all".
 
+## The actions package
+
+`packages/actions` is an npm workspace with its own `package.json`, `manifest.json` (MCPB), `server.json` (MCP Registry name `io.github.redpop/apple-mail-actions-mcp`), `plugin/` and docs. It pins `@redpop/apple-mail-mcp` exactly, imports its `dist/` (vitest aliases that to `src/`) and uses its helper for reading. The design is in `docs/superpowers/specs/2026-11-04-mail-actions-design.md` (local only).
+
+- **Two bundles, never one.** The read helper has Full Disk Access and no Apple-Events permission. The actions bundle "Mail MCP Actions" (`packages/actions/swift/`) has Automation for Mail and no Full Disk Access. It disclaims responsibility like the helper, has the fixed commands `hello`, `permission`, `request-permission` (only for `setup`) and `move`, never sees mail content, and builds no script from unchecked names.
+- **Three more bundle ids, never shared with the helper's.** `io.github.redpop.apple-mail-mcp.mail-actions` (Developer ID, CI only), `...mail-actions.dev` (Apple Development), `...mail-actions.adhoc`. They live in `packages/actions/src/bundle.ts` and `packages/actions/swift/build.sh`; `packages/actions/tests/signing.test.ts` checks they match. Same rules as above: no Developer ID locally, no ad-hoc signing at a path that holds a grant.
+- **Settings come from the environment** (`APPLE_MAIL_ACCOUNTS` required, `APPLE_MAIL_MAX_MOVES`, `APPLE_MAIL_MOVE_EXCLUDE_TARGETS`, `APPLE_MAIL_ACTIONS_PATH`), never from tool parameters. Security mails are never moved, whatever `APPLE_MAIL_SHOW_SECURITY_MAILS` says.
+- **A status describes Mail's local state, not the mail server.** Moves are sequential, never retried, locked for 5 minutes per message.
+- **Docs in step.** `packages/actions/tests/docs.test.ts` checks that every variable of `packages/actions/src/config.ts` is in its README table and that the manifest matches the config. The plugin's pin stays at the package version until the first release; `plugin-pin.yml` pins both plugins, one PR each.
+- Agents do not run `setup` or `doctor` of this package either: both touch the real Automation permission.
+
 ## Dependencies worth knowing
 
 `@modelcontextprotocol/server` **v2**, not the older `@modelcontextprotocol/sdk`. In v2, `registerTool`'s `inputSchema` is a complete `z.object({...})`, not a raw shape. zod is imported as `zod/v4`.
@@ -85,4 +101,4 @@ Runtime dependencies are limited to `@modelcontextprotocol/server`, `zod`, `post
 
 ## Scope
 
-Four tools, `setup` and `doctor`. Out on purpose: sending, drafts, moving, deleting, flagging, `extract_links`, attachment contents, embeddings. Opt-in and off by default: the body index (`APPLE_MAIL_BODY_INDEX`, `src/bodyIndex/`), a plain-text copy of mail bodies on disk; see `SECURITY.md`. Latest release: 0.3.0 (2026-11-03) on npm (trusted publishing with provenance), as a GitHub release with the `.mcpb`, and in the MCP Registry; `plugin/` holds the Claude plugin for Claude Code and Cowork; its npx pin follows npm seven days after a release, through a PR from `plugin-pin.yml` (`scripts/plugin-pin.mjs`), so an npm release cooldown does not block it. `docs/releasing.md` has the process.
+Four tools, `setup` and `doctor`. Moving lives only in `packages/actions` (one tool, `move_messages`, not yet released). Out on purpose in both packages: sending, drafts, deleting, flagging, `extract_links`, attachment contents, embeddings. Opt-in and off by default: the body index (`APPLE_MAIL_BODY_INDEX`, `src/bodyIndex/`), a plain-text copy of mail bodies on disk; see `SECURITY.md`. Latest release: 0.3.0 (2026-11-03) on npm (trusted publishing with provenance), as a GitHub release with the `.mcpb`, and in the MCP Registry; `plugin/` holds the Claude plugin for Claude Code and Cowork; its npx pin follows npm seven days after a release, through a PR from `plugin-pin.yml` (`scripts/plugin-pin.mjs`), so an npm release cooldown does not block it. `docs/releasing.md` has the process.

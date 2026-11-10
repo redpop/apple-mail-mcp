@@ -12,6 +12,8 @@
 #   publish-registry.sh [mcpb-path]          ohne Pfad: Asset des Release v<version> laden (GH_TOKEN)
 #   publish-registry.sh --fill-only <mcpb> <out>   nur die Kopie mit Pruefsumme schreiben (Test)
 #   publish-registry.sh --wait-npm-only <version>  nur auf die Version bei npm warten (Test)
+# Vor jedem davon waehlt --package read|actions den Eintrag; ohne die Option gilt read. Jeder Eintrag
+# hat seine eigene server.json und sein eigenes .mcpb. Ein privates Actions-Paket wird nicht eingetragen.
 #
 # Setzt eine GitHub-OIDC-Anmeldung voraus (Actions mit id-token: write); lokal nur --fill-only.
 set -euo pipefail
@@ -24,14 +26,25 @@ cd "$REPO_ROOT"
 MCP_PUBLISHER_VERSION="v1.8.1"
 PLACEHOLDER="0000000000000000000000000000000000000000000000000000000000000000"
 
+PACKAGE="read"
+if [ "${1:-}" = "--package" ]; then
+  PACKAGE="${2:-}"
+  shift 2 || true
+fi
+case "$PACKAGE" in
+  read) PACKAGE_DIR="."; MCPB_NAME="apple-mail-mcp" ;;
+  actions) PACKAGE_DIR="packages/actions"; MCPB_NAME="apple-mail-actions-mcp" ;;
+  *) echo "usage: publish-registry.sh [--package read|actions] ..." >&2; exit 2 ;;
+esac
+
 # Schreibt server.json mit der Pruefsumme von <mcpb> nach <out> und bricht ab, wenn der
 # Platzhalter danach noch drinsteht.
 fill_sha() {
   local mcpb="$1" out="$2" sha
   sha="$(/usr/bin/shasum -a 256 "$mcpb" | /usr/bin/awk '{print $1}')"
-  SHA="$sha" OUT="$out" node -e '
+  SHA="$sha" OUT="$out" SERVER="$PACKAGE_DIR/server.json" node -e '
     const fs = require("node:fs")
-    const server = JSON.parse(fs.readFileSync("server.json", "utf8"))
+    const server = JSON.parse(fs.readFileSync(process.env.SERVER, "utf8"))
     for (const p of server.packages) if (p.registryType === "mcpb") p.fileSha256 = process.env.SHA
     fs.writeFileSync(process.env.OUT, JSON.stringify(server, null, 2) + "\n")
   '
@@ -46,7 +59,7 @@ fill_sha() {
 # solange mit "NPM package ... not found" ab.
 wait_for_npm() {
   local version="$1" name deadline
-  name="$(node -p "require('./package.json').name")"
+  name="$(node -p "require('./$PACKAGE_DIR/package.json').name")"
   deadline=$((SECONDS + ${REGISTRY_NPM_WAIT_SECONDS:-600}))
   # Ohne Benutzerkonfiguration: die .npmrc des Release-Jobs traegt ein Token, das ab Trusted
   # Publishing leer ist. Lesen braucht keines.
@@ -77,24 +90,37 @@ if [ "${1:-}" = "--fill-only" ]; then
   exit 0
 fi
 
+if [ "$PACKAGE" = "actions" ] && [ "$(scripts/release/actions-enabled.sh)" != "true" ]; then
+  echo "publish-registry: packages/actions is private, so it has no registry entry yet." >&2
+  exit 1
+fi
+
 VERSION="$(node -p "require('./package.json').version")"
 node scripts/sync-versions.mjs >/dev/null
 
 # Die Registry begrenzt die Beschreibung auf 100 Zeichen und meldet das erst nach dem Hochladen.
 # shellcheck disable=SC2016 # JavaScript-Template-String, kein Shell-Ausdruck
-node -e '
-  const length = JSON.parse(require("node:fs").readFileSync("server.json", "utf8")).description.length
+SERVER="$PACKAGE_DIR/server.json" node -e '
+  const length = JSON.parse(require("node:fs").readFileSync(process.env.SERVER, "utf8")).description.length
   if (length > 100) { console.error(`server.json: description has ${length} characters, at most 100 are allowed`); process.exit(1) }
 '
 
 WORK_DIR="$(/usr/bin/mktemp -d "${RUNNER_TEMP:-/tmp}/registry.XXXXXX")"
 trap '/bin/rm -rf "$WORK_DIR"' EXIT
 
+# Das Token kann Schreibrechte haben und gilt nur fuer den Download: npm, curl und mcp-publisher sehen es
+# nicht. Es wird deshalb vor dem Warten auf npm aus der Umgebung genommen und nur an gh weitergereicht.
+DOWNLOAD_TOKEN="${GH_TOKEN:-}"
+unset GH_TOKEN
+
+wait_for_npm "$VERSION"
+
 MCPB="${1:-}"
 if [ -z "$MCPB" ]; then
-  gh release download "v$VERSION" --pattern "apple-mail-mcp-$VERSION.mcpb" --dir "$WORK_DIR"
-  MCPB="$WORK_DIR/apple-mail-mcp-$VERSION.mcpb"
+  env ${DOWNLOAD_TOKEN:+"GH_TOKEN=$DOWNLOAD_TOKEN"} gh release download "v$VERSION" --pattern "$MCPB_NAME-$VERSION.mcpb" --dir "$WORK_DIR"
+  MCPB="$WORK_DIR/$MCPB_NAME-$VERSION.mcpb"
 fi
+unset DOWNLOAD_TOKEN
 fill_sha "$MCPB" "$WORK_DIR/server.json"
 
 case "$(/usr/bin/uname -s)/$(/usr/bin/uname -m)" in
@@ -113,10 +139,8 @@ if [ "$ACTUAL_SHA256" != "$PUBLISHER_SHA256" ]; then
 fi
 tar xzf "$WORK_DIR/mcp-publisher.tar.gz" -C "$WORK_DIR" mcp-publisher
 
-wait_for_npm "$VERSION"
-
 # GitHub-OIDC statt eines langlebigen Tokens: der Namensraum io.github.redpop haengt an der
 # Identitaet des Workflow-Laufs. publish liest server.json aus dem Arbeitsverzeichnis.
 (cd "$WORK_DIR" && ./mcp-publisher login github-oidc && ./mcp-publisher publish)
 
-echo "Published version $VERSION to the MCP Registry."
+echo "Published $MCPB_NAME version $VERSION to the MCP Registry."
