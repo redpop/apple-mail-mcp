@@ -99,7 +99,7 @@ not a series.
 
 ## Install
 
-**Claude Code and Cowork, as a plugin:**
+**Claude Code, as a plugin:**
 
 ```
 /plugin install apple-mail-actions-mcp --marketplace redpop/apple-mail-mcp
@@ -116,7 +116,9 @@ claude mcp add apple-mail-actions \
 npx -y @redpop/apple-mail-actions-mcp setup
 ```
 
-**Claude Desktop:** the release will carry an `.mcpb` bundle with the same settings page.
+**Claude Desktop and Cowork:** the release will carry an `.mcpb` bundle with the same settings
+page. The plugin does not work in Cowork, which starts a plugin's server inside its own virtual
+machine, away from Mail.
 
 `setup` first runs the setup of the read server (Full Disk Access for its helper), then asks
 macOS for the Automation permission of "Mail MCP Actions" to control Mail. Mail must be

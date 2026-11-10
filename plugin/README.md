@@ -18,9 +18,11 @@ The plugin follows a new npm release after seven days, so an npm release cooldow
 (`min-release-age`) of up to seven days does not block it. A longer cooldown blocks each new
 plugin version until it ends.
 
-It needs Node.js 22.16 or newer (or 24 and newer) and runs in Claude Code and in Cowork on your
-Mac. The Claude desktop chat does not start local servers from plugins; use the `.mcpb` bundle
-from the [GitHub releases](https://github.com/redpop/apple-mail-mcp/releases) there.
+It needs Node.js 22.16 or newer (or 24 and newer) and runs in Claude Code on your Mac. It does
+not work in Cowork: Cowork starts a plugin's server inside its own virtual machine, where the
+server cannot reach Mail. The Claude desktop chat does not start local servers from plugins.
+For both, use the `.mcpb` bundle from the
+[GitHub releases](https://github.com/redpop/apple-mail-mcp/releases).
 
 ## Set it up
 
