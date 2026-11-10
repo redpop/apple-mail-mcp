@@ -88,9 +88,10 @@ not a series.
 
 ## Requirements
 
-- macOS 15 or later. Verified with a real mailbox only on macOS 27 with Mail 16 and one
-  mailbox.org account. On macOS 15 the tool is a no-op because of the missing Message-ID
-  header.
+- macOS 26 or later to move mail. The server starts on macOS 15, but Mail there does not store
+  the Message-ID header, so every move is refused with `skipped_no_message_id`; the server
+  never moves a message it cannot identify by its Message-ID. Verified with a real mailbox
+  only on macOS 27 with Mail 16 and one mailbox.org account.
 - Node.js 22.16 or newer in the 22 line, or 24 and newer.
 - The read server `@redpop/apple-mail-mcp` at the same version, with Full Disk Access.
 - Mail must be running. The server never starts it; without it the call fails with

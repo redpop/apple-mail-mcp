@@ -56,6 +56,7 @@ describe('README', () => {
     expect(t).toMatch(/5 minutes/)
     expect(t).toMatch(/never held a message/i)
     expect(t).toMatch(/macOS 15/)
+    expect(t).toMatch(/macOS 26 or later to move mail/)
     expect(t).toMatch(/2026-11-04.*one test mail was moved to a subfolder and back.*INBOX and back.*single test mails/)
     expect(t).not.toMatch(/moves from or to INBOX are not/)
   })
