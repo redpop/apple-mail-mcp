@@ -76,11 +76,17 @@ fi
 if [ "$PACKAGE_DIR" = "packages/actions" ]; then
   /bin/cp "$SOURCE/package.json" "$STAGING/package.json"
   /bin/rm -f "$STAGING/package-lock.json"
-  # Ein Symlink an dieser Stelle liesse die Kopien unten ins Quellverzeichnis schreiben.
-  if [ -L "$STAGING/$READ_COPY" ]; then
-    echo "build-mcpb: $READ_COPY in the staging directory is a symlink; refusing to copy through it" >&2
-    exit 1
-  fi
+  # Ein Symlink auf diesem Weg liesse die Kopien unten ins Quellverzeichnis schreiben. Jede Komponente
+  # zaehlt, nicht nur die letzte: auch ein verlinktes node_modules/@redpop leitet um.
+  LINK_CHECK="$STAGING"
+  IFS=/ read -r -a READ_PARTS <<<"$READ_COPY"
+  for part in "${READ_PARTS[@]}"; do
+    LINK_CHECK="$LINK_CHECK/$part"
+    if [ -L "$LINK_CHECK" ]; then
+      echo "build-mcpb: ${LINK_CHECK#"$STAGING"/} in the staging directory is a symlink; refusing to copy through it" >&2
+      exit 1
+    fi
+  done
   /bin/mkdir -p "$STAGING/$READ_COPY/bin"
   /usr/bin/ditto "$ROOT/dist" "$STAGING/$READ_COPY/dist"
   /usr/bin/ditto "$ROOT/bin/$HELPER_APP" "$STAGING/$READ_COPY/bin/$HELPER_APP"
