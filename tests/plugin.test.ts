@@ -12,6 +12,11 @@ const root = join(import.meta.dirname, '..')
 const pluginDir = join(root, 'plugin')
 const readJson = (p: string) => JSON.parse(readFileSync(join(root, p), 'utf8'))
 
+// Der Release-Kandidat setzt package.json auf x.y.z-rc.N; der Pin vergleicht nur mit x.y.z.
+function releaseOf(version: string): string {
+  return version.replace(/-.*$/, '')
+}
+
 describe('Claude plugin', () => {
   const pkg = readJson('package.json')
   const manifest = readJson('manifest.json')
@@ -30,7 +35,7 @@ describe('Claude plugin', () => {
     expect(server.command).toBe('npx')
     expect(server.args).toEqual(['-y', `@redpop/apple-mail-mcp@${plugin.version}`])
     // nextPin liefert die Plugin-Version nur, wenn sie ueber package.json liegt.
-    expect(nextPin({ [plugin.version]: '2000-01-01T00:00:00Z' }, pkg.version, Date.now())).toBeNull()
+    expect(nextPin({ [plugin.version]: '2000-01-01T00:00:00Z' }, releaseOf(pkg.version), Date.now())).toBeNull()
   })
 
   test('offers the settings of the MCPB released with the pinned version', () => {
@@ -79,7 +84,7 @@ describe('Claude plugin for the actions package', () => {
     expect(Object.keys(plugin.mcpServers)).toEqual(['apple-mail-actions'])
     expect(server.command).toBe('npx')
     expect(server.args).toEqual(['-y', `@redpop/apple-mail-actions-mcp@${plugin.version}`])
-    expect(nextPin({ [plugin.version]: '2000-01-01T00:00:00Z' }, pkg.version, Date.now())).toBeNull()
+    expect(nextPin({ [plugin.version]: '2000-01-01T00:00:00Z' }, releaseOf(pkg.version), Date.now())).toBeNull()
   })
 
   test('environment and settings are consistent', () => {
