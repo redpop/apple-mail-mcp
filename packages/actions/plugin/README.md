@@ -28,8 +28,8 @@ pin follows a new npm release after seven days, so an npm release cooldown of up
 does not block it.
 
 It needs Node.js 22.16 or newer (or 24 and newer). Mail must be running when a move is made.
-It runs in Claude Code. It does not work in Cowork, which starts a plugin's server inside its
-own virtual machine, away from Mail; use the `.mcpb` bundle from the GitHub releases there.
+It runs in Claude Code. The read plugin did not start in Cowork in a test on 2026-11-10, for a
+reason not yet known; use the `.mcpb` bundle from the GitHub releases there.
 
 ## Set it up
 
