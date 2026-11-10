@@ -33,17 +33,26 @@ describe('actions setup', () => {
     const s = sink()
     const order: string[] = []
     const actions = { run: async (c: string) => (order.push(c), { status: 'granted' }) }
-    const code = await runActionsSetup({ readSetup: async () => (order.push('read-setup'), 0), actions, out: s.out })
+    const code = await runActionsSetup({ readSetup: async () => (order.push('read-setup'), 0), actions, out: s.out, accounts: 0 })
     expect(code).toBe(0)
     expect(order).toEqual(['read-setup', 'request-permission'])
     expect(s.text()).toContain('Mail MCP Actions can control Mail')
-    expect(s.text()).toContain('APPLE_MAIL_ACCOUNTS')
+    expect(s.text()).toContain('Set APPLE_MAIL_ACCOUNTS')
+  })
+
+  test('setupWithAccountsDoesNotAskForAccounts', async () => {
+    const s = sink()
+    const actions = fakeActions({ 'request-permission': () => ({ status: 'granted' }) })
+    const code = await runActionsSetup({ readSetup: async () => 0, actions, out: s.out, accounts: 1 })
+    expect(code).toBe(0)
+    expect(s.text()).not.toContain('Set APPLE_MAIL_ACCOUNTS')
+    expect(s.text()).toContain('APPLE_MAIL_ACCOUNTS names 1 entry')
   })
 
   test('setupRequestsAutomationOnlyAfterFda', async () => {
     const s = sink()
     const actions = fakeActions({ 'request-permission': () => ({ status: 'granted' }) })
-    const code = await runActionsSetup({ readSetup: async () => 1, actions, out: s.out })
+    const code = await runActionsSetup({ readSetup: async () => 1, actions, out: s.out, accounts: 1 })
     expect(code).toBe(1)
     expect(actions.calls).toEqual([])
     expect(s.text()).toContain('Automation step was skipped')
@@ -58,7 +67,7 @@ describe('actions setup', () => {
           return { status: 'mail_not_running' }
         },
       }
-      expect(await runActionsSetup({ readSetup: async () => 0, actions, out: s.out })).toBe(1)
+      expect(await runActionsSetup({ readSetup: async () => 0, actions, out: s.out, accounts: 1 })).toBe(1)
       expect(s.text()).toContain('Open Mail, then run setup again.')
     }
   })
@@ -66,7 +75,7 @@ describe('actions setup', () => {
   test('setup tells the user where to switch on a denied permission', async () => {
     const s = sink()
     const actions = fakeActions({ 'request-permission': () => ({ status: 'denied' }) })
-    expect(await runActionsSetup({ readSetup: async () => 0, actions, out: s.out })).toBe(1)
+    expect(await runActionsSetup({ readSetup: async () => 0, actions, out: s.out, accounts: 1 })).toBe(1)
     expect(s.text()).toContain('Privacy & Security > Automation')
   })
 })
@@ -201,6 +210,7 @@ describe('runCli', () => {
       onSignal: () => {},
       readCli: async (cmd, _args, deps) => {
         seen.push(cmd)
+        expect(deps.setupAddHint).toBe(false)
         deps.makeRunner!({} as never).stop()
         return 0
       },

@@ -90,6 +90,15 @@ describe('setup', () => {
     expect(plain.text()).not.toContain('apple-mail-dev')
   })
 
+  it('setupWithoutAddHintPrintsNoClaudeMcpAddLine', async () => {
+    const s = sink()
+    const code = await runSetup(base(fakeRunner({ probe: () => probe('granted') }), s, { override: true, addHint: false }))
+    expect(code).toBe(0)
+    expect(s.text()).toContain('Full Disk Access is granted.')
+    expect(s.text()).not.toContain('claude mcp add')
+    expect(s.text()).not.toContain('Add the server')
+  })
+
   it('setup with granted access prints success and the claude mcp add line', async () => {
     const s = sink()
     const code = await runSetup(base(fakeRunner({ probe: () => probe('granted') }), s))

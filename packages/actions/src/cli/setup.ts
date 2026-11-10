@@ -8,6 +8,8 @@ export interface ActionsSetupDeps {
   readSetup: () => Promise<number>
   actions: HelperRunner
   out: Writable
+  /** Anzahl der Eintraege in APPLE_MAIL_ACCOUNTS; 0 heisst nicht gesetzt oder ungueltig. */
+  accounts: number
 }
 
 const SETTINGS_LINE = 'System Settings > Privacy & Security > Automation'
@@ -43,7 +45,8 @@ export async function runActionsSetup(deps: ActionsSetupDeps): Promise<number> {
   switch (status) {
     case 'granted':
       say('Automation is allowed: Mail MCP Actions can control Mail.')
-      say('Set APPLE_MAIL_ACCOUNTS to the accounts the server may move messages in; without it no message is ever moved.')
+      if (deps.accounts > 0) say(`APPLE_MAIL_ACCOUNTS names ${deps.accounts} entr${deps.accounts === 1 ? 'y' : 'ies'}; the server moves messages only there.`)
+      else say('Set APPLE_MAIL_ACCOUNTS to the accounts the server may move messages in; without it no message is ever moved.')
       return 0
     case 'mail_not_running':
       say('Mail is not running. macOS can only ask for the permission while Mail is open.')

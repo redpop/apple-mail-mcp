@@ -8,6 +8,7 @@ import { loadActionsConfig } from '../src/config.js'
 import { createActionsContext } from '../src/context.js'
 import { MoveLocks } from '../src/locks.js'
 import { createServer, INSTRUCTIONS } from '../src/server.js'
+import { MOVE_NOTE } from '../src/mover.js'
 import { ARCHIVE, FakeMail, HOME, message, WORK } from './fakes/fakeActions.js'
 
 interface Reg { handler: (args: unknown, ctx?: unknown) => Promise<any>; inputSchema: any; outputSchema: any; annotations: any; description: string }
@@ -67,6 +68,16 @@ describe('registration', () => {
     expect(INSTRUCTIONS).toContain('move all, move some, adjust first, move none')
     expect(INSTRUCTIONS).toContain('Move only what the user confirmed')
     expect(INSTRUCTIONS).toContain('not the mail server')
+  })
+
+  test('instructionsSayForbiddenTargetsStayForbidden', () => {
+    expect(INSTRUCTIONS).toContain('Junk, trash, drafts, sent and all-mail folders are never targets')
+    expect(INSTRUCTIONS).toContain('no sync or setting changes that')
+  })
+
+  test('noteExplainsTargetNotAllowed', () => {
+    expect(MOVE_NOTE).toContain('skipped_target_not_allowed means the target id is not among the visible mailboxes')
+    expect(MOVE_NOTE).toContain('deleted')
   })
 })
 

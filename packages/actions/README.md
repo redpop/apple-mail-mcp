@@ -160,6 +160,11 @@ Then follow the README of the read server for its helper, and grant Automation w
 `APPLE_MAIL_HELPER_PATH` pointing at the Dev bundles in each `bin/` directory. Never sign
 these builds with a Developer ID.
 
+Put these variables in front of the command instead of exporting them. An exported
+`APPLE_MAIL_*` variable stays in the shell, and every MCP server that a client started from
+that shell inherits it: an exported `APPLE_MAIL_ACCOUNTS` also limits the read server to those
+accounts. If you exported them, run `unset` on them before you start the client.
+
 ## Diagnostics
 
 ```bash
