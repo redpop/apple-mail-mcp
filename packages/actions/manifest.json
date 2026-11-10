@@ -4,7 +4,7 @@
   "display_name": "Apple Mail Actions",
   "version": "0.3.1",
   "description": "Move messages between mailboxes in Apple Mail on macOS. Needs the Apple Mail read server beside it.",
-  "long_description": "An MCP server with one tool, move_messages, that moves messages to another mailbox of the same account in Apple Mail. It does not read mail, send, delete or flag. A signed app, Mail MCP Actions, asks Mail to do the move and is the only process that needs the Automation permission. The accounts it may touch are set below, never by the assistant. Install the Apple Mail read server beside it: that server provides the message and mailbox ids.",
+  "long_description": "An MCP server with one tool, move_messages, that moves messages to another mailbox of the same account in Apple Mail. It does not read mail, send, delete or flag. A signed app, Mail MCP Actions, asks Mail to do the move and is the only process that needs the Automation permission. The accounts it may touch are set below, never by the assistant. Install the Apple Mail read server beside it: that server provides the message and mailbox ids. Moving needs macOS 26 or later; on macOS 15 every move is refused.",
   "author": {
     "name": "Martin Alker",
     "url": "https://github.com/redpop"
