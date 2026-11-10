@@ -103,10 +103,11 @@ The full threat model and both residual risks: [`SECURITY.md`](./SECURITY.md).
 The plugin runs the npm package below at the plugin's version. Grant Full Disk Access once with
 `npx -y @redpop/apple-mail-mcp setup`.
 
-The plugin did not work in Cowork in a test on 2026-11-10: its server did not start and its
-tools did not appear. The cause is not known; Cowork may start plugin servers in its virtual
-machine, away from Mail. Use the `.mcpb` bundle below there: Cowork uses the extensions of
-Claude Desktop.
+The plugin does not work in Cowork or in the Claude desktop chat. Cowork starts a plugin's
+local server inside its Linux virtual machine, away from Mail, and the chat ignores local
+servers from plugins. In a test on 2026-11-10 the tools did not appear in Cowork. Use the
+`.mcpb` bundle below for both: Claude Desktop runs its extensions on your Mac and passes them
+to Cowork.
 
 **Claude Code without the plugin** (or any client that starts a command):
 

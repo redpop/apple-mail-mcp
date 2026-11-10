@@ -117,8 +117,8 @@ npx -y @redpop/apple-mail-actions-mcp setup
 ```
 
 **Claude Desktop and Cowork:** the release will carry an `.mcpb` bundle with the same settings
-page. The read plugin did not start in Cowork in a test on 2026-11-10, so use the bundle there; this
-plugin starts its server the same way.
+page. The plugin does not work in Cowork, which starts a plugin's local server inside its Linux
+virtual machine, away from Mail, or in the desktop chat, which ignores such servers.
 
 `setup` first runs the setup of the read server (Full Disk Access for its helper), then asks
 macOS for the Automation permission of "Mail MCP Actions" to control Mail. Mail must be

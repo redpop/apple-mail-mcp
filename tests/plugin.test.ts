@@ -5,7 +5,7 @@ import { describe, expect, test } from 'vitest'
 // @ts-expect-error: Skript ohne Typdeklaration, liegt ausserhalb von src/
 import { MIN_DAYS, PACKAGES, nextPin, pinPlugin } from '../scripts/plugin-pin.mjs'
 
-// Das Plugin fuer Claude Code (AMM-18; in Cowork startete es am 10.11. nicht, dort die MCPB) startet denselben Server per npx. Es pinnt eine
+// Das Plugin fuer Claude Code (AMM-18; Cowork startet es in seiner Linux-VM, dort und im Chat gilt die MCPB) startet denselben Server per npx. Es pinnt eine
 // veroeffentlichte Version, die npm erst nach MIN_DAYS Tagen folgt (scripts/plugin-pin.mjs);
 // Einstellungen und Umgebung stammen aus dem MCPB-Manifest genau dieser Version.
 const root = join(import.meta.dirname, '..')
