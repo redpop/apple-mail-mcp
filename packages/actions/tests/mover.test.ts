@@ -244,6 +244,12 @@ describe('before the first move', () => {
     expect(describeActionsError('ACTIONS_UNEXPECTED_ANSWER')).toMatch(/no move was attempted/)
   })
 
+  test('lockUnavailableNamesTheFileNotDoctor', () => {
+    const text = describeActionsError('LOCK_UNAVAILABLE')
+    expect(text).not.toContain('doctor')
+    expect(text).toContain('~/Library/Application Support/apple-mail-mcp/move-locks.json')
+  })
+
   test('an unreadable lock file before any move throws and moves nothing', async () => {
     writeFileSync(lockFile, 'not json')
     const mail = new FakeMail([message(1)])

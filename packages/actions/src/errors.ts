@@ -18,7 +18,7 @@ const TEXTS: Record<ActionsErrorCode, string> = {
     'switch on Mail under "Mail MCP Actions", and retry.',
   MOVE_FAILED: 'Mail did not move the message. Nothing was changed for this message; it may have been moved or deleted in the meantime.',
   LOCK_UNAVAILABLE:
-    'The move protection file could not be read or written, so no message was moved. This is a local problem; ask the user to run the doctor command.',
+    'The move protection file could not be read or written, so no message was moved. This is a local problem; ask the user to check that ~/Library/Application Support/apple-mail-mcp/move-locks.json is a readable, writable file and to try again.',
   ACTIONS_BUNDLE_MISSING: 'The Mail MCP Actions app is missing from the installation, so no message was moved. Reinstalling the package should restore it.',
   ACTIONS_SIGNATURE_INVALID:
     'The Mail MCP Actions app is not signed correctly and was not started, so no message was moved. The user should reinstall the package from the official source.',
