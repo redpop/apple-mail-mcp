@@ -78,14 +78,15 @@ nothing.
 
 ### What the maintainer does once, to open the gate
 
-1. **Open point, to check before anything else: the first publish of the new npm name.** Trusted
-   publishing is set up per package, and a package may have to exist on npm before a trusted
-   publisher can be added to it. This was not verified for `@redpop/apple-mail-actions-mcp`. The
-   release workflow passes no npm token, so without a trusted publisher the actions publish fails
-   after the read package is already out. Find out what npm requires at that moment, also given
-   the token changes described under [First publish to npm](#first-publish-to-npm), and decide how
-   the name comes into existence. A workflow change for this is not prepared.
-2. Add the repository and `release.yml` as a trusted publisher for the new name. The expiry rule
+1. **The npm name exists (done 2026-11-10).** A trusted publisher can only be added to a package
+   that exists on npm, and the release workflow passes no npm token. The maintainer ran a local
+   `npm publish` (npm 11.17) of a placeholder package with no code, logged in interactively with
+   2FA. npm treated it as a staged publish of a new package: it shows only its own placeholder
+   `0.0.0-stage` as `latest`, and the placeholder version itself never became public (no staged
+   version is listed either). That is enough to reserve the name; leave `0.0.0-stage` alone.
+2. Add the repository and `release.yml` as a trusted publisher for the new name, shortly before
+   the release tag. Configurations created after 2026-09-03 allow only `npm stage publish` unless
+   direct publishing is selected; `publish.sh` runs `npm publish`, so select it. The expiry rule
    under [First publish to npm](#first-publish-to-npm) applies to it too.
 3. Remove `"private": true` from `packages/actions/package.json` in a normal PR, and in the same PR
    add the `apple-mail-actions-mcp` entry (`"source": "./packages/actions/plugin"`) back to

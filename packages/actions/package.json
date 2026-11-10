@@ -5,7 +5,6 @@
   "description": "MCP server for Apple Mail on macOS that moves messages between mailboxes, driven by a signed helper app",
   "license": "MIT",
   "type": "module",
-  "private": true,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/redpop/apple-mail-mcp.git",

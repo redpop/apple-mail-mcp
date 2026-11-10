@@ -179,7 +179,7 @@ describe('docs/releasing.md', () => {
   const docs = read('docs/releasing.md')
 
   test('describes the gate, the actions artifacts and the retry', () => {
-    for (const fragment of ['scripts/release/actions-enabled.sh', 'apple-mail-actions-mcp-<version>.mcpb', 'SHA256SUMS-actions', '--package actions', 'Open point']) {
+    for (const fragment of ['scripts/release/actions-enabled.sh', 'apple-mail-actions-mcp-<version>.mcpb', 'SHA256SUMS-actions', '--package actions', '0.0.0-stage', 'direct publishing is selected']) {
       expect(docs, fragment).toContain(fragment)
     }
     expect(docs).toMatch(/retry/i)

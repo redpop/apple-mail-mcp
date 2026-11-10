@@ -31,7 +31,6 @@ It needs Node.js 22.16 or newer (or 24 and newer). Mail must be running when a m
 
 ## Set it up
 
-The marketplace lists this plugin from the first release. Until then this command finds nothing.
 
 ```
 /plugin install apple-mail-actions-mcp --marketplace redpop/apple-mail-mcp

@@ -99,7 +99,7 @@ not a series.
 
 ## Install
 
-**Claude Code and Cowork, as a plugin** (the marketplace lists it from the first release):
+**Claude Code and Cowork, as a plugin:**
 
 ```
 /plugin install apple-mail-actions-mcp --marketplace redpop/apple-mail-mcp
