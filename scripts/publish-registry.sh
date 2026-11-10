@@ -18,6 +18,12 @@
 # Setzt eine GitHub-OIDC-Anmeldung voraus (Actions mit id-token: write); lokal nur --fill-only.
 set -euo pipefail
 
+# Das Token kann Schreibrechte haben und gilt nur fuer den Download: node, npm, curl und mcp-publisher
+# sehen es nicht. Es wird deshalb vor dem ersten Aufruf aus der Umgebung genommen und nur an gh
+# weitergereicht, ueber die Umgebung einer Subshell, nie ueber argv (sonst zeigt es ps an).
+DOWNLOAD_TOKEN="${GH_TOKEN:-}"
+unset GH_TOKEN
+
 REPO_ROOT="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd)"
 cd "$REPO_ROOT"
 
@@ -108,16 +114,14 @@ SERVER="$PACKAGE_DIR/server.json" node -e '
 WORK_DIR="$(/usr/bin/mktemp -d "${RUNNER_TEMP:-/tmp}/registry.XXXXXX")"
 trap '/bin/rm -rf "$WORK_DIR"' EXIT
 
-# Das Token kann Schreibrechte haben und gilt nur fuer den Download: npm, curl und mcp-publisher sehen es
-# nicht. Es wird deshalb vor dem Warten auf npm aus der Umgebung genommen und nur an gh weitergereicht.
-DOWNLOAD_TOKEN="${GH_TOKEN:-}"
-unset GH_TOKEN
-
 wait_for_npm "$VERSION"
 
 MCPB="${1:-}"
 if [ -z "$MCPB" ]; then
-  env ${DOWNLOAD_TOKEN:+"GH_TOKEN=$DOWNLOAD_TOKEN"} gh release download "v$VERSION" --pattern "$MCPB_NAME-$VERSION.mcpb" --dir "$WORK_DIR"
+  (
+    if [ -n "$DOWNLOAD_TOKEN" ]; then export GH_TOKEN="$DOWNLOAD_TOKEN"; fi
+    gh release download "v$VERSION" --pattern "$MCPB_NAME-$VERSION.mcpb" --dir "$WORK_DIR"
+  )
   MCPB="$WORK_DIR/$MCPB_NAME-$VERSION.mcpb"
 fi
 unset DOWNLOAD_TOKEN

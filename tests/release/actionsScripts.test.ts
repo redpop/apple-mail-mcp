@@ -223,6 +223,10 @@ mkdir -p node_modules/@modelcontextprotocol/server
 echo '{}' >node_modules/@modelcontextprotocol/server/package.json
 [ -n "\${SKIP_ZOD:-}" ] || cp -R "$REAL_ZOD" node_modules/zod
 [ -z "\${PLANT_REDPOP:-}" ] || mkdir -p node_modules/@redpop/other
+if [ -n "\${PLANT_PARENT_LINK:-}" ]; then
+  mkdir -p node_modules "$PLANT_PARENT_LINK"
+  ln -s "$PLANT_PARENT_LINK" node_modules/@redpop
+fi
 if [ -n "\${PLANT_LINK:-}" ]; then
   mkdir -p node_modules/@redpop "$PLANT_LINK"
   ln -s "$PLANT_LINK" node_modules/@redpop/apple-mail-mcp
@@ -337,6 +341,14 @@ fi
   test('actions package: a symlink in place of the read copy is refused and nothing is written through it', () => {
     const target = join(dir, 'link-target')
     const r = build(['packages/actions', cdhash.actions!, cdhash.helper!], { PLANT_LINK: target })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('is a symlink')
+    expect(readdirSync(target)).toEqual([])
+  })
+
+  test('actions package: a symlinked parent of the read copy is refused and nothing is written through it', () => {
+    const target = join(dir, 'parent-link-target')
+    const r = build(['packages/actions', cdhash.actions!, cdhash.helper!], { PLANT_PARENT_LINK: target })
     expect(r.status).toBe(1)
     expect(r.stderr).toContain('is a symlink')
     expect(readdirSync(target)).toEqual([])
@@ -516,6 +528,9 @@ done
       fake(fakes, 'gh', FAKE_GH)
       fake(fakes, 'curl', FAKE_CURL)
       fake(fakes, 'npm', FAKE_NPM)
+      // node und env protokollieren nur, ob sie das Token sehen, und reichen dann weiter.
+      fake(fakes, 'node', `echo "node token=\${GH_TOKEN:-none}" >>"$CALLS"\nexec "${process.execPath}" "$@"\n`)
+      fake(fakes, 'env', `echo "env args=$*" >>"$CALLS"\nexec /usr/bin/env "$@"\n`)
       const calls = join(dir, 'calls')
       writeFileSync(calls, '')
       const local = join(dir, 'local.mcpb')
@@ -524,7 +539,9 @@ done
         encoding: 'utf8',
         env: { PATH: `${fakes}:${process.env.PATH}`, CALLS: calls, GH_TOKEN: 'write-token', PUBLISHER_TAR: tar, REGISTRY_NPM_POLL_SECONDS: '0' },
       })
-      return { status: r.status, stderr: r.stderr, calls: readFileSync(calls, 'utf8').trim().split('\n') }
+      const all = readFileSync(calls, 'utf8').trim().split('\n')
+      // Die bestehenden Erwartungen gelten fuer die Werkzeuge; node und env prueft der eigene Test.
+      return { status: r.status, stderr: r.stderr, all, calls: all.filter((l) => !/^(node|env) /.test(l)) }
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -544,6 +561,14 @@ done
       'mcp-publisher login token=none',
       'mcp-publisher publish token=none',
     ])
+  })
+
+  test('neither node nor any argv sees the token', () => {
+    const r = run(['--package', 'read'])
+    expect(r.status).toBe(0)
+    expect(r.all.filter((l) => l.startsWith('node '))).not.toHaveLength(0)
+    expect(r.all.filter((l) => l.startsWith('node ') && l !== 'node token=none')).toEqual([])
+    expect(r.all.filter((l) => l.includes('write-token') && !l.startsWith('gh '))).toEqual([])
   })
 
   test('with a local .mcpb nothing gets the token', () => {
