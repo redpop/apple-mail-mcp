@@ -35,7 +35,9 @@ export const VERIFY_INTERVAL_MS = 500
 export const MOVE_NOTE =
   'Each status describes the local state in Mail on this Mac, not the mail server. moved means the Mail index shows the message in the target and no longer in the source. ' +
   'moved_unverified means Mail accepted the move but the index did not confirm it within 10 seconds. failed may still have taken effect and is not retried; ' +
-  'check the message in Mail before moving it again. skipped_aborted entries were not attempted because an earlier entry failed.'
+  'check the message in Mail before moving it again. skipped_aborted entries were not attempted because an earlier entry failed. ' +
+  'skipped_target_not_allowed means the target id is not among the visible mailboxes (unknown, deleted, hidden or in another account), ' +
+  'is a junk, trash, drafts, sent or all-mail folder, or is excluded by configuration.'
 
 async function requirePermission(actions: ActionsRunner): Promise<void> {
   let out: unknown
