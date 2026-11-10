@@ -20,6 +20,8 @@ export interface CliDeps {
   /** Signal-Registrierung und Exit sind injizierbar, damit der Test kein echtes Signal braucht. */
   onSignal?: (signal: 'SIGINT' | 'SIGTERM', handler: () => void) => void
   exit?: (code: number) => void
+  /** false unterdrueckt die "claude mcp add"-Zeile des Setups (Aufruf aus dem Actions-Paket). */
+  setupAddHint?: boolean
 }
 
 /** Einstieg fuer `setup` und `doctor`; stoppt den Helper in jedem Fall vor der Rueckkehr. */
@@ -51,6 +53,7 @@ export async function runCli(command: 'setup' | 'doctor', args: string[], deps: 
         isTTY: deps.isTTY ?? process.stdout.isTTY === true,
         sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
         now: Date.now,
+        ...(deps.setupAddHint === false ? { addHint: false } : {}),
         ...(configResult.ok ? {} : { configWarning: `${configResult.key}: ${configResult.error}` }),
       })
     }

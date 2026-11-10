@@ -55,13 +55,16 @@ export async function runCli(command: 'setup' | 'doctor', args: string[], deps: 
   // Der Lese-CLI bekommt den geteilten Helper; sein stop() ist ein No-op, gestoppt wird erst am Ende hier.
   const shared: CliRunner = { ...helper, run: (c, p) => helper.run(c, p), stop: () => {} }
   const readDeps: ReadCliDeps = {
-    env, out, makeRunner: () => shared, onSignal: () => {}, exit: () => {},
+    env, out, makeRunner: () => shared, onSignal: () => {}, exit: () => {}, setupAddHint: false,
     ...(deps.isTTY !== undefined ? { isTTY: deps.isTTY } : {}),
   }
   const read = deps.readCli ?? runReadCli
   try {
     if (command === 'setup') {
-      return await runActionsSetup({ readSetup: () => read('setup', args, readDeps), actions, out })
+      return await runActionsSetup({
+        readSetup: () => read('setup', args, readDeps), actions, out,
+        accounts: configResult.ok ? configResult.config.accounts.length : 0,
+      })
     }
     // --json und --schema sind Formate des Lese-Doctors; ihre Ausgabe bliebe sonst nicht maschinenlesbar.
     if (args.includes('--json') || args.includes('--schema')) return await read('doctor', args, readDeps)

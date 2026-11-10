@@ -27,6 +27,8 @@ export interface SetupDeps {
   exec?: ExecFn
   /** Nur fuer Tests: Pfad von dist/index.js. */
   entryPath?: string
+  /** false, wenn ein anderes Paket dieses Setup aufruft und seinen eigenen Server eintraegt. */
+  addHint?: boolean
 }
 
 const POLL_MS = 2000
@@ -65,6 +67,7 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
     const c = p.counts
     say('Full Disk Access is granted. Apple Mail is readable.')
     if (c) say(`Found ${fmt(c.mailboxes)} mailboxes and ${fmt(c.uniqueMessages)} messages (${fmt(c.messages)} including copies).`)
+    if (deps.addHint === false) return 0
     say('')
     say('Add the server to Claude Code with:')
     say(`  ${deps.override ? checkoutLine(deps.bundlePath, deps.entryPath ?? fileURLToPath(new URL('../index.js', import.meta.url))) : ADD_LINE}`)
