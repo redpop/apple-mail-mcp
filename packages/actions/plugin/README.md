@@ -47,8 +47,9 @@ npx -y @redpop/apple-mail-actions-mcp setup
 
 ## Do not choose "Always allow"
 
-Your client asks before each move. If you choose "Always allow" for the tool, a malicious mail
-could make the model move messages without you seeing it.
+Your client asks before each move, in a mode that asks. If you choose "Always allow" for the
+tool, a malicious mail could make the model move messages without you seeing it. Modes that
+approve tools on their own, such as auto mode or skipping permissions, have the same effect.
 
 ## Settings
 

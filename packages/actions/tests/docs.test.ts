@@ -43,6 +43,13 @@ describe('README', () => {
     expect(flat('README.md')).toMatch(/Always allow/)
   })
 
+  test('warns that an auto-approving mode removes the prompt (Abnahme rc.7: Auto fragte nicht)', () => {
+    expect(flat('README.md')).toMatch(/Use a mode that asks/)
+    expect(flat('README.md')).toMatch(/Choose Manual/)
+    expect(flat('SECURITY.md')).toMatch(/Use Manual there/)
+    expect(flat('plugin/README.md')).toMatch(/Modes that\s+approve tools on their own/)
+  })
+
   test('names the tested provider and the refused account kinds', () => {
     const t = flat('README.md')
     expect(t).toMatch(/Only mailbox\.org has been tested/i)
