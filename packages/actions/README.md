@@ -5,8 +5,9 @@ messages to another mailbox of the same account in Apple Mail. It is the compani
 [`@redpop/apple-mail-mcp`](../../README.md), the read-only server. That package stays read-only;
 all moving code lives here.
 
-**macOS only.** Status: not published yet. The install commands below apply from the first
-release; until then, build it from source.
+**macOS only.** First released as 0.3.2 on 2026-11-12, on npm, as a GitHub release with the
+`.mcpb`, and in the MCP Registry. The plugin follows npm seven days after a release, so it
+starts with 0.3.2 once its pin reaches that version (about 2026-11-19).
 
 ## What it does
 
@@ -124,8 +125,9 @@ claude mcp add apple-mail-actions \
 npx -y @redpop/apple-mail-actions-mcp setup
 ```
 
-**Claude Desktop and Cowork:** the release will carry an `.mcpb` bundle with the same settings
-page. Claude Desktop does not switch it on after the install, because the accounts setting is
+**Claude Desktop and Cowork:** download `apple-mail-actions-mcp-<version>.mcpb` from the
+[latest release](https://github.com/redpop/apple-mail-mcp/releases/latest) and open it. It
+carries both apps and needs no npm. It has the same settings page. Claude Desktop does not switch it on after the install, because the accounts setting is
 required; enter the accounts, save, and switch it on under Settings > Extensions. The plugin does not work in Cowork, which starts a plugin's local server inside its Linux
 virtual machine, away from Mail, or in the desktop chat, which ignores such servers.
 

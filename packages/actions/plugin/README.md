@@ -19,13 +19,12 @@ here: an empty list makes every call fail.
 The plugin starts one local MCP server, the npm package
 [`@redpop/apple-mail-actions-mcp`](https://www.npmjs.com/package/@redpop/apple-mail-actions-mcp),
 pinned to the plugin's version and started with `npx`. The package contains a small app, "Mail
-MCP Actions". Release builds will be signed with a Developer ID and notarized by Apple in CI;
-that has not been exercised for this app yet. It asks Mail to do the move and
-holds the Automation permission for Mail, not Claude.
+MCP Actions", signed with a Developer ID and notarized by Apple. It asks Mail to do the move
+and holds the Automation permission for Mail, not Claude.
 
-The package is not published yet, so this plugin does not start until the first release. The
-pin follows a new npm release after seven days, so an npm release cooldown of up to seven days
-does not block it.
+The package was first released as 0.3.2 on 2026-11-12. The pin follows a new npm release after
+seven days, so an npm release cooldown of up to seven days does not block it; until the pin
+reaches 0.3.2, this plugin does not start.
 
 It needs Node.js 22.16 or newer (or 24 and newer). Mail must be running when a move is made.
 It runs in Claude Code. Cowork starts a plugin's local server inside its Linux virtual
