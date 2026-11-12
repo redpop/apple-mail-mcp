@@ -21,10 +21,18 @@ or move between accounts.
 
 The server asks Claude to show the proposal first, with the choices move all, move some,
 adjust first or move none. That is a request in the server instructions, not a lock. The lock
-is that the tool is not marked read-only, so your client asks before each call.
+is that the tool is not marked read-only, so your client asks before each call, but only in a
+mode that asks.
 
 **Do not choose "Always allow" for this tool.** It turns that confirmation off, and a
 malicious mail could then make the model move messages without you seeing it.
+
+**Use a mode that asks.** In Claude Desktop and Cowork, the Auto mode does not ask: an
+automated check blocks only actions it flags as risky, otherwise Claude moves without asking,
+even though the tool is set to "Needs approval". Choose Manual for conversations that may move
+mail. In a test on 2026-11-11, Auto moved a message right after a "yes" in the chat, with no
+prompt; Manual asked. In Claude Code, modes that approve tools on their own, such as auto mode
+or skipping permissions, have the same effect.
 
 ## What you need beside it
 
@@ -117,7 +125,8 @@ npx -y @redpop/apple-mail-actions-mcp setup
 ```
 
 **Claude Desktop and Cowork:** the release will carry an `.mcpb` bundle with the same settings
-page. The plugin does not work in Cowork, which starts a plugin's local server inside its Linux
+page. Claude Desktop does not switch it on after the install, because the accounts setting is
+required; enter the accounts, save, and switch it on under Settings > Extensions. The plugin does not work in Cowork, which starts a plugin's local server inside its Linux
 virtual machine, away from Mail, or in the desktop chat, which ignores such servers.
 
 `setup` first runs the setup of the read server (Full Disk Access for its helper), then asks

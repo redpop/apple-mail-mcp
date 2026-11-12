@@ -27,8 +27,11 @@ What limits the server:
   its Message-ID with the one the server read from the index. It moves only if both agree.
 - **No raw scripts.** Account and folder names are never put into script text unchecked.
 - **Moves are locked for 5 minutes, one at a time, never retried.**
-- **The client asks.** `move_messages` is not marked read-only, so a client asks before each
-  call. If you set "Always allow" for the tool, that is gone; do not.
+- **The client asks, in a mode that asks.** `move_messages` is not marked read-only, so a client
+  asks before each call. If you set "Always allow" for the tool, that is gone; do not. A mode
+  that approves tools on its own removes it too: in Claude Desktop and Cowork, Auto moves without
+  asking when its automated check does not flag the action, even for a tool set to "Needs
+  approval" (tested 2026-11-11). Use Manual there, and no auto-approving mode in Claude Code.
 
 ## Residual risks
 
