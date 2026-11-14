@@ -74,7 +74,8 @@ function discard(slot: string, file: string): void {
 function verifyFile(slot: string, file: string, maxBytes: number): number | null {
   try {
     const st = lstatSync(file)
-    if (!st.isFile() || st.size > maxBytes) return null
+    // nlink !== 1: ein Hardlink auf eine Datei ausserhalb des Slots ist keine vom Bundle angelegte Datei.
+    if (!st.isFile() || st.size > maxBytes || st.nlink !== 1) return null
     if (!realpathSync(file).startsWith(realpathSync(slot) + sep)) return null
     return st.size
   } catch {

@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, linkSync, readFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { HelperError } from '@redpop/apple-mail-mcp/dist/errors.js'
@@ -106,6 +106,19 @@ describe('saveAttachment', () => {
     expect(slots()).toEqual([])
   })
 
+  test('hard link is failed and removed, outside file survives', async () => {
+    const outside = join(dir, 'outside.txt')
+    writeFileSync(outside, 'secret')
+    const { deps } = setup(new FakeMail([withAtt(1)]), (p, slot) => {
+      linkSync(outside, join(slot, p.fileName as string))
+      return { outcome: 'saved' }
+    })
+    const r = await saveAttachment(deps, req)
+    expect(r.status).toBe('failed')
+    expect(readFileSync(outside, 'utf8')).toBe('secret')
+    expect(slots()).toEqual([])
+  })
+
   test('file over the limit is failed and removed', async () => {
     const { deps } = setup(new FakeMail([withAtt(1)]), writes('x'.repeat(11)), { APPLE_MAIL_MAX_ATTACHMENT_BYTES: '10' })
     const r = await saveAttachment(deps, req)
@@ -132,6 +145,14 @@ describe('saveAttachment', () => {
       throw new HelperError('MAIL_NOT_RUNNING', 'x')
     })
     await expect(saveAttachment(deps, req)).rejects.toMatchObject({ code: 'MAIL_NOT_RUNNING' })
+    expect(slots()).toEqual([])
+  })
+
+  test('Automation not granted from the save call passes through and leaves no slot', async () => {
+    const { deps } = setup(new FakeMail([withAtt(1)]), () => {
+      throw new HelperError('AUTOMATION_NOT_GRANTED', 'x')
+    })
+    await expect(saveAttachment(deps, req)).rejects.toMatchObject({ code: 'AUTOMATION_NOT_GRANTED' })
     expect(slots()).toEqual([])
   })
 
