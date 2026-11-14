@@ -39,7 +39,7 @@ export const MOVE_NOTE =
   'skipped_target_not_allowed means the target id is not among the visible mailboxes (unknown, deleted, hidden or in another account), ' +
   'is a junk, trash, drafts, sent or all-mail folder, or is excluded by configuration.'
 
-async function requirePermission(actions: ActionsRunner): Promise<void> {
+export async function requirePermission(actions: ActionsRunner): Promise<void> {
   let out: unknown
   try {
     out = await actions.run('permission', {})
