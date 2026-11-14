@@ -23,13 +23,18 @@ final class FakeAppleEvents: AppleEvents, @unchecked Sendable {
     }
 }
 
+final class EnvBox: @unchecked Sendable {
+    var value: [String: String] = ["HOME": "/Users/test"]
+}
+
 @Suite struct DispatcherTests {
     let events = FakeAppleEvents()
+    let env = EnvBox()
 
     private let moveLine = #"{"id":7,"command":"move","payload":{"account":"Acc","source":"INBOX","target":"Archiv/2026","rowid":42,"expectedMessageId":"abc@example.com"}}"#
 
     private func send(_ line: String) throws -> [String: Any] {
-        let out = Dispatcher(events: events).handle(line: Data(line.utf8))
+        let out = Dispatcher(events: events, environment: env.value).handle(line: Data(line.utf8))
         #expect(!out.contains(0x0A), "antwort muss genau eine Zeile sein")
         return try #require(try JSONSerialization.jsonObject(with: out) as? [String: Any])
     }
@@ -223,5 +228,165 @@ final class FakeAppleEvents: AppleEvents, @unchecked Sendable {
         let o = try send(moveLine)
         #expect(errorCode(o) == "MOVE_FAILED")
         #expect(errorMessage(o) == "Apple Event error \(number).")
+    }
+
+    // MARK: - save-attachment
+
+    private func savePayload(_ overrides: [String: String] = [:]) -> String {
+        var fields = [
+            "account": #""Acc""#, "source": #""INBOX""#, "rowid": "42",
+            "expectedMessageId": #""abc@example.com""#, "partId": #""2""#,
+            "slot": #""att-a1B2c3""#, "fileName": #""Rechnung.pdf""#, "maxBytes": "1000",
+        ]
+        for (k, v) in overrides { fields[k] = v }
+        let body = fields.map { #""\#($0.key)":\#($0.value)"# }.joined(separator: ",")
+        return #"{"id":3,"command":"save-attachment","payload":{\#(body)}}"#
+    }
+
+    @Test func saveAttachmentSavedPassesThrough() throws {
+        events.result = (NSAppleEventDescriptor(string: "saved"), 0)
+        let o = try send(savePayload())
+        #expect(result(o)?["outcome"] as? String == "saved")
+        let source = try #require(events.sources.first)
+        #expect(source.contains(#"POSIX file "/Users/test/Library/Caches/apple-mail-mcp/attachments/att-a1B2c3/Rechnung.pdf""#))
+    }
+
+    @Test func saveAttachmentUsesConfiguredDir() throws {
+        events.result = (NSAppleEventDescriptor(string: "saved"), 0)
+        env.value["APPLE_MAIL_ATTACHMENT_DIR"] = "~/Handover"
+        _ = try send(savePayload())
+        #expect(events.sources.first?.contains(#"POSIX file "/Users/test/Handover/att-a1B2c3/Rechnung.pdf""#) == true)
+    }
+
+    @Test(arguments: ["saved", "not_found", "mismatch", "folder_not_found", "attachment_not_found", "too_large"])
+    func saveAttachmentOutcomes(word: String) throws {
+        events.result = (NSAppleEventDescriptor(string: word), 0)
+        #expect(result(try send(savePayload()))?["outcome"] as? String == word)
+    }
+
+    @Test(arguments: [-1728, -1719])
+    func saveAttachmentNotFoundFromNumber(number: Int) throws {
+        events.result = (nil, number)
+        let r = try #require(result(try send(savePayload())))
+        #expect(r["outcome"] as? String == "not_found" && r["code"] as? Int == number)
+    }
+
+    @Test func saveAttachmentDeniedIsNotGranted() throws {
+        events.result = (nil, -1743)
+        #expect(errorCode(try send(savePayload())) == "AUTOMATION_NOT_GRANTED")
+    }
+
+    @Test func saveAttachmentMailNotRunning() throws {
+        events.result = (nil, -600)
+        #expect(errorCode(try send(savePayload())) == "MAIL_NOT_RUNNING")
+        events.running = false
+        #expect(errorCode(try send(savePayload())) == "MAIL_NOT_RUNNING")
+    }
+
+    @Test func saveAttachmentPermissionGateStopsBeforeTheScript() throws {
+        events.permissionCode = -1743
+        #expect(errorCode(try send(savePayload())) == "AUTOMATION_NOT_GRANTED")
+        #expect(events.sources.isEmpty)
+    }
+
+    @Test func saveAttachmentOtherNumberCarriesOnlyTheNumber() throws {
+        events.result = (nil, -10000)
+        let o = try send(savePayload())
+        #expect(errorCode(o) == "SAVE_FAILED" && errorMessage(o) == "Apple Event error -10000.")
+    }
+
+    @Test func saveAttachmentUnexpectedResultIsNeverEchoed() throws {
+        events.result = (NSAppleEventDescriptor(string: "Rechnung fuer Max"), 0)
+        let o = try send(savePayload())
+        #expect(errorCode(o) == "SAVE_FAILED" && errorMessage(o) == "Unexpected result from Mail.")
+    }
+
+    @Test(arguments: [
+        "../x", "..", ".x", "a:b", "a/b", "", "a\u{0007}b", "a\u{007F}b", "a\u{0000}b",
+        String(repeating: "x", count: 201), String(repeating: "\u{00E4}", count: 101),
+        "../../x.pdf", ".hidden",
+    ])
+    func saveAttachmentRejectsUnsafeFileNames(name: String) throws {
+        let json = String(data: try JSONEncoder().encode(name), encoding: .utf8)!
+        let o = try send(savePayload(["fileName": json]))
+        #expect(errorCode(o) == "INVALID_INPUT")
+        #expect(events.sources.isEmpty)
+    }
+
+    @Test(arguments: ["Rechnung.pdf", "Bild \u{1F600}.png", "_.._x.pdf", "a_b.pdf", "_.pdf", "x.bin"])
+    func saveAttachmentAcceptsSafeFileNames(name: String) throws {
+        events.result = (NSAppleEventDescriptor(string: "saved"), 0)
+        let json = String(data: try JSONEncoder().encode(name), encoding: .utf8)!
+        #expect(result(try send(savePayload(["fileName": json])))?["outcome"] as? String == "saved")
+        let max = String(repeating: "x", count: 200)
+        let maxJson = String(data: try JSONEncoder().encode(max), encoding: .utf8)!
+        #expect(result(try send(savePayload(["fileName": maxJson])))?["outcome"] as? String == "saved")
+    }
+
+    @Test(arguments: [#""att-a1B2c""#, #""att-a1B2c3d""#, #""att-../x""#, #""xxx-a1B2c3""#, #""att-a1B2c_""#, #""""#, "1"])
+    func saveAttachmentRejectsBadSlots(json: String) throws {
+        #expect(errorCode(try send(savePayload(["slot": json]))) == "INVALID_INPUT")
+        #expect(events.sources.isEmpty)
+    }
+
+    @Test(arguments: [#""""#, #""a""#, #""2.""#, #"".2""#, #""2..3""#, #""2 or true""#, #""2\"3""#, "2"])
+    func saveAttachmentRejectsBadPartIds(json: String) throws {
+        #expect(errorCode(try send(savePayload(["partId": json]))) == "INVALID_INPUT")
+    }
+
+    @Test(arguments: [#""1""#, #""2.1.3""#, #""10""#])
+    func saveAttachmentAcceptsPartIds(json: String) throws {
+        events.result = (NSAppleEventDescriptor(string: "saved"), 0)
+        #expect(result(try send(savePayload(["partId": json])))?["outcome"] as? String == "saved")
+    }
+
+    @Test(arguments: ["0", "-1", "104857601", "1.5", #""5""#])
+    func saveAttachmentRejectsBadMaxBytes(json: String) throws {
+        #expect(errorCode(try send(savePayload(["maxBytes": json]))) == "INVALID_INPUT")
+    }
+
+    @Test func saveAttachmentAcceptsMaxBytesLimit() throws {
+        events.result = (NSAppleEventDescriptor(string: "saved"), 0)
+        #expect(result(try send(savePayload(["maxBytes": "104857600"]))) != nil)
+    }
+
+    @Test func saveAttachmentRejectsBadCommonFields() throws {
+        for (k, v) in [("rowid", "0"), ("account", #""""#), ("source", #""A\nB""#), ("expectedMessageId", #""""#)] {
+            #expect(errorCode(try send(savePayload([k: v]))) == "INVALID_INPUT", "\(k)")
+        }
+    }
+
+    @Test func saveAttachmentRejectsUnknownKeys() throws {
+        let o = try send(savePayload(["path": #""/etc/passwd""#]))
+        #expect(errorCode(o) == "INVALID_INPUT" && errorMessage(o)?.contains("path") == true)
+        #expect(events.sources.isEmpty)
+    }
+
+    @Test(arguments: ["relative/dir", "~root/x", "~"])
+    func saveAttachmentRejectsInvalidDirSetting(dir: String) throws {
+        env.value["APPLE_MAIL_ATTACHMENT_DIR"] = dir
+        let o = try send(savePayload())
+        #expect(errorCode(o) == "INVALID_INPUT" && errorMessage(o) == "Invalid attachment folder setting.")
+        #expect(events.sources.isEmpty)
+    }
+
+    @Test func saveAttachmentWithoutHomeNeedingItIsRejected() throws {
+        env.value = ["HOME": ""]
+        #expect(errorCode(try send(savePayload())) == "INVALID_INPUT")
+        env.value = ["HOME": "", "APPLE_MAIL_ATTACHMENT_DIR": "~/x"]
+        #expect(errorCode(try send(savePayload())) == "INVALID_INPUT")
+        events.result = (NSAppleEventDescriptor(string: "saved"), 0)
+        env.value = ["HOME": "", "APPLE_MAIL_ATTACHMENT_DIR": "/abs"]
+        #expect(result(try send(savePayload()))?["outcome"] as? String == "saved")
+    }
+
+    @Test(arguments: [
+        ([String: String](), "/h/Library/Caches/apple-mail-mcp/attachments"),
+        (["APPLE_MAIL_ATTACHMENT_DIR": ""], "/h/Library/Caches/apple-mail-mcp/attachments"),
+        (["APPLE_MAIL_ATTACHMENT_DIR": "~/x"], "/h/x"),
+        (["APPLE_MAIL_ATTACHMENT_DIR": "/abs/y"], "/abs/y"),
+    ])
+    func attachmentDirResolve(env: [String: String], expected: String) {
+        #expect(AttachmentDir.resolve(env: env, home: "/h") == expected)
     }
 }

@@ -10,9 +10,12 @@ public struct Dispatcher {
     private static let invalidIndex = -1719
 
     let events: any AppleEvents
+    /// Einmal beim Start gelesen; fuer Tests austauschbar.
+    let environment: [String: String]
 
-    public init(events: any AppleEvents) {
+    public init(events: any AppleEvents, environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.events = events
+        self.environment = environment
     }
 
     private static let encoder: JSONEncoder = {
@@ -52,6 +55,10 @@ public struct Dispatcher {
                 let request: MoveRequest = try Self.decode(line, payload)
                 try Self.validate(request)
                 return respond(id: id, result: try move(request))
+            case "save-attachment":
+                let request: SaveAttachmentRequest = try Self.decode(line, payload)
+                try Self.validate(request)
+                return respond(id: id, result: try saveAttachment(request))
             default:
                 return respond(id: id, failure: Self.invalid("Unknown command."))
             }
@@ -105,6 +112,43 @@ public struct Dispatcher {
             throw Self.notGranted
         default:
             throw ActionFailure(code: .moveFailed, message: "Apple Event error \(number).")
+        }
+    }
+
+    private func saveAttachment(_ request: SaveAttachmentRequest) throws(ActionFailure) -> SaveAttachmentResult {
+        // HOME aus der Umgebung; NSHomeDirectory nur, wenn der Schluessel fehlt.
+        let home = environment["HOME"] ?? NSHomeDirectory()
+        guard let base = AttachmentDir.resolve(env: environment, home: home) else {
+            throw Self.invalid("Invalid attachment folder setting.")
+        }
+        guard events.isMailRunning else { throw Self.mailNotRunning }
+        switch Self.status(events.determinePermission(ask: false)) {
+        case .granted: break
+        case .mailNotRunning: throw Self.mailNotRunning
+        case .denied, .undetermined: throw Self.notGranted
+        }
+        // Nur Pfadtext: das Bundle liest, schreibt und legt nichts an.
+        let path = base + "/" + request.slot + "/" + request.fileName
+        let source = Script.saveAttachment(
+            account: request.account, source: request.source, rowid: request.rowid,
+            expectedMessageId: request.expectedMessageId, partId: request.partId,
+            path: path, maxBytes: request.maxBytes)
+        let (descriptor, number) = events.execute(source: source)
+        switch number {
+        case 0:
+            guard let value = descriptor?.stringValue,
+                  let outcome = SaveAttachmentResult.Outcome(rawValue: value) else {
+                throw ActionFailure(code: .saveFailed, message: "Unexpected result from Mail.")
+            }
+            return SaveAttachmentResult(outcome: outcome)
+        case Self.objectNotFound, Self.invalidIndex:
+            return SaveAttachmentResult(outcome: .notFound, code: number)
+        case Self.procNotFound:
+            throw Self.mailNotRunning
+        case Self.notPermitted, Self.wouldRequireConsent:
+            throw Self.notGranted
+        default:
+            throw ActionFailure(code: .saveFailed, message: "Apple Event error \(number).")
         }
     }
 
@@ -168,6 +212,22 @@ public struct Dispatcher {
             let hasControl = value.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F }
             if value.isEmpty || hasControl { throw invalid("Invalid value for \(name).") }
         }
+    }
+
+    private static func validate(_ request: SaveAttachmentRequest) throws(ActionFailure) {
+        guard request.rowid > 0 else { throw invalid("Invalid value for rowid.") }
+        guard (1...104_857_600).contains(request.maxBytes) else { throw invalid("Invalid value for maxBytes.") }
+        let fields = [
+            ("account", request.account), ("source", request.source),
+            ("expectedMessageId", request.expectedMessageId),
+        ]
+        for (name, value) in fields {
+            let hasControl = value.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F }
+            if value.isEmpty || hasControl { throw invalid("Invalid value for \(name).") }
+        }
+        guard AttachmentDir.isPartId(request.partId) else { throw invalid("Invalid value for partId.") }
+        guard AttachmentDir.isSlot(request.slot) else { throw invalid("Invalid value for slot.") }
+        guard AttachmentDir.isSafeFileName(request.fileName) else { throw invalid("Invalid value for fileName.") }
     }
 
     // MARK: - Antwort
