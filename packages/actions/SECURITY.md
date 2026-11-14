@@ -33,6 +33,32 @@ What limits the server:
   asking when its automated check does not flag the action, even for a tool set to "Needs
   approval" (tested 2026-11-11). Use Manual there, and no auto-approving mode in Claude Code.
 
+## Saving attachments
+
+`save_attachment` is off unless `APPLE_MAIL_SAVE_ATTACHMENTS` is `true`; otherwise the tool
+is not registered. Mail writes the file, not the app: the app tells Mail to save one attachment
+into a handover folder and never reads mail content or the file. It receives only a slot name
+and a file name, never a path. The folder and its subfolder per call have mode 0700.
+
+What limits it: the folder, the size limit and the allowed file types come from the
+environment, not from tool parameters; executable types are never allowed; security mails are
+never saved; the account must be in `APPLE_MAIL_ACCOUNTS`; the file name is checked before
+saving; nothing is overwritten and nothing is deleted.
+
+Residual risks:
+
+- **A local process that can start the app can fetch attachments into the handover folder.**
+  It could ask for any attachment of an allowed type and size in any account that Mail holds,
+  and read the result. This is the same trust level as the read helper: a hostile program under
+  your account can already read what the read helper can. A message id does not have to come from the server.
+- **Saved files are untrusted.** An attachment is third-party content: it can be malicious and
+  can carry text that tries to instruct the model. The server does not open or scan it. The
+  type list reduces the risk but does not remove it, since a PDF or an Office file can still be
+  hostile.
+- **Mail downloads the attachment from the server** if it was not downloaded yet, and keeps it
+  in its local storage afterwards.
+- **The handover folder is not cleaned.** Files stay until you delete them.
+
 ## Residual risks
 
 ### Any local process can run the app

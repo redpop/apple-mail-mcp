@@ -294,7 +294,9 @@ Security problems go through GitHub Security Advisories, see [`SECURITY.md`](./S
 ## Not included, on purpose
 
 Sending, replying, drafts, moving, deleting, flagging, attachment contents, semantic search,
-link extraction. A read-only server is easier to trust.
+link extraction. A read-only server is easier to trust. Attachment text stays out. Saving an
+attachment to a folder is opt-in and lives in the separate
+[actions package](./packages/actions/README.md#saving-attachments), not here.
 
 ## Privacy Policy
 

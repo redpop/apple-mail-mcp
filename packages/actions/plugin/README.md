@@ -1,7 +1,8 @@
 # Apple Mail Actions MCP
 
 Lets Claude move messages between mailboxes in Apple Mail on your Mac, after you confirm. It
-only moves: it does not send, draft, delete, flag or read mail. macOS only.
+moves messages and, when enabled, saves attachments: it does not send, draft, delete, flag or
+read mail. macOS only.
 
 Not affiliated with or endorsed by Apple.
 
@@ -44,6 +45,14 @@ Then grant the Automation permission once, with Mail running:
 npx -y @redpop/apple-mail-actions-mcp setup
 ```
 
+## Saving attachments
+
+The package also has an optional tool, `save_attachment`. It is off unless you switch on "Save
+attachments" in the plugin settings (`APPLE_MAIL_SAVE_ATTACHMENTS`). Then Mail saves one
+attachment into a handover folder and Claude gets the file path. The
+[README of the package](https://github.com/redpop/apple-mail-mcp/blob/main/packages/actions/README.md#saving-attachments)
+has the folder, size and type settings, and the limits.
+
 ## Do not choose "Always allow"
 
 Your client asks before each move, in a mode that asks. If you choose "Always allow" for the
@@ -53,7 +62,7 @@ approve tools on their own, such as auto mode or skipping permissions, have the 
 ## Settings
 
 When you enable the plugin, Claude Code asks for accounts, excluded mailboxes, junk and trash
-visibility, the number of moves per call and forbidden target mailboxes. The model cannot change
+visibility, the number of moves per call, forbidden target mailboxes and the attachment settings. The model cannot change
 them. Details and limits, including which accounts are supported, are in the
 [README of the package](https://github.com/redpop/apple-mail-mcp/blob/main/packages/actions/README.md).
 Only mailbox.org has been tested; Gmail, Exchange and local folders are refused.
