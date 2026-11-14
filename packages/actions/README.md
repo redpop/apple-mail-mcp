@@ -1,7 +1,8 @@
 # apple-mail-actions-mcp
 
-An [MCP](https://modelcontextprotocol.io) server with one tool, `move_messages`. It moves
-messages to another mailbox of the same account in Apple Mail. It is the companion of
+An [MCP](https://modelcontextprotocol.io) server with one tool, `move_messages`, and one
+optional tool, `save_attachment`. It moves messages to another mailbox of the same account in
+Apple Mail and, when you switch it on, saves one attachment of a message to a folder. It is the companion of
 [`@redpop/apple-mail-mcp`](../../README.md), the read-only server. That package stays read-only;
 all moving code lives here.
 
@@ -13,8 +14,8 @@ starts with 0.3.2 once its pin reaches that version (about 2026-11-19).
 
 Claude looks at your mailbox with the read server, proposes a folder for some messages, and
 you confirm. Then Claude calls `move_messages` with message ids and target mailbox ids. The
-package only moves messages. It does not send, draft, delete, flag, create folders, read mail
-or move between accounts.
+package moves messages and, when enabled, saves attachments. It does not send, draft, delete,
+flag, create folders, read mail or move between accounts.
 
 ```
 "Which of these invoices belong in the Accounting folder? Move the ones you are sure about."
@@ -34,6 +35,45 @@ even though the tool is set to "Needs approval". Choose Manual for conversations
 mail. In a test on 2026-11-11, Auto moved a message right after a "yes" in the chat, with no
 prompt; Manual asked. In Claude Code, modes that approve tools on their own, such as auto mode
 or skipping permissions, have the same effect.
+
+## Saving attachments
+
+`save_attachment` is off unless `APPLE_MAIL_SAVE_ATTACHMENTS` is `true`. While it is off, the
+tool does not exist for the model.
+
+```
+"Save the PDF from Anna's last invoice and put it in my Accounting folder."
+```
+
+Claude calls `save_attachment` with a message id and the position of the attachment in
+`attachmentNames` of `get_message`. Mail saves that one attachment into a handover folder, and the tool
+returns the file path. The default folder is `~/Library/Caches/apple-mail-mcp/attachments`.
+Every call gets its own subfolder with a random name like `att-k3x9fa`, mode 0700. Claude then
+moves the file where you want it and reads it with its own tools. Nothing is overwritten, and
+nothing is deleted automatically: clean the folder yourself now and then.
+
+Like moving, saving needs the Message-ID header, so it does not work on macOS 15, where
+Mail does not store it: every call returns `skipped_no_message_id`.
+
+If the attachment was not downloaded yet, Mail downloads the attachment from the server first.
+It then stays in Mail's local storage, as if you had opened the message.
+
+Set `APPLE_MAIL_ATTACHMENT_DIR` to use another folder, as an absolute path or starting with
+`~/`. macOS protects some folders: `~/Downloads` needs its own permission for the program that
+runs the server, Claude Desktop or your terminal, and macOS asks for it on the first save. The
+folder is checked only when saving is on.
+
+Limits, all set in the environment:
+
+- A file larger than `APPLE_MAIL_MAX_ATTACHMENT_BYTES` is refused (default 25 MB, at most 100 MB).
+- Only file types in `APPLE_MAIL_ATTACHMENT_TYPES` are saved. Executable types such as `app`,
+  `dmg`, `sh`, `js` or `py` are never allowed; naming one in the variable is a configuration error.
+- Security mails are never saved, whatever `APPLE_MAIL_SHOW_SECURITY_MAILS` says.
+- The account must be in `APPLE_MAIL_ACCOUNTS` and have a name that Mail can address
+  unambiguously. Gmail and Exchange accounts are allowed for saving but untested; only
+  mailbox.org (IMAP) has been tried.
+
+Saved files are untrusted content from a third party. Do not open them because a mail asks you to.
 
 ## What you need beside it
 
@@ -80,7 +120,7 @@ Messages are skipped, never moved, in these cases:
 - The source and target are the same, or in different accounts.
 - The account is not supported. Only mailbox.org has been tested. Other IMAP providers are
   untested: they run without a refusal, so limit `APPLE_MAIL_ACCOUNTS` to accounts you
-  are willing to try. Gmail, Exchange and local folders are refused.
+  are willing to try. Gmail, Exchange and local folders are refused for moving.
 - A folder name differs from another folder of the account only in case, or contains control
   characters.
 
@@ -151,6 +191,10 @@ the setting. The server reads them once, at startup: restart the client after a 
 | `APPLE_MAIL_EXCLUDE_MAILBOXES` | empty | Comma-separated mailboxes to hide, by name or by path with `/`. Set it in both servers. |
 | `APPLE_MAIL_MAX_MOVES` | `25` | Upper bound for the number of messages in one call (1 to 100). |
 | `APPLE_MAIL_MOVE_EXCLUDE_TARGETS` | empty | Comma-separated mailboxes that are never a target, by name or by path with `/`. |
+| `APPLE_MAIL_SAVE_ATTACHMENTS` | `false` | `true` registers the `save_attachment` tool. Off, the tool does not exist. |
+| `APPLE_MAIL_ATTACHMENT_DIR` | `~/Library/Caches/apple-mail-mcp/attachments` | Handover folder for saved attachments, absolute or starting with `~/`. Checked only when saving is on. |
+| `APPLE_MAIL_MAX_ATTACHMENT_BYTES` | `26214400` | Largest attachment that is saved, in bytes (1 to 104857600). |
+| `APPLE_MAIL_ATTACHMENT_TYPES` | `pdf,png,jpg,jpeg,heic,gif,txt,csv,ics,vcf,docx,xlsx,pptx,odt,ods,zip` | Comma-separated file extensions that may be saved. Executable types are always refused. |
 | `APPLE_MAIL_ACTIONS_PATH` | not set | Development only: path to a Dev or Ad hoc build of the Actions app. A bundle with the release bundle id is refused. |
 
 The settings of the read server that do not appear here, for example body search, do not affect
@@ -200,7 +244,7 @@ releases. It adds to the policy of the read server.
 Nothing is collected by the author or by any service. The server has no telemetry, and neither
 the server nor the app opens a network connection. The app never sees mail content. It receives
 a message number, a Message-ID and the names of an account and two mailboxes, and returns a
-status.
+status. For `save_attachment` it also receives the part id and file name of one attachment and a slot name for the handover subfolder.
 
 ### How it is used and stored
 
@@ -209,6 +253,10 @@ server writes one file, `move-locks.json`, under
 `~/Library/Application Support/apple-mail-mcp/`, directory 0700, file 0600. It holds the
 internal message numbers of recently moved messages and the time their lock ends. No names or
 subjects.
+
+With `APPLE_MAIL_SAVE_ATTACHMENTS` on, `save_attachment` has Mail write one attachment into the
+handover folder, which stays on your Mac until you delete it. The server and the app do not read
+the file.
 
 ### Sharing with third parties
 

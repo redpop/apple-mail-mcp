@@ -19,6 +19,10 @@ const KEYS: Record<string, string> = {
   APPLE_MAIL_EXCLUDE_MAILBOXES: 'exclude_mailboxes',
   APPLE_MAIL_MAX_MOVES: 'max_moves',
   APPLE_MAIL_MOVE_EXCLUDE_TARGETS: 'move_exclude_targets',
+  APPLE_MAIL_SAVE_ATTACHMENTS: 'save_attachments',
+  APPLE_MAIL_ATTACHMENT_DIR: 'attachment_dir',
+  APPLE_MAIL_MAX_ATTACHMENT_BYTES: 'max_attachment_bytes',
+  APPLE_MAIL_ATTACHMENT_TYPES: 'attachment_types',
 }
 
 describe('README', () => {
@@ -32,11 +36,20 @@ describe('README', () => {
 
   test('says what the package does and what it needs beside it', () => {
     const t = flat('README.md')
-    expect(t).toMatch(/only moves messages/i)
+    expect(t).toMatch(/moves messages and, when enabled, saves attachments/i)
     expect(t).toMatch(/needs the read server/i)
     expect(t).toMatch(/APPLE_MAIL_ACCOUNTS is required/i)
     expect(t).toMatch(/APPLE_MAIL_EXCLUDE_MAILBOXES in both servers/i)
     expect(t).toMatch(/Mail must be running/i)
+  })
+
+  test('documents save_attachment: opt-in, download by Mail, protected folders', () => {
+    const t = flat('README.md')
+    expect(t).toMatch(/save_attachment is off unless APPLE_MAIL_SAVE_ATTACHMENTS is true/)
+    expect(t).toMatch(/Mail downloads the attachment from the server/)
+    expect(t).toMatch(/~\/Downloads needs its own permission/)
+    expect(t).toMatch(/Library\/Caches\/apple-mail-mcp\/attachments/)
+    expect(t).toMatch(/Gmail and Exchange .* untested/i)
   })
 
   test('warns about "always allow"', () => {
@@ -54,7 +67,7 @@ describe('README', () => {
     const t = flat('README.md')
     expect(t).toMatch(/Only mailbox\.org has been tested/i)
     expect(t).toMatch(/other IMAP providers are untested/i)
-    expect(t).toMatch(/Gmail, Exchange and local folders are refused/i)
+    expect(t).toMatch(/Gmail, Exchange and local folders are refused for moving/i)
   })
 
   test('names the copies risk, the lock, empty folders and macOS 15', () => {
@@ -84,6 +97,12 @@ describe('SECURITY.md', () => {
     expect(t).toMatch(/message text is not read/i)
     expect(t).not.toMatch(/subject and sender/i)
     expect(t).toMatch(/starts a Dev or Ad hoc bundle only when/i)
+  })
+  test('names the risks of save_attachment', () => {
+    expect(t).toMatch(/handover folder/i)
+    expect(t).toMatch(/local process that can start the app can fetch attachments into the handover folder/i)
+    expect(t).toMatch(/saved files are untrusted/i)
+    expect(t).toMatch(/Mail writes the file/i)
   })
   test('says what the app does not have and what status means', () => {
     expect(t).toMatch(/no credentials/i)
@@ -116,6 +135,10 @@ describe('manifest.json', () => {
     expect(uc.include_trash).toMatchObject({ type: 'boolean', default: false })
     expect(uc.max_moves).toMatchObject({ type: 'number', min: 1, max: 100, default: 25 })
     expect(uc.move_exclude_targets).toMatchObject({ type: 'string', default: '' })
+    expect(uc.save_attachments).toMatchObject({ type: 'boolean', default: false })
+    expect(uc.attachment_dir).toMatchObject({ type: 'string', default: '' })
+    expect(uc.max_attachment_bytes).toMatchObject({ type: 'number', min: 1, max: 104857600, default: 26214400 })
+    expect(uc.attachment_types).toMatchObject({ type: 'string', default: 'pdf,png,jpg,jpeg,heic,gif,txt,csv,ics,vcf,docx,xlsx,pptx,odt,ods,zip' })
     const config = read('src/config.ts')
     expect(config).toContain('let maxMoves = 25')
     expect(config).toContain('Number(m) > 100')
@@ -130,8 +153,10 @@ describe('manifest.json', () => {
 
   test('has exactly the registered tool', () => {
     const registered = [...read('src/tools/moveMessages.ts').matchAll(/registerTool\(\s*'([a-z_]+)'/g)].map((m) => m[1])
+    const saved = [...read('src/tools/saveAttachment.ts').matchAll(/registerTool\(\s*'([a-z_]+)'/g)].map((m) => m[1])
     expect(registered).toEqual(['move_messages'])
-    expect(manifest.tools.map((t: { name: string }) => t.name)).toEqual(registered)
+    expect(saved).toEqual(['save_attachment'])
+    expect(manifest.tools.map((t: { name: string }) => t.name)).toEqual([...registered, ...saved])
   })
 
   test('server entry, compatibility, version and icon', () => {

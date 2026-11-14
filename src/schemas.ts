@@ -94,7 +94,14 @@ export const locateResult = z.object({
       messageIdHeader: z.string().nullable(),
       subject: z.string(),
       fromAddress: z.string().nullable(),
-      copies: z.array(z.object({ rowid: z.number().int(), mailboxId: z.number().int() })),
+      copies: z.array(
+        z.object({
+          rowid: z.number().int(),
+          mailboxId: z.number().int(),
+          // Nur mit withAttachments: partId ist Mails id of mail attachment.
+          attachments: z.array(z.object({ partId: z.string(), name: z.string() })).optional(),
+        }),
+      ),
     }),
   ),
 })

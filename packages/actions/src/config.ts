@@ -1,9 +1,14 @@
 import { type Config, loadConfig } from '@redpop/apple-mail-mcp/dist/config.js'
+import { DEFAULT_ATTACHMENT_TYPES, NEVER_ALLOWED, resolveAttachmentDir } from './attachmentFiles.js'
 
 export interface ActionsConfig extends Config {
   maxMoves: number
   excludeTargets: string[]
   actionsPath: string | null
+  saveAttachments: boolean
+  attachmentDir: string
+  maxAttachmentBytes: number
+  attachmentTypes: string[]
 }
 
 export type ActionsConfigResult =
@@ -44,7 +49,38 @@ export function loadActionsConfig(env: NodeJS.ProcessEnv): ActionsConfigResult {
       excludeTargets = x.split(',').map((s) => s.trim()).filter((s) => s !== '')
       if (excludeTargets.length === 0) throw new KeyError('APPLE_MAIL_MOVE_EXCLUDE_TARGETS', 'APPLE_MAIL_MOVE_EXCLUDE_TARGETS contains no entries')
     }
-    return { ok: true, config: { ...base.config, maxMoves, excludeTargets, actionsPath: raw(env, 'APPLE_MAIL_ACTIONS_PATH') ?? null } }
+    let saveAttachments = false
+    const sa = raw(env, 'APPLE_MAIL_SAVE_ATTACHMENTS')
+    if (sa !== undefined) {
+      if (sa !== 'true' && sa !== 'false') throw new KeyError('APPLE_MAIL_SAVE_ATTACHMENTS', 'APPLE_MAIL_SAVE_ATTACHMENTS must be true or false')
+      saveAttachments = sa === 'true'
+    }
+    // Der Ordner zaehlt nur, wenn Speichern an ist; sonst darf ein fehlendes HOME das Verschieben nicht stoeren.
+    let attachmentDir = ''
+    if (saveAttachments) {
+      const dir = resolveAttachmentDir(raw(env, 'APPLE_MAIL_ATTACHMENT_DIR'), env.HOME ?? '')
+      if (dir === null) throw new KeyError('APPLE_MAIL_ATTACHMENT_DIR', 'APPLE_MAIL_ATTACHMENT_DIR must be an absolute path or start with ~/ (and HOME must be set for the default folder)')
+      attachmentDir = dir
+    }
+    // Grenze und Typliste zaehlen ebenfalls nur bei eingeschaltetem Speichern; sonst gelten die Vorgaben ungelesen.
+    let maxAttachmentBytes = 26214400
+    const mb = saveAttachments ? raw(env, 'APPLE_MAIL_MAX_ATTACHMENT_BYTES') : undefined
+    if (mb !== undefined) {
+      if (!/^\d+$/.test(mb) || Number(mb) < 1 || Number(mb) > 104857600) throw new KeyError('APPLE_MAIL_MAX_ATTACHMENT_BYTES', 'APPLE_MAIL_MAX_ATTACHMENT_BYTES must be an integer between 1 and 104857600')
+      maxAttachmentBytes = Number(mb)
+    }
+    let attachmentTypes = [...DEFAULT_ATTACHMENT_TYPES]
+    const at = saveAttachments ? raw(env, 'APPLE_MAIL_ATTACHMENT_TYPES') : undefined
+    if (at !== undefined) {
+      attachmentTypes = at.split(',').map((s) => s.trim().replace(/^\./, '').toLowerCase()).filter((s) => s !== '')
+      if (attachmentTypes.length === 0) throw new KeyError('APPLE_MAIL_ATTACHMENT_TYPES', 'APPLE_MAIL_ATTACHMENT_TYPES contains no entries')
+      const never = attachmentTypes.find((t) => NEVER_ALLOWED.includes(t))
+      if (never !== undefined) throw new KeyError('APPLE_MAIL_ATTACHMENT_TYPES', `APPLE_MAIL_ATTACHMENT_TYPES must not contain "${never}"; executable types are never saved`)
+    }
+    return {
+      ok: true,
+      config: { ...base.config, maxMoves, excludeTargets, actionsPath: raw(env, 'APPLE_MAIL_ACTIONS_PATH') ?? null, saveAttachments, attachmentDir, maxAttachmentBytes, attachmentTypes },
+    }
   } catch (e) {
     if (e instanceof KeyError) return { ok: false, key: e.key, error: e.message }
     throw e

@@ -59,4 +59,46 @@ public enum Script {
         end timeout
         """
     }
+
+    /// Speichert einen Anhang unter `path` und nur, wenn die `message id` passt. Der Rahmen ist
+    /// der von `move`. Das Ergebnis ist `saved`, `not_found`, `mismatch`, `folder_not_found`,
+    /// `attachment_not_found` oder `too_large`. `partId` ist die `id` des Anhangs und in Mail Text; wie im Spike wird aufgezaehlt und `(id of a) as text` verglichen, nicht gefiltert.
+    /// `file size` kann werfen; dann entscheidet die Node-Seite ueber die Groesse. Nie `MIME type`:
+    /// das wirft -10000. Das Bundle baut nur den Pfadtext; die Datei legt Mail an.
+    public static func saveAttachment(
+        account: String, source: String, rowid: Int64, expectedMessageId: String,
+        partId: String, path: String, maxBytes: Int64
+    ) -> String {
+        let bareMessageId = strippingBrackets(expectedMessageId)
+        return """
+        with timeout of 90 seconds
+          tell application "Mail"
+            try
+              set src to mailbox \(literal(source)) of account \(literal(account))
+              get name of src
+            on error number n
+              if n is -1728 then return "folder_not_found"
+              error number n
+            end try
+            set msgs to (messages of src whose id is \(rowid))
+            if (count of msgs) is 0 then return "not_found"
+            set m to item 1 of msgs
+            set mid to message id of m
+            if mid is \(literal(bareMessageId)) or mid is \(literal("<" + bareMessageId + ">")) then
+              repeat with a in (mail attachments of m)
+                if ((id of a) as text) is \(literal(partId)) then
+                  try
+                    if (file size of a) > \(maxBytes) then return "too_large"
+                  end try
+                  save a in (POSIX file \(literal(path)))
+                  return "saved"
+                end if
+              end repeat
+              return "attachment_not_found"
+            end if
+            return "mismatch"
+          end tell
+        end timeout
+        """
+    }
 }

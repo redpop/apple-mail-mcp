@@ -10,9 +10,12 @@ public struct Dispatcher {
     private static let invalidIndex = -1719
 
     let events: any AppleEvents
+    /// Einmal beim Start gelesen; fuer Tests austauschbar.
+    let environment: [String: String]
 
-    public init(events: any AppleEvents) {
+    public init(events: any AppleEvents, environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.events = events
+        self.environment = environment
     }
 
     private static let encoder: JSONEncoder = {
@@ -52,6 +55,10 @@ public struct Dispatcher {
                 let request: MoveRequest = try Self.decode(line, payload)
                 try Self.validate(request)
                 return respond(id: id, result: try move(request))
+            case "save-attachment":
+                let request: SaveAttachmentRequest = try Self.decode(line, payload)
+                try Self.validate(request)
+                return respond(id: id, result: try saveAttachment(request))
             default:
                 return respond(id: id, failure: Self.invalid("Unknown command."))
             }
@@ -79,32 +86,68 @@ public struct Dispatcher {
     }
 
     private func move(_ request: MoveRequest) throws(ActionFailure) -> MoveResult {
+        try requireAutomation()
+        let source = Script.move(
+            account: request.account, source: request.source, target: request.target,
+            rowid: request.rowid, expectedMessageId: request.expectedMessageId)
+        let (descriptor, number) = events.execute(source: source)
+        return try Self.mapEvent(
+            descriptor, number, failure: .moveFailed,
+            outcome: { MoveResult.Outcome(rawValue: $0).map { MoveResult(outcome: $0) } },
+            notFound: { MoveResult(outcome: .notFound, code: $0) })
+    }
+
+    private func saveAttachment(_ request: SaveAttachmentRequest) throws(ActionFailure) -> SaveAttachmentResult {
+        // HOME aus der Umgebung; NSHomeDirectory nur, wenn der Schluessel fehlt.
+        let home = environment["HOME"] ?? NSHomeDirectory()
+        guard let base = AttachmentDir.resolve(env: environment, home: home) else {
+            throw Self.invalid("Invalid attachment folder setting.")
+        }
+        try requireAutomation()
+        // Nur Pfadtext: das Bundle liest, schreibt und legt nichts an.
+        let path = base + "/" + request.slot + "/" + request.fileName
+        let source = Script.saveAttachment(
+            account: request.account, source: request.source, rowid: request.rowid,
+            expectedMessageId: request.expectedMessageId, partId: request.partId,
+            path: path, maxBytes: request.maxBytes)
+        let (descriptor, number) = events.execute(source: source)
+        return try Self.mapEvent(
+            descriptor, number, failure: .saveFailed,
+            outcome: { SaveAttachmentResult.Outcome(rawValue: $0).map { SaveAttachmentResult(outcome: $0) } },
+            notFound: { SaveAttachmentResult(outcome: .notFound, code: $0) })
+    }
+
+    /// Mail muss laufen und die Automation erlaubt sein. Die Pruefung ohne Dialog steht vor dem
+    /// Skript: das wuerde sonst selbst nachfragen.
+    private func requireAutomation() throws(ActionFailure) {
         guard events.isMailRunning else { throw Self.mailNotRunning }
-        // Die Pruefung ohne Dialog steht vor dem Skript: das wuerde sonst selbst nachfragen.
         switch Self.status(events.determinePermission(ask: false)) {
         case .granted: break
         case .mailNotRunning: throw Self.mailNotRunning
         case .denied, .undetermined: throw Self.notGranted
         }
-        let source = Script.move(
-            account: request.account, source: request.source, target: request.target,
-            rowid: request.rowid, expectedMessageId: request.expectedMessageId)
-        let (descriptor, number) = events.execute(source: source)
+    }
+
+    /// Bildet das Skriptergebnis ab. Nur feste Woerter werden zurueckgegeben, alles andere nie;
+    /// bei unbekannten Apple-Event-Nummern geht nur die Nummer in die Meldung.
+    private static func mapEvent<R>(
+        _ descriptor: NSAppleEventDescriptor?, _ number: Int, failure: ErrorCode,
+        outcome: (String) -> R?, notFound: (Int) -> R
+    ) throws(ActionFailure) -> R {
         switch number {
         case 0:
-            // Nur die vier festen Woerter; alles andere wird nie zurueckgegeben.
-            guard let value = descriptor?.stringValue, let outcome = MoveResult.Outcome(rawValue: value) else {
-                throw ActionFailure(code: .moveFailed, message: "Unexpected result from Mail.")
+            guard let value = descriptor?.stringValue, let result = outcome(value) else {
+                throw ActionFailure(code: failure, message: "Unexpected result from Mail.")
             }
-            return MoveResult(outcome: outcome)
-        case Self.objectNotFound, Self.invalidIndex:
-            return MoveResult(outcome: .notFound, code: number)
-        case Self.procNotFound:
-            throw Self.mailNotRunning
-        case Self.notPermitted, Self.wouldRequireConsent:
-            throw Self.notGranted
+            return result
+        case objectNotFound, invalidIndex:
+            return notFound(number)
+        case procNotFound:
+            throw mailNotRunning
+        case notPermitted, wouldRequireConsent:
+            throw notGranted
         default:
-            throw ActionFailure(code: .moveFailed, message: "Apple Event error \(number).")
+            throw ActionFailure(code: failure, message: "Apple Event error \(number).")
         }
     }
 
@@ -158,16 +201,31 @@ public struct Dispatcher {
     /// Steuerzeichen haben in Konto-, Ordnernamen und Message-IDs nichts zu suchen, und ein NUL im
     /// Skripttext ist nicht sicher ein gewoehnliches Zeichen. Die rowid ist positiv: der Skripttext
     /// enthaelt danach an dieser Stelle nur Ziffern.
-    private static func validate(_ request: MoveRequest) throws(ActionFailure) {
-        guard request.rowid > 0 else { throw invalid("Invalid value for rowid.") }
-        let fields = [
-            ("account", request.account), ("source", request.source),
-            ("target", request.target), ("expectedMessageId", request.expectedMessageId),
-        ]
+    private static func checkTextFields(_ fields: [(String, String)]) throws(ActionFailure) {
         for (name, value) in fields {
             let hasControl = value.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F }
             if value.isEmpty || hasControl { throw invalid("Invalid value for \(name).") }
         }
+    }
+
+    private static func validate(_ request: MoveRequest) throws(ActionFailure) {
+        guard request.rowid > 0 else { throw invalid("Invalid value for rowid.") }
+        try checkTextFields([
+            ("account", request.account), ("source", request.source),
+            ("target", request.target), ("expectedMessageId", request.expectedMessageId),
+        ])
+    }
+
+    private static func validate(_ request: SaveAttachmentRequest) throws(ActionFailure) {
+        guard request.rowid > 0 else { throw invalid("Invalid value for rowid.") }
+        guard (1...104_857_600).contains(request.maxBytes) else { throw invalid("Invalid value for maxBytes.") }
+        try checkTextFields([
+            ("account", request.account), ("source", request.source),
+            ("expectedMessageId", request.expectedMessageId),
+        ])
+        guard AttachmentDir.isPartId(request.partId) else { throw invalid("Invalid value for partId.") }
+        guard AttachmentDir.isSlot(request.slot) else { throw invalid("Invalid value for slot.") }
+        guard AttachmentDir.isSafeFileName(request.fileName) else { throw invalid("Invalid value for fileName.") }
     }
 
     // MARK: - Antwort

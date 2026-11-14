@@ -119,4 +119,40 @@ import Testing
         #expect(all.last == "end timeout")
         #expect(all[1] == #"tell application "Mail""#)
     }
+
+    // MARK: - saveAttachment
+
+    private func saveScript(
+        account: String = "Acc", source: String = "INBOX", partId: String = "2",
+        path: String = "/base/att-a1B2c3/Rechnung.pdf"
+    ) -> String {
+        Script.saveAttachment(
+            account: account, source: source, rowid: 42, expectedMessageId: "abc@example.com",
+            partId: partId, path: path, maxBytes: 1000)
+    }
+
+    @Test func saveAttachmentScriptQuotesAllValues() {
+        let text = saveScript(account: #"A"B\C"#, source: #"x" of "y"#, path: #"/b"q/att-a1B2c3/a\b.pdf"#)
+        let found = literals(text)
+        #expect(found.contains(#"A\"B\\C"#))
+        #expect(found.contains(#"x\" of \"y"#))
+        #expect(found.contains(#"/b\"q/att-a1B2c3/a\\b.pdf"#))
+        #expect(found.contains("x") == false && found.contains("y") == false)
+    }
+
+    @Test func saveAttachmentScriptUsesPartIdAndPosixFile() {
+        let text = saveScript()
+        #expect(text.contains("repeat with a in (mail attachments of m)"))
+        #expect(text.contains(#"((id of a) as text) is "2""#))
+        #expect(!text.contains("attachments of m whose"))
+        #expect(text.contains(#"save a in (POSIX file "/base/att-a1B2c3/Rechnung.pdf")"#))
+        #expect(text.contains("whose id is 42)"))
+        #expect(text.contains("> 1000"))
+        #expect(!text.contains("MIME type"))
+    }
+
+    @Test func saveAttachmentScriptComparesMessageIdBareAndInBrackets() {
+        let found = literals(saveScript())
+        #expect(found.contains("abc@example.com") && found.contains("<abc@example.com>"))
+    }
 }

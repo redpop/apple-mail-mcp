@@ -241,7 +241,7 @@ describe('before the first move', () => {
     mail.permission = { status: 'maybe' }
     await expect(moveMessages(deps(mail), [mv(1)])).rejects.toMatchObject({ code: 'ACTIONS_UNEXPECTED_ANSWER' })
     expect(mail.moveCalls).toEqual([])
-    expect(describeActionsError('ACTIONS_UNEXPECTED_ANSWER')).toMatch(/no move was attempted/)
+    expect(describeActionsError('ACTIONS_UNEXPECTED_ANSWER')).toMatch(/no action was attempted/)
   })
 
   test('lockUnavailableNamesTheFileNotDoctor', () => {

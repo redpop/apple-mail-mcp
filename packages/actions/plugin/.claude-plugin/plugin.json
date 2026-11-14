@@ -34,7 +34,11 @@
         "APPLE_MAIL_INCLUDE_TRASH": "${user_config.include_trash}",
         "APPLE_MAIL_EXCLUDE_MAILBOXES": "${user_config.exclude_mailboxes}",
         "APPLE_MAIL_MAX_MOVES": "${user_config.max_moves}",
-        "APPLE_MAIL_MOVE_EXCLUDE_TARGETS": "${user_config.move_exclude_targets}"
+        "APPLE_MAIL_MOVE_EXCLUDE_TARGETS": "${user_config.move_exclude_targets}",
+        "APPLE_MAIL_SAVE_ATTACHMENTS": "${user_config.save_attachments}",
+        "APPLE_MAIL_ATTACHMENT_DIR": "${user_config.attachment_dir}",
+        "APPLE_MAIL_MAX_ATTACHMENT_BYTES": "${user_config.max_attachment_bytes}",
+        "APPLE_MAIL_ATTACHMENT_TYPES": "${user_config.attachment_types}"
       }
     }
   },
@@ -80,6 +84,36 @@
       "title": "Forbidden target mailboxes",
       "description": "Comma-separated mailboxes that are never a target, by name or by path with /.",
       "default": "",
+      "required": false
+    },
+    "save_attachments": {
+      "type": "boolean",
+      "title": "Save attachments",
+      "description": "Turn on the save_attachment tool. Off, the tool does not exist. Mail saves one attachment into the handover folder when asked.",
+      "default": false,
+      "required": false
+    },
+    "attachment_dir": {
+      "type": "string",
+      "title": "Attachment folder",
+      "description": "Handover folder for saved attachments, absolute or starting with ~/. Empty uses ~/Library/Caches/apple-mail-mcp/attachments. ~/Downloads needs its own permission.",
+      "default": "",
+      "required": false
+    },
+    "max_attachment_bytes": {
+      "type": "number",
+      "title": "Largest attachment in bytes",
+      "description": "Attachments larger than this are not saved (1 to 104857600).",
+      "default": 26214400,
+      "min": 1,
+      "max": 104857600,
+      "required": false
+    },
+    "attachment_types": {
+      "type": "string",
+      "title": "Allowed attachment types",
+      "description": "Comma-separated file extensions that may be saved. Executable types are always refused.",
+      "default": "pdf,png,jpg,jpeg,heic,gif,txt,csv,ics,vcf,docx,xlsx,pptx,odt,ods,zip",
       "required": false
     }
   }

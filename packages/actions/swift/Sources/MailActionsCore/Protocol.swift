@@ -45,6 +45,36 @@ struct MoveRequest: StrictPayload {
     let expectedMessageId: String
 }
 
+/// `save-attachment`: Ergebnis. Nur Status und Nummer, nie ein Dateiname oder Fehlertext von Mail.
+struct SaveAttachmentResult: Encodable, Sendable {
+    enum Outcome: String, Encodable, Sendable {
+        case saved, mismatch
+        case notFound = "not_found"
+        case folderNotFound = "folder_not_found"
+        case attachmentNotFound = "attachment_not_found"
+        case tooLarge = "too_large"
+    }
+
+    let outcome: Outcome
+    var code: Int?
+}
+
+/// `save-attachment`: Anfrage. Das Bundle bekommt nur `slot` und `fileName`, nie einen Pfad.
+struct SaveAttachmentRequest: StrictPayload {
+    static let allowedKeys: Set<String> = [
+        "account", "source", "rowid", "expectedMessageId", "partId", "slot", "fileName", "maxBytes",
+    ]
+
+    let account: String
+    let source: String
+    let rowid: Int64
+    let expectedMessageId: String
+    let partId: String
+    let slot: String
+    let fileName: String
+    let maxBytes: Int64
+}
+
 /// Erlaubte Payload-Schluessel je Request-Typ: unbekannte Felder sind ein Fehler.
 protocol StrictPayload: Decodable {
     static var allowedKeys: Set<String> { get }
@@ -60,6 +90,7 @@ enum ErrorCode: String, Encodable, Sendable {
     case mailNotRunning = "MAIL_NOT_RUNNING"
     case automationNotGranted = "AUTOMATION_NOT_GRANTED"
     case moveFailed = "MOVE_FAILED"
+    case saveFailed = "SAVE_FAILED"
 }
 
 /// Fehler mit Code und festem englischem Satz. `message` enthaelt nie Nutzerdaten,
