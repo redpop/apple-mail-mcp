@@ -42,6 +42,7 @@ const contracts: Record<string, z.ZodType> = {
   'index-feed': ok(indexFeedResult),
   'index-gids': ok(indexGidsResult),
   locate: ok(locateResult),
+  'locate-attachments': ok(locateResult),
   error: z.strictObject({
     id: z.number().int(),
     ok: z.literal(false),
@@ -80,6 +81,14 @@ describe('helper contract (golden files)', () => {
     const loc = load('locate') as { result: { messages: Array<{ messageIdHeader: string | null; copies: unknown[] }> } }
     expect(loc.result.messages.some((m) => m.copies.length > 1)).toBe(true)
     expect(loc.result.messages.some((m) => m.messageIdHeader === null)).toBe(true)
+  })
+
+  it('locate with attachments lists part ids per copy', () => {
+    const loc = load('locate-attachments') as {
+      result: { messages: Array<{ copies: Array<{ attachments?: Array<{ partId: string; name: string }> }> }> }
+    }
+    expect(loc.result.messages.some((m) => m.copies.some((c) => (c.attachments?.length ?? 0) > 0))).toBe(true)
+    expect(loc.result.messages.every((m) => m.copies.every((c) => Array.isArray(c.attachments)))).toBe(true)
   })
 
   it('the error code has its own message in Node', () => {

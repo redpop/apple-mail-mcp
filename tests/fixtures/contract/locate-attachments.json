@@ -1,0 +1,59 @@
+{
+  "id" : 11,
+  "ok" : true,
+  "result" : {
+    "messages" : [
+      {
+        "copies" : [
+          {
+            "attachments" : [
+              {
+                "name" : "rechnung-2024-0815.pdf",
+                "partId" : "1"
+              },
+              {
+                "name" : "anlage.txt",
+                "partId" : "2"
+              }
+            ],
+            "mailboxId" : 1,
+            "rowid" : 28
+          }
+        ],
+        "fromAddress" : "billing@example.org",
+        "gid" : 1011,
+        "messageIdHeader" : "<invoice-1011@example.com>",
+        "subject" : "Rechnung 2024-0815"
+      },
+      {
+        "copies" : [
+          {
+            "attachments" : [
+
+            ],
+            "mailboxId" : 2,
+            "rowid" : 123456
+          },
+          {
+            "attachments" : [
+
+            ],
+            "mailboxId" : 4,
+            "rowid" : 4712
+          },
+          {
+            "attachments" : [
+
+            ],
+            "mailboxId" : 1,
+            "rowid" : 4711
+          }
+        ],
+        "fromAddress" : "alice@example.com",
+        "gid" : 1001,
+        "messageIdHeader" : "<dup3-1001@example.com>",
+        "subject" : "Dreifach vorhanden"
+      }
+    ]
+  }
+}

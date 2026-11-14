@@ -7,17 +7,37 @@ public let locateMaxGids = 100
 public struct LocateRequest: Codable, Equatable, Sendable {
     public var allowedMailboxIds: [Int64]
     public var gids: [Int64]
+    /// Nur auf Anfrage: Teilkennungen und Namen der Anhaenge je Kopie.
+    public var withAttachments: Bool?
 
-    public init(allowedMailboxIds: [Int64], gids: [Int64]) {
+    public init(allowedMailboxIds: [Int64], gids: [Int64], withAttachments: Bool? = nil) {
         self.allowedMailboxIds = allowedMailboxIds
         self.gids = gids
+        self.withAttachments = withAttachments
+    }
+}
+
+/// `partId` ist `attachments.attachment_id`, in Mail die `id of mail attachment`.
+public struct LocateAttachment: Codable, Equatable, Sendable {
+    public let partId: String
+    public let name: String
+
+    public init(partId: String, name: String) {
+        self.partId = partId
+        self.name = name
     }
 }
 
 public struct LocateCopy: Codable, Equatable, Sendable {
     public let rowid: Int64
     public let mailboxId: Int64
+    /// nil ohne `withAttachments`: der Schluessel fehlt dann in der Antwort.
+    public var attachments: [LocateAttachment]?
 }
+
+/// Hoechstzahl der Anhaenge je Kopie (wie die Namensliste in search).
+private let locateAttachmentCap = 20
+private let locateChunk = 300
 
 public struct LocateMessage: Codable, Equatable, Sendable {
     public let gid: Int64
@@ -79,6 +99,31 @@ extension MailStore {
                 if meta[gid] == nil {
                     meta[gid] = (row.text(6), (row.text(3) ?? "") + (row.text(4) ?? ""), row.text(5))
                 }
+            }
+        }
+        if r.withAttachments == true {
+            // Eine Abfrage je Block ueber die ROWIDs der Kopien, Reihenfolge nach attachments.ROWID.
+            let rowids = copies.values.flatMap { $0.map(\.rowid) }
+            var found: [Int64: [LocateAttachment]] = [:]
+            try db.readTransaction { () throws(HelperFailure) in
+                var start = 0
+                while start < rowids.count {
+                    let chunk = Array(rowids[start..<min(start + locateChunk, rowids.count)])
+                    start += locateChunk
+                    try db.query("""
+                        SELECT message, attachment_id, name FROM (
+                            SELECT t.message AS message, t.attachment_id AS attachment_id, t.name AS name,
+                                   row_number() OVER (PARTITION BY t.message ORDER BY t.ROWID) AS rn
+                            FROM attachments t WHERE t.message IN (\(placeholders(chunk.count))))
+                        WHERE rn <= ? ORDER BY message, rn
+                        """, chunk.map { .int($0) } + [.int(Int64(locateAttachmentCap))]) { row in
+                        found[row.int(0), default: []].append(
+                            LocateAttachment(partId: row.text(1) ?? "", name: row.text(2) ?? ""))
+                    }
+                }
+            }
+            for (gid, list) in copies {
+                copies[gid] = list.map { LocateCopy(rowid: $0.rowid, mailboxId: $0.mailboxId, attachments: found[$0.rowid] ?? []) }
             }
         }
         let messages = gids.compactMap { gid -> LocateMessage? in

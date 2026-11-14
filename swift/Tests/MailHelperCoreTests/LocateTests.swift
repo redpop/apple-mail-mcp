@@ -70,4 +70,41 @@ import Testing
         let r = try store.locate(.init(allowedMailboxIds: all, gids: [f.gid(named: "thread2")]))
         #expect(r.messages.first?.subject == "Re: Re: Projektplan")
     }
+
+    // withAttachments: Teilkennungen je Kopie (Teil von Mails Attachment-Id), nur auf Anfrage.
+    @Test func locateWithoutAttachmentsUnchanged() throws {
+        let r = try store.locate(.init(allowedMailboxIds: all, gids: [f.gid(named: "dup3")]))
+        #expect(r.messages[0].copies.allSatisfy { $0.attachments == nil })
+        let json = try String(decoding: JSONEncoder().encode(r), as: UTF8.self)
+        #expect(!json.contains("attachments"))
+    }
+
+    @Test func locateWithAttachmentsListsPartIdsPerCopy() throws {
+        let f2 = try FixtureBuilder.build()
+        let h = try SQLiteHandle(path: f2.envelopeIndex.path)
+        let rowid = try #require(f2.seed.messages.first { $0.name == "small" }?.rowid)
+        try h.run("INSERT INTO attachments (message, attachment_id, name) VALUES (?, '2', 'rechnung.pdf')", [.int(rowid)])
+        try h.run("INSERT INTO attachments (message, attachment_id, name) VALUES (?, '3', 'lieferschein.pdf')", [.int(rowid)])
+        let r = try MailStore(config: f2.config).locate(
+            .init(allowedMailboxIds: f2.allMailboxIds, gids: [f2.gid(named: "small")], withAttachments: true))
+        let copy = try #require(r.messages.first?.copies.first)
+        #expect(copy.attachments == [.init(partId: "2", name: "rechnung.pdf"), .init(partId: "3", name: "lieferschein.pdf")])
+        // Kopie ohne Anhaenge: leere Liste, nicht nil.
+        let none = try MailStore(config: f2.config).locate(
+            .init(allowedMailboxIds: f2.allMailboxIds, gids: [f2.gid(named: "dup3")], withAttachments: true))
+        #expect(none.messages[0].copies.allSatisfy { $0.attachments == [] })
+    }
+
+    @Test func locateAttachmentsCappedAt20() throws {
+        let f2 = try FixtureBuilder.build()
+        let h = try SQLiteHandle(path: f2.envelopeIndex.path)
+        let rowid = try #require(f2.seed.messages.first { $0.name == "small" }?.rowid)
+        for i in 0..<25 {
+            try h.run("INSERT INTO attachments (message, attachment_id, name) VALUES (?, ?, ?)", [.int(rowid), .text("\(i + 1)"), .text("a\(i).pdf")])
+        }
+        let r = try MailStore(config: f2.config).locate(
+            .init(allowedMailboxIds: f2.allMailboxIds, gids: [f2.gid(named: "small")], withAttachments: true))
+        let list = try #require(r.messages.first?.copies.first?.attachments)
+        #expect(list.count == 20 && list.first?.name == "a0.pdf" && list.last?.name == "a19.pdf")
+    }
 }

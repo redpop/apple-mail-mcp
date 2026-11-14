@@ -45,7 +45,7 @@ extension IndexGidsRequest: StrictPayload {
 }
 
 extension LocateRequest: StrictPayload {
-    static let allowedKeys: Set<String> = ["allowedMailboxIds", "gids"]
+    static let allowedKeys: Set<String> = ["allowedMailboxIds", "gids", "withAttachments"]
 }
 
 /// hello, probe und list-mailboxes nehmen nur `{}`.

@@ -43,6 +43,7 @@ import Testing
             ("index-feed", "index-feed", #"{"allowedMailboxIds":[\#(allowed)],"afterRowid":20,"limit":3}"#),
             ("index-gids", "index-gids", #"{"allowedMailboxIds":[\#(allowed)],"afterGid":1016,"limit":3}"#),
             ("locate", "locate", #"{"allowedMailboxIds":[\#(allowed)],"gids":[\#(f.gid(named: "dup3")),\#(f.gid(named: "noHeader"))]}"#),
+            ("locate-attachments", "locate", #"{"allowedMailboxIds":[\#(allowed)],"gids":[\#(f.gid(named: "invoice")),\#(f.gid(named: "dup3"))],"withAttachments":true}"#),
         ]
         let update = ProcessInfo.processInfo.environment["UPDATE_CONTRACT"] == "1"
         let dir = try Self.contractDir()
