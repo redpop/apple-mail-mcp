@@ -94,7 +94,7 @@ const exec = (id = DEV_BUNDLE_ID) => (file: string) => {
   return { stdout: '', stderr: '', status: 0 }
 }
 
-function doctorDeps(mail: FakeMail, s: ReturnType<typeof sink>, probe: unknown = probeOk(), env: NodeJS.ProcessEnv = { APPLE_MAIL_ACCOUNTS: `${WORK},${HOME}` }, over: Partial<ActionsDoctorDeps> = {}): ActionsDoctorDeps {
+function doctorDeps(mail: FakeMail, s: ReturnType<typeof sink>, probe: unknown = probeOk(), env: NodeJS.ProcessEnv = { APPLE_MAIL_ACCOUNTS: `${WORK},${HOME}`, HOME: '/Users/test' }, over: Partial<ActionsDoctorDeps> = {}): ActionsDoctorDeps {
   const base = loadConfig(env)
   return {
     readDoctor: async () => 0,

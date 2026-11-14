@@ -52,10 +52,10 @@ export function typeAllowed(name: string, allowed: readonly string[]): boolean {
   return allowed.includes(ext)
 }
 
-// null = ungueltig (relativ oder ~user). Sonst keine Normalisierung.
+// null = ungueltig (relativ, ~user, oder Default bzw. ~/ ohne gesetztes Home). Sonst keine Normalisierung.
 export function resolveAttachmentDir(raw: string | undefined, home: string): string | null {
-  if (raw === undefined) return `${home}/Library/Caches/apple-mail-mcp/attachments`
-  if (raw.startsWith('~/')) return `${home}${raw.slice(1)}`
+  if (raw === undefined) return home === '' ? null : `${home}/Library/Caches/apple-mail-mcp/attachments`
+  if (raw.startsWith('~/')) return home === '' ? null : `${home}${raw.slice(1)}`
   if (raw.startsWith('/')) return raw
   return null
 }

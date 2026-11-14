@@ -18,7 +18,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 function deps(mail: FakeMail, over: Partial<MoverDeps> & { env?: NodeJS.ProcessEnv } = {}): MoverDeps & { clock: { t: number }; sleeps: number[] } {
-  const r = loadActionsConfig({ APPLE_MAIL_ACCOUNTS: `${WORK},${HOME}`, ...over.env })
+  const r = loadActionsConfig({ APPLE_MAIL_ACCOUNTS: `${WORK},${HOME}`, HOME: '/Users/test', ...over.env })
   if (!r.ok) throw new Error(r.error)
   const clock = { t: 1_000_000 }
   const sleeps: number[] = []

@@ -1,7 +1,8 @@
 import { expect, test } from 'vitest'
 import { loadActionsConfig } from '../src/config.js'
 
-const base = { APPLE_MAIL_ACCOUNTS: 'Work' }
+const base = { APPLE_MAIL_ACCOUNTS: 'Work', HOME: '/Users/test' }
+const noHome = { APPLE_MAIL_ACCOUNTS: 'Work' }
 
 test('emptyAccountsIsConfigInvalid', () => {
   const r = loadActionsConfig({})
@@ -55,6 +56,12 @@ test('attachment settings are validated', () => {
   expect(loadActionsConfig({ ...withHome, APPLE_MAIL_ATTACHMENT_DIR: 'rel' })).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_DIR' })
   const d = loadActionsConfig({ ...withHome, APPLE_MAIL_ATTACHMENT_DIR: '~/Downloads/mail' })
   expect(d.ok && d.config.attachmentDir).toBe('/Users/test/Downloads/mail')
+})
+
+test('an unset or empty HOME is invalid when the folder needs it', () => {
+  expect(loadActionsConfig(noHome)).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_DIR' })
+  expect(loadActionsConfig({ ...noHome, HOME: '' })).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_DIR' })
+  expect(loadActionsConfig({ ...noHome, APPLE_MAIL_ATTACHMENT_DIR: '/tmp/x' })).toMatchObject({ ok: true })
 })
 
 test('attachment types are normalised and never allow executables', () => {

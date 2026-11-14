@@ -74,4 +74,8 @@ test('resolveAttachmentDir', () => {
   expect(resolveAttachmentDir('/tmp/x', home)).toBe('/tmp/x')
   expect(resolveAttachmentDir('rel/x', home)).toBeNull()
   expect(resolveAttachmentDir('~user/x', home)).toBeNull()
+  // Ohne HOME braucht Default und ~/ ein Home und ist ungueltig; absolut geht weiter.
+  expect(resolveAttachmentDir(undefined, '')).toBeNull()
+  expect(resolveAttachmentDir('~/x', '')).toBeNull()
+  expect(resolveAttachmentDir('/tmp/x', '')).toBe('/tmp/x')
 })
