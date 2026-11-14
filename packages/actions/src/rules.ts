@@ -1,3 +1,4 @@
+import { safeFileName, typeAllowed } from './attachmentFiles.js'
 import { fold } from '@redpop/apple-mail-mcp/dist/fold.js'
 import { parseMailbox, type ParsedMailbox } from '@redpop/apple-mail-mcp/dist/mailboxes.js'
 import type { Policy } from '@redpop/apple-mail-mcp/dist/policy.js'
@@ -44,6 +45,34 @@ export type CheckMoveResult =
   | { ok: true; rowid: number; source: string; target: string; account: string; messageId: string; sourceMailboxId: number; targetMailboxId: number }
   | { ok: false; status: MoveStatus }
 
+export type SaveStatus =
+  | 'saved'
+  | 'failed'
+  | 'skipped_security_mail'
+  | 'skipped_type_not_allowed'
+  | 'skipped_too_large'
+  | 'skipped_not_found'
+  | 'skipped_attachment_not_found'
+  | 'skipped_mismatch'
+  | 'skipped_source_not_visible'
+  | 'skipped_ambiguous'
+  | 'skipped_unsupported_account'
+  | 'skipped_unsupported_folder'
+  | 'skipped_no_message_id'
+
+export interface CheckSaveInput {
+  request: { id: string; attachment: number; sourceMailboxId?: string }
+  /** Ergebnis von locate (withAttachments) fuer diese Mail; undefined, wenn locate sie nicht kennt. */
+  located: LocatedMessage | undefined
+  policy: Policy
+  raw: ListMailboxesResult
+  attachmentTypes: readonly string[]
+}
+
+export type CheckSaveResult =
+  | { ok: true; account: string; source: string; rowid: number; messageId: string; partId: string; fileName: string }
+  | { ok: false; status: SaveStatus }
+
 export type UnsupportedAccountReason = 'type' | 'allmail' | 'gmail' | 'name_missing' | 'name_duplicate'
 
 const FORBIDDEN_TARGET_ROLES: ReadonlySet<ParsedMailbox['role']> = new Set(['junk', 'trash', 'drafts', 'sent', 'allmail'])
@@ -71,6 +100,11 @@ export function unsupportedAccountReason(raw: ListMailboxesResult, accountId: st
   const account = raw.accounts.find((a) => a.uuid === accountId)
   const username = account?.username?.trim().toLowerCase()
   if (username !== undefined && GMAIL_SUFFIXES.some((s) => username.endsWith(s))) return 'gmail'
+  return accountNameProblem(raw, accountId)
+}
+
+/** Nur die Namensregeln: Mail adressiert Konten ueber den Namen, er muss vorhanden und eindeutig sein. */
+export function accountNameProblem(raw: ListMailboxesResult, accountId: string): 'name_missing' | 'name_duplicate' | null {
   const name = accountName(raw, accountId)
   if (name === null) return 'name_missing'
   if (raw.accounts.filter((a) => a.description !== null && fold(a.description.trim()) === fold(name)).length > 1) return 'name_duplicate'
@@ -148,4 +182,48 @@ export function checkMove(input: CheckMoveInput): CheckMoveResult {
   if (source.id === target.id) return skip('skipped_same_folder')
 
   return { ok: true, rowid: copy.rowid, source: sourcePath, target: targetPath, account, messageId, sourceMailboxId: source.id, targetMailboxId: target.id }
+}
+
+// Die Teil-ID geht an das Bundle; was es ablehnen wuerde (leer, keine Punktzahlen), gilt als nicht vorhanden.
+const PART_ID = /^[0-9]+(\.[0-9]+)*$/
+
+/**
+ * Prueft das Speichern eines Anhangs ohne Nebenwirkung. Gmail und Nicht-IMAP-Konten sind erlaubt: Gespeichert wird
+ * nur gelesen, es entsteht keine Kopie auf dem Server.
+ */
+export function checkSave(input: CheckSaveInput): CheckSaveResult {
+  const { request, located, policy, raw, attachmentTypes } = input
+  const skip = (status: SaveStatus): CheckSaveResult => ({ ok: false, status })
+
+  const visible = (located?.copies ?? []).filter((c) => policy.mailboxes.has(c.mailboxId))
+  let candidates = visible
+  if (request.sourceMailboxId !== undefined) {
+    const sourceId = parseId(request.sourceMailboxId)
+    if (sourceId === null || !policy.mailboxes.has(sourceId)) return skip('skipped_source_not_visible')
+    candidates = visible.filter((c) => c.mailboxId === sourceId)
+  }
+  const copy = candidates[0]
+  if (located === undefined || copy === undefined) return skip('skipped_source_not_visible')
+  if (candidates.length > 1) return skip('skipped_ambiguous')
+  const source = policy.mailboxes.get(copy.mailboxId)!
+
+  if (accountNameProblem(raw, source.accountId) !== null) return skip('skipped_unsupported_account')
+  const account = accountName(raw, source.accountId)
+  if (account === null) return skip('skipped_unsupported_account')
+
+  const sourcePath = folderPath(source)
+  if (sourcePath === null || hasCaseTwin(raw, source)) return skip('skipped_unsupported_folder')
+
+  if (classify({ subject: located.subject, fromAddress: located.fromAddress }).security) return skip('skipped_security_mail')
+
+  const messageId = usableMessageId(located.messageIdHeader)
+  if (messageId === null) return skip('skipped_no_message_id')
+
+  const attachment = Number.isInteger(request.attachment) && request.attachment >= 0 ? copy.attachments?.[request.attachment] : undefined
+  if (attachment === undefined || !PART_ID.test(attachment.partId)) return skip('skipped_attachment_not_found')
+
+  const fileName = safeFileName(attachment.name, `attachment-${request.id}-${attachment.partId}`)
+  if (!typeAllowed(fileName, attachmentTypes)) return skip('skipped_type_not_allowed')
+
+  return { ok: true, account, source: sourcePath, rowid: copy.rowid, messageId, partId: attachment.partId, fileName }
 }
