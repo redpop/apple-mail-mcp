@@ -62,7 +62,7 @@ public enum Script {
 
     /// Speichert einen Anhang unter `path` und nur, wenn die `message id` passt. Der Rahmen ist
     /// der von `move`. Das Ergebnis ist `saved`, `not_found`, `mismatch`, `folder_not_found`,
-    /// `attachment_not_found` oder `too_large`. `partId` ist die `id` des Anhangs und in Mail Text.
+    /// `attachment_not_found` oder `too_large`. `partId` ist die `id` des Anhangs und in Mail Text; wie im Spike wird aufgezaehlt und `(id of a) as text` verglichen, nicht gefiltert.
     /// `file size` kann werfen; dann entscheidet die Node-Seite ueber die Groesse. Nie `MIME type`:
     /// das wirft -10000. Das Bundle baut nur den Pfadtext; die Datei legt Mail an.
     public static func saveAttachment(
@@ -85,14 +85,16 @@ public enum Script {
             set m to item 1 of msgs
             set mid to message id of m
             if mid is \(literal(bareMessageId)) or mid is \(literal("<" + bareMessageId + ">")) then
-              set atts to (mail attachments of m whose id is \(literal(partId)))
-              if (count of atts) is 0 then return "attachment_not_found"
-              set a to item 1 of atts
-              try
-                if (file size of a) > \(maxBytes) then return "too_large"
-              end try
-              save a in (POSIX file \(literal(path)))
-              return "saved"
+              repeat with a in (mail attachments of m)
+                if ((id of a) as text) is \(literal(partId)) then
+                  try
+                    if (file size of a) > \(maxBytes) then return "too_large"
+                  end try
+                  save a in (POSIX file \(literal(path)))
+                  return "saved"
+                end if
+              end repeat
+              return "attachment_not_found"
             end if
             return "mismatch"
           end tell

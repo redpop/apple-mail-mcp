@@ -385,6 +385,8 @@ final class EnvBox: @unchecked Sendable {
         (["APPLE_MAIL_ATTACHMENT_DIR": ""], "/h/Library/Caches/apple-mail-mcp/attachments"),
         (["APPLE_MAIL_ATTACHMENT_DIR": "~/x"], "/h/x"),
         (["APPLE_MAIL_ATTACHMENT_DIR": "/abs/y"], "/abs/y"),
+        (["APPLE_MAIL_ATTACHMENT_DIR": " /abs/y "], "/abs/y"),
+        (["APPLE_MAIL_ATTACHMENT_DIR": "  "], "/h/Library/Caches/apple-mail-mcp/attachments"),
     ])
     func attachmentDirResolve(env: [String: String], expected: String) {
         #expect(AttachmentDir.resolve(env: env, home: "/h") == expected)

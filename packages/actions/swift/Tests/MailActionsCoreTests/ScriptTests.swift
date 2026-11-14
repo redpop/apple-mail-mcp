@@ -142,7 +142,9 @@ import Testing
 
     @Test func saveAttachmentScriptUsesPartIdAndPosixFile() {
         let text = saveScript()
-        #expect(text.contains(#"whose id is "2""#))
+        #expect(text.contains("repeat with a in (mail attachments of m)"))
+        #expect(text.contains(#"((id of a) as text) is "2""#))
+        #expect(!text.contains("attachments of m whose"))
         #expect(text.contains(#"save a in (POSIX file "/base/att-a1B2c3/Rechnung.pdf")"#))
         #expect(text.contains("whose id is 42)"))
         #expect(text.contains("> 1000"))

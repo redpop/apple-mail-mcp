@@ -5,7 +5,8 @@ import Foundation
 enum AttachmentDir {
     /// nil = ungueltig (relativ, `~user/...`) oder ein noetiges Home fehlt. Keine Normalisierung.
     static func resolve(env: [String: String], home: String) -> String? {
-        let raw = env["APPLE_MAIL_ATTACHMENT_DIR"] ?? ""
+        // Wie `raw()` in src/config.ts: getrimmt, nur Leerraum gilt als nicht gesetzt.
+        let raw = (env["APPLE_MAIL_ATTACHMENT_DIR"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if raw.isEmpty {
             guard !home.isEmpty else { return nil }
             return home + "/Library/Caches/apple-mail-mcp/attachments"
