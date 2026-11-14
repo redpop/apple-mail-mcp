@@ -39,7 +39,11 @@ export async function runCli(command: 'setup' | 'doctor', args: string[], deps: 
   // Leere Kontenliste macht die Actions-Konfiguration ungueltig; Bundle-Pfad und Debug-Flag gelten trotzdem.
   const actionsConfig: ActionsConfig = configResult.ok
     ? configResult.config
-    : { ...readConfig, maxMoves: 25, excludeTargets: [], actionsPath: env.APPLE_MAIL_ACTIONS_PATH?.trim() || null }
+    : {
+        ...readConfig, maxMoves: 25, excludeTargets: [], actionsPath: env.APPLE_MAIL_ACTIONS_PATH?.trim() || null,
+        // Ungueltige Konfiguration: Anhaenge bleiben aus, der Rest sind Vorgabewerte.
+        saveAttachments: false, attachmentDir: '', maxAttachmentBytes: 26214400, attachmentTypes: [],
+      }
 
   const helper = (deps.makeHelper ?? createHelperRunner)(readConfig)
   const actions = (deps.makeActions ?? createActionsRunner)(actionsConfig)
