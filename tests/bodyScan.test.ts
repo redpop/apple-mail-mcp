@@ -88,7 +88,7 @@ function fakeRunner(w: World) {
           const b = w.bodies[g]
           const mime = w.mimes?.[g]
           const data = mime !== undefined ? rawMime(mime) : b === undefined ? null : raw(b)
-          return { ...r, raw: r.file === 'none' ? null : data, rawSize: 10, rawTruncated: false }
+          return { ...r, raw: r.file === 'none' ? null : data, rawSize: 10, rawTruncated: false, attachmentsOnDisk: [] }
         })
         if (w.budgetNever) return { messages: messages.map((m) => ({ ...m, raw: null })), missing: [], budgetExhausted: true }
         let budgetExhausted = false

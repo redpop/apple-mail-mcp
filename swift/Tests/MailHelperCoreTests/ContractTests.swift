@@ -29,6 +29,12 @@ import Testing
 
     @Test func everyCommandMatchesTheGoldenFile() throws {
         let f = try FixtureBuilder.build()
+        // Der erste Anhang von invoice (ROWID 28, Teil 1) liegt als eigene Datei vor, der zweite nicht:
+        // get-messages zeigt so beide Werte von attachmentsOnDisk.
+        let part = f.expectedEmlxPath(rowid: 28).deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Attachments/28/1")
+        try FileManager.default.createDirectory(at: part, withIntermediateDirectories: true)
+        try Data("pdf".utf8).write(to: part.appending(path: "rechnung-2024-0815.pdf"))
         let d = Dispatcher(store: MailStore(config: f.config), signing: .trusted)
         let allowed = f.allMailboxIds.map(String.init).joined(separator: ",")
         let requests: [(file: String, command: String, payload: String)] = [

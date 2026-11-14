@@ -19,7 +19,7 @@ describe('schemas', () => {
     expect(searchResult.parse({ messages: [row], hasMore: true, totalMatched: 42, totalMatchedCapped: false }).hasMore).toBe(true)
   })
   it('get-messages result', () => {
-    const r = getMessagesResult.parse({ messages: [{ ...row, raw: 'AAAA', rawSize: 3, rawTruncated: false }, { ...row, file: 'none', raw: null, rawSize: 0, rawTruncated: false }], missing: [2], budgetExhausted: false })
+    const r = getMessagesResult.parse({ messages: [{ ...row, raw: 'AAAA', rawSize: 3, rawTruncated: false, attachmentsOnDisk: [false] }, { ...row, file: 'none', raw: null, rawSize: 0, rawTruncated: false, attachmentsOnDisk: [false] }], missing: [2], budgetExhausted: false })
     expect(r.messages[1]!.raw).toBeNull()
   })
   it('thread result', () => {

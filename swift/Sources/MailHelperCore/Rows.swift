@@ -141,9 +141,10 @@ extension MailStore {
         try loadDetailed(gids: gids, allowed: allowed, maxRecipients: maxRecipients).map(\.row)
     }
 
-    /// Wie `loadRows`, dazu die gefundene Datei der besten Kopie.
+    /// Wie `loadRows`, dazu die gefundene Datei, die ROWID und die Teilnummern der Anhaenge (`attachment_id`,
+    /// parallel zu `attachmentNames`) der besten Kopie.
     func loadDetailed(gids: [Int64], allowed: [Int64], maxRecipients: Int) throws(HelperFailure)
-        -> [(row: MessageRow, located: Located?)] {
+        -> [(row: MessageRow, located: Located?, rowid: Int64, partIds: [String])] {
         guard !gids.isEmpty, !allowed.isEmpty else { return [] }
         let (db, optional) = try envelopeDatabaseWithColumns()
         let locator = try emlxLocator()
@@ -153,6 +154,7 @@ extension MailStore {
         let category = Self.effectiveCategory(optional)
         let highImpact = optional.modelCategory ? "g.model_high_impact" : "0"
         let reminder = optional.readLater ? "g.read_later_date" : "NULL"
+        let attachmentId = optional.attachmentId ? "t.attachment_id" : "NULL"
 
         // 1. Kopien in erlaubten Mailboxen.
         var copiesByGid: [Int64: [MessageCopy]] = [:]
@@ -201,6 +203,7 @@ extension MailStore {
         var recipients: [Int64: [Recipient]] = [:]
         var recipientCounts: [Int64: Int] = [:]
         var attachments: [Int64: [String]] = [:]
+        var partIds: [Int64: [String]] = [:]
         var attachmentCounts: [Int64: Int] = [:]
         start = 0
         while start < bestRowids.count {
@@ -233,18 +236,19 @@ extension MailStore {
                 attachmentCounts[$0.int(0)] = Int($0.int(1))
             }
             try db.query("""
-                SELECT message, name FROM (
-                    SELECT t.message AS message, t.name AS name,
+                SELECT message, name, attachment_id FROM (
+                    SELECT t.message AS message, t.name AS name, \(attachmentId) AS attachment_id,
                            row_number() OVER (PARTITION BY t.message ORDER BY t.ROWID) AS rn
                     FROM attachments t WHERE t.message IN (\(ph)))
                 WHERE rn <= ? ORDER BY message, rn
                 """, binds + [.int(Int64(attachmentNameCap))]) { r in
                 attachments[r.int(0), default: []].append(r.text(1) ?? "")
+                partIds[r.int(0), default: []].append(r.text(2) ?? "")
             }
         }
 
         // 4. Zusammensetzen.
-        var out: [(row: MessageRow, located: Located?)] = []
+        var out: [(row: MessageRow, located: Located?, rowid: Int64, partIds: [String])] = []
         for gid in gids {
             guard let copies = copiesByGid[gid], let b = best[gid] else { continue }
             let c = b.copy
@@ -258,7 +262,8 @@ extension MailStore {
                 read: copies.contains { $0.read }, flagged: copies.contains { $0.flagged },
                 attachmentNames: attachments[c.rowid] ?? [], attachmentCount: attachmentCounts[c.rowid] ?? 0,
                 conversationId: c.conversationId, file: b.file,
-                category: c.category, highImpact: c.highImpact, reminder: c.reminder), b.located))
+                category: c.category, highImpact: c.highImpact, reminder: c.reminder), b.located,
+                c.rowid, partIds[c.rowid] ?? []))
         }
         return out
     }

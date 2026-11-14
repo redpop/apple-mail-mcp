@@ -333,7 +333,7 @@ describe('search_messages', () => {
 
 describe('get_message', () => {
   const gm = (r: Record<string, unknown>, extra: Record<string, unknown> = {}) => () => ({
-    messages: [{ ...row(7), raw: null, rawSize: 0, rawTruncated: false, ...r }],
+    messages: [{ ...row(7), raw: null, rawSize: 0, rawTruncated: false, attachmentsOnDisk: [false], ...r }],
     missing: [],
     budgetExhausted: false,
     ...extra,
@@ -369,6 +369,28 @@ describe('get_message', () => {
     // Rueckfall auf die Datenbank fuer to/cc
     expect(res.structuredContent.to.map((a: any) => a.address)).toEqual(['ich@example.org'])
     expect(res.structuredContent.attachments).toEqual([{ name: 'a.pdf', downloaded: false }])
+  })
+
+  it('get_message marks a partial message attachment downloaded only when Mail saved it as a file', async () => {
+    const { server } = setup(
+      gm({ file: 'partial', raw: emlx('Hi there'), rawSize: 100, attachmentNames: ['a.pdf', 'b.png', 'c.txt'], attachmentsOnDisk: [true, false, false] }),
+    )
+    const res = await call(server, 'get_message', { id: '7' })
+    expect(res.structuredContent.bodyAvailable).toBe(true)
+    expect(res.structuredContent.attachments).toEqual([
+      { name: 'a.pdf', downloaded: true },
+      { name: 'b.png', downloaded: false },
+      { name: 'c.txt', downloaded: false },
+    ])
+  })
+
+  it('get_message keeps every attachment of a full message downloaded', async () => {
+    const { server } = setup(gm({ file: 'full', raw: emlx('Hi there'), rawSize: 100, attachmentNames: ['a.pdf', 'b.png'], attachmentsOnDisk: [false, false] }))
+    const res = await call(server, 'get_message', { id: '7' })
+    expect(res.structuredContent.attachments).toEqual([
+      { name: 'a.pdf', downloaded: true },
+      { name: 'b.png', downloaded: true },
+    ])
   })
 
   it('get_message ews mailbox without file is file_not_found', async () => {

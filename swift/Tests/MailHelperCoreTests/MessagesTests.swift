@@ -171,6 +171,80 @@ import Testing
         #expect(Data(base64Encoded: archRaw) == archFile)
     }
 
+    /// `Data/<ziffern>/Attachments/<rowid>/<teil>/` neben dem Messages-Verzeichnis der .emlx.
+    private func partDir(rowid: Int64, _ part: String) -> URL {
+        f.expectedEmlxPath(rowid: rowid).deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Attachments").appending(path: String(rowid)).appending(path: part)
+    }
+
+    /// Haengt der partiellen Kopie 123456 von dup3 Anhangzeilen mit diesen Teilnummern an.
+    private func addAttachments(rowid: Int64, _ parts: [String]) throws {
+        let db = try SQLiteHandle(path: f.envelopeIndex.path)
+        for (i, part) in parts.enumerated() {
+            try db.run("INSERT INTO attachments (message, attachment_id, name) VALUES (?, ?, ?)",
+                       [.int(rowid), .text(part), .text("teil-\(i).pdf")])
+        }
+    }
+
+    @Test func partialAttachmentCountsAsOnDiskOnlyWithARegularFileInItsPartDirectory() throws {
+        let fm = FileManager.default
+        try addAttachments(rowid: 123456, ["2", "3", "1.2", "4", "5", "6"])
+        // 2: Datei vorhanden. 3: leeres Verzeichnis. 1.2: verschachtelte Teilnummer mit Datei.
+        // 4: nur Punktdatei. 5: nur Symlink auf eine Datei. 6: kein Verzeichnis.
+        for part in ["2", "3", "1.2", "4", "5"] { try fm.createDirectory(at: partDir(rowid: 123456, part), withIntermediateDirectories: true) }
+        try Data("pdf".utf8).write(to: partDir(rowid: 123456, "2").appending(path: "rechnung.pdf"))
+        try Data("pdf".utf8).write(to: partDir(rowid: 123456, "1.2").appending(path: "bild.png"))
+        try Data("x".utf8).write(to: partDir(rowid: 123456, "4").appending(path: ".DS_Store"))
+        try fm.createSymbolicLink(at: partDir(rowid: 123456, "5").appending(path: "link.pdf"),
+                                  withDestinationURL: partDir(rowid: 123456, "2").appending(path: "rechnung.pdf"))
+
+        let r = try store.getMessages(request(["dup3"], allowed: [f.mailboxId(named: "archiv2024")]))
+        let m = try #require(r.messages.first)
+        #expect(m.row.file == .partial)
+        #expect(m.row.attachmentNames.count == 6)
+        #expect(m.attachmentsOnDisk == [true, false, true, false, false, false])
+    }
+
+    @Test func attachmentsOnDiskStaysInsideTheMailRoot() throws {
+        let fm = FileManager.default
+        let outside = fm.temporaryDirectory.appending(path: "amm-outside-\(UUID().uuidString)")
+        try fm.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: outside) }
+        try Data("x".utf8).write(to: outside.appending(path: "fremd.pdf"))
+        // Teilverzeichnis 7 ist ein Symlink nach draussen; Teilnummern mit Pfadzeichen werden nie zu Pfaden.
+        try addAttachments(rowid: 123456, ["7", "../2", "2/..", "", "a"])
+        let attachments = partDir(rowid: 123456, "7").deletingLastPathComponent()
+        try fm.createDirectory(at: attachments, withIntermediateDirectories: true)
+        try fm.createSymbolicLink(at: partDir(rowid: 123456, "7"), withDestinationURL: outside)
+        try fm.createDirectory(at: partDir(rowid: 123456, "2"), withIntermediateDirectories: true)
+        try Data("pdf".utf8).write(to: partDir(rowid: 123456, "2").appending(path: "rechnung.pdf"))
+
+        let r = try store.getMessages(request(["dup3"], allowed: [f.mailboxId(named: "archiv2024")]))
+        let m = try #require(r.messages.first)
+        #expect(m.attachmentsOnDisk == [false, false, false, false, false])
+    }
+
+    @Test func attachmentsOnDiskIsFalseWithoutAFile() throws {
+        // invoice ist full, hat aber kein Attachments-Verzeichnis: der Helper meldet nur Dateien.
+        let r = try store.getMessages(request(["invoice"]))
+        #expect(r.messages[0].row.file == .full)
+        #expect(r.messages[0].attachmentsOnDisk == [false, false])
+        // Kopie 4712 von dup3 hat keine Datei: alle Anhaenge false, auch wenn ein Teilverzeichnis existiert.
+        try addAttachments(rowid: 4712, ["2"])
+        try FileManager.default.createDirectory(at: partDir(rowid: 4712, "2"), withIntermediateDirectories: true)
+        try Data("pdf".utf8).write(to: partDir(rowid: 4712, "2").appending(path: "rechnung.pdf"))
+        let junk = try store.getMessages(request(["dup3"], allowed: [f.mailboxId(named: "junk")]))
+        #expect(junk.messages[0].row.file == FileState.none)
+        #expect(junk.messages[0].attachmentsOnDisk == [false])
+    }
+
+    @Test func partNumbers() {
+        for ok in ["1", "2", "1.2", "10.3.4"] { #expect(EmlxLocator.isPartNumber(ok), "\(ok)") }
+        for bad in ["", ".", "1.", ".1", "1..2", "a", "../1", "1/2", "-1", " 1", "1234567890"] {
+            #expect(!EmlxLocator.isPartNumber(bad), "\(bad)")
+        }
+    }
+
     @Test func wireShapeMatchesZod() throws {
         let r = try store.getMessages(request(["small", "trash"]))
         let json = try JSONEncoder().encode(r)
@@ -180,7 +254,8 @@ import Testing
         for m in msgs {
             #expect(Set(m.keys) == ["gid", "messageIdHeader", "subject", "sender", "recipients", "recipientCount", "dateReceived",
                                     "dateSent", "mailboxIds", "read", "flagged", "attachmentNames", "attachmentCount",
-                                    "conversationId", "file", "category", "highImpact", "reminder", "raw", "rawSize", "rawTruncated"])
+                                    "conversationId", "file", "category", "highImpact", "reminder", "raw", "rawSize", "rawTruncated",
+                                    "attachmentsOnDisk"])
         }
         #expect(msgs.contains { $0["raw"] is NSNull })
         #expect(msgs.contains { $0["raw"] is String })
