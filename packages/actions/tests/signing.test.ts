@@ -39,7 +39,7 @@ function fakeExec(o: { id: string; codesignFails?: boolean }): ExecFn & { calls:
 const exists = () => true
 
 function config(env: NodeJS.ProcessEnv = {}): ActionsConfig {
-  const r = loadActionsConfig({ APPLE_MAIL_ACCOUNTS: 'Work', HOME: '/Users/test', ...env })
+  const r = loadActionsConfig({ APPLE_MAIL_ACCOUNTS: 'Work', ...env })
   if (!r.ok) throw new Error(r.error)
   return r.config
 }

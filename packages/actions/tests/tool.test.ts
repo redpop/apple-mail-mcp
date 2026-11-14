@@ -23,7 +23,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function setup(mail: FakeMail, env: NodeJS.ProcessEnv = { APPLE_MAIL_ACCOUNTS: `${WORK},${HOME}`, HOME: '/Users/test' }) {
+function setup(mail: FakeMail, env: NodeJS.ProcessEnv = { APPLE_MAIL_ACCOUNTS: `${WORK},${HOME}` }) {
   const configResult = loadActionsConfig(env)
   const ctx = createActionsContext({
     helper: mail.helper,
@@ -139,7 +139,7 @@ describe('calls', () => {
 
   test('too many moves is reported with the limit', async () => {
     const mail = new FakeMail()
-    const { tool } = setup(mail, { APPLE_MAIL_ACCOUNTS: WORK, HOME: '/Users/test', APPLE_MAIL_MAX_MOVES: '1' })
+    const { tool } = setup(mail, { APPLE_MAIL_ACCOUNTS: WORK, APPLE_MAIL_MAX_MOVES: '1' })
     const res = await run(tool, { moves: [{ id: '1', targetMailboxId: '2' }, { id: '2', targetMailboxId: '2' }] })
     expect(res.isError).toBe(true)
     expect(res.content[0].text).toContain('At most 1')

@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest'
 import { loadActionsConfig } from '../src/config.js'
 
-const base = { APPLE_MAIL_ACCOUNTS: 'Work', HOME: '/Users/test' }
-const noHome = { APPLE_MAIL_ACCOUNTS: 'Work' }
+const base = { APPLE_MAIL_ACCOUNTS: 'Work' }
+const noHome = base
 
 test('emptyAccountsIsConfigInvalid', () => {
   const r = loadActionsConfig({})
@@ -38,9 +38,11 @@ test('excludeTargetsAreParsed', () => {
 const withHome = { ...base, HOME: '/Users/test' }
 
 test('attachment settings default', () => {
-  const r = loadActionsConfig(withHome)
+  const r = loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'false' })
   expect(r.ok && r.config.saveAttachments).toBe(false)
-  expect(r.ok && r.config.attachmentDir).toBe('/Users/test/Library/Caches/apple-mail-mcp/attachments')
+  expect(r.ok && r.config.attachmentDir).toBe('')
+  const on = loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true' })
+  expect(on.ok && on.config.attachmentDir).toBe('/Users/test/Library/Caches/apple-mail-mcp/attachments')
   expect(r.ok && r.config.maxAttachmentBytes).toBe(26214400)
   expect(r.ok && r.config.attachmentTypes).toEqual('pdf,png,jpg,jpeg,heic,gif,txt,csv,ics,vcf,docx,xlsx,pptx,odt,ods,zip'.split(','))
 })
@@ -53,15 +55,22 @@ test('attachment settings are validated', () => {
     expect(loadActionsConfig({ ...withHome, APPLE_MAIL_MAX_ATTACHMENT_BYTES: v })).toMatchObject({ ok: false, key: 'APPLE_MAIL_MAX_ATTACHMENT_BYTES' })
   }
   expect(loadActionsConfig({ ...withHome, APPLE_MAIL_MAX_ATTACHMENT_BYTES: '104857600' })).toMatchObject({ ok: true })
-  expect(loadActionsConfig({ ...withHome, APPLE_MAIL_ATTACHMENT_DIR: 'rel' })).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_DIR' })
-  const d = loadActionsConfig({ ...withHome, APPLE_MAIL_ATTACHMENT_DIR: '~/Downloads/mail' })
+  expect(loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true', APPLE_MAIL_ATTACHMENT_DIR: 'rel' })).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_DIR' })
+  const d = loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true', APPLE_MAIL_ATTACHMENT_DIR: '~/Downloads/mail' })
   expect(d.ok && d.config.attachmentDir).toBe('/Users/test/Downloads/mail')
 })
 
-test('an unset or empty HOME is invalid when the folder needs it', () => {
-  expect(loadActionsConfig(noHome)).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_DIR' })
-  expect(loadActionsConfig({ ...noHome, HOME: '' })).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_DIR' })
-  expect(loadActionsConfig({ ...noHome, APPLE_MAIL_ATTACHMENT_DIR: '/tmp/x' })).toMatchObject({ ok: true })
+test('the attachment folder is validated only when saving is on', () => {
+  const on = { ...noHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true' }
+  expect(loadActionsConfig(noHome)).toMatchObject({ ok: true })
+  expect(loadActionsConfig({ ...noHome, HOME: '' })).toMatchObject({ ok: true })
+  expect(loadActionsConfig({ ...noHome, APPLE_MAIL_ATTACHMENT_DIR: 'rel' })).toMatchObject({ ok: true })
+  const off = loadActionsConfig(noHome)
+  expect(off.ok && off.config.attachmentDir).toBe('')
+  expect(loadActionsConfig(on)).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_DIR' })
+  expect(loadActionsConfig({ ...on, HOME: '' })).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_DIR' })
+  expect(loadActionsConfig({ ...on, APPLE_MAIL_ATTACHMENT_DIR: 'rel', HOME: '/Users/test' })).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_DIR' })
+  expect(loadActionsConfig({ ...on, APPLE_MAIL_ATTACHMENT_DIR: '/tmp/x' })).toMatchObject({ ok: true })
 })
 
 test('attachment types are normalised and never allow executables', () => {

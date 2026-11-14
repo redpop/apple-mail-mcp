@@ -6,7 +6,7 @@ import { checkMove, checkSave, type MoveStatus, type SaveStatus } from '../src/r
 import { ARCHIVE, DRAFTS, HOME, HOME_INBOX, INBOX, JUNK, message, NESTED, PRIVATE, rawMailboxes, SENT, TRASH, WORK, type LocatedMessage } from './fakes/fakeActions.js'
 
 function policyFor(raw: ListMailboxesResult, env: NodeJS.ProcessEnv = {}): Policy {
-  const r = loadActionsConfig({ APPLE_MAIL_ACCOUNTS: raw.accounts.map((a) => a.uuid).join(','), HOME: '/Users/test', ...env })
+  const r = loadActionsConfig({ APPLE_MAIL_ACCOUNTS: raw.accounts.map((a) => a.uuid).join(','), ...env })
   if (!r.ok) throw new Error(r.error)
   return computePolicy(r.config, raw)
 }

@@ -55,8 +55,13 @@ export function loadActionsConfig(env: NodeJS.ProcessEnv): ActionsConfigResult {
       if (sa !== 'true' && sa !== 'false') throw new KeyError('APPLE_MAIL_SAVE_ATTACHMENTS', 'APPLE_MAIL_SAVE_ATTACHMENTS must be true or false')
       saveAttachments = sa === 'true'
     }
-    const attachmentDir = resolveAttachmentDir(raw(env, 'APPLE_MAIL_ATTACHMENT_DIR'), env.HOME ?? '')
-    if (attachmentDir === null) throw new KeyError('APPLE_MAIL_ATTACHMENT_DIR', 'APPLE_MAIL_ATTACHMENT_DIR must be an absolute path or start with ~/')
+    // Der Ordner zaehlt nur, wenn Speichern an ist; sonst darf ein fehlendes HOME das Verschieben nicht stoeren.
+    let attachmentDir = ''
+    if (saveAttachments) {
+      const dir = resolveAttachmentDir(raw(env, 'APPLE_MAIL_ATTACHMENT_DIR'), env.HOME ?? '')
+      if (dir === null) throw new KeyError('APPLE_MAIL_ATTACHMENT_DIR', 'APPLE_MAIL_ATTACHMENT_DIR must be an absolute path or start with ~/ (and HOME must be set for the default folder)')
+      attachmentDir = dir
+    }
     let maxAttachmentBytes = 26214400
     const mb = raw(env, 'APPLE_MAIL_MAX_ATTACHMENT_BYTES')
     if (mb !== undefined) {
