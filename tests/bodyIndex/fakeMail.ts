@@ -103,7 +103,7 @@ export class FakeMail {
         for (const g of p.gids as number[]) {
           const r = vis.find((x) => x.gid === g)
           if (r === undefined) missing.push(g)
-          else messages.push({ ...this.messageRow(r), raw: r.body === null ? null : emlx(r.body, r.subject), rawSize: 0, rawTruncated: false })
+          else messages.push({ ...this.messageRow(r), raw: r.body === null ? null : emlx(r.body, r.subject), rawSize: 0, rawTruncated: false, attachmentsOnDisk: [] })
         }
         return { messages, missing, budgetExhausted: false }
       }

@@ -10,6 +10,10 @@
           "rechnung-2024-0815.pdf",
           "anlage.txt"
         ],
+        "attachmentsOnDisk" : [
+          true,
+          false
+        ],
         "category" : null,
         "conversationId" : 0,
         "dateReceived" : 1700001400,

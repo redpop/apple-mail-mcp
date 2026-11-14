@@ -33,7 +33,7 @@ Conventions:
 | `unread`, `flagged` | True if any copy is. |
 | `attachmentNames`, `attachmentCount` | From Mail's database. |
 | `threadId` | Conversation id, or `null`. |
-| `bodyLocal` | `full`, `partial` (text present, attachments missing) or `none` (never downloaded). |
+| `bodyLocal` | `full`, `partial` (text present, attachments only where Mail saved them as separate files) or `none` (never downloaded). |
 | `category` | Mail's category: `primary`, `transactions`, `updates`, `promotions`, or `null` when Mail has not categorised the message (most older mail) or stores a value this server does not know. A sender override set in Mail ("Categorize Sender") wins over Mail's own value. See [Categories](#categories). |
 | `important` | `true` if Mail marks the message as important; it then also appears under `primary`. |
 | `reminder` | The date set with Remind Me in Mail, due or still ahead, or `null`. Once it has passed, Mail shows the message in its account's inbox; so does a search in that inbox, while `mailboxes` still names where the message is stored. |
@@ -140,6 +140,9 @@ Returns one message with its body as text.
 
 Result: the summary fields plus `replyTo`, `dateSent`, `attachments` (`name`, `downloaded`),
 `bodyAvailable` and `body`.
+
+- `downloaded` is `true` for every attachment of a `full` message. For a `partial` message it is
+  `true` only when Mail saved that attachment as a separate file next to the message.
 
 - `body` is `{text, format, truncated, totalChars, quotedRemoved}`. `format` is `plain`, or
   `html` when only HTML existed and was converted to text. Text is cut at a word boundary.

@@ -111,6 +111,45 @@ public final class EmlxLocator {
         return EmlxContent(data: data, size: size, read: true)
     }
 
+    /// Ob Mail den Anhang `partId` der Nachricht `rowid` als eigene Datei abgelegt hat: eine regulaere Datei in
+    /// `<Data>/<ziffern>/Attachments/<rowid>/<partId>/`, neben dem Messages-Verzeichnis der gefundenen .emlx.
+    /// Der Pfad entsteht nur aus `located`, `rowid` und einer geprueften Teilnummer (`^\d+(\.\d+)*$`), nie
+    /// aus dem Dateinamen der Datenbank; das Verzeichnis muss per realpath unter der Wurzel liegen. Symlinks
+    /// und Punktdateien zaehlen nicht. Liest keinen Inhalt.
+    func attachmentOnDisk(_ located: Located, rowid: Int64, partId: String) -> Bool {
+        guard rowid > 0, Self.isPartNumber(partId) else { return false }
+        if realRoot == nil { realRoot = Self.realpathString(versionDir.path) }
+        guard let root = realRoot else { return false }
+        let prefix = root.hasSuffix("/") ? root : root + "/"
+        // located.url: .../Data/<ziffern>/Messages/<rowid>[.partial].emlx
+        let dataDir = located.url.deletingLastPathComponent().deletingLastPathComponent().path
+        let candidate = dataDir + "/Attachments/" + String(rowid) + "/" + partId
+        guard let resolved = Self.realpathString(candidate), resolved.hasPrefix(prefix) else { return false }
+        let fd = open(resolved, O_RDONLY | O_DIRECTORY | O_NOFOLLOW_ANY)
+        guard fd >= 0 else { return false }
+        guard let dir = fdopendir(fd) else { close(fd); return false }
+        defer { closedir(dir) }
+        while let entry = readdir(dir) {
+            // Rohe Bytes des Namens, ohne Umweg ueber String: auch ein Name, der kein UTF-8 ist, wird geprueft.
+            let regular = withUnsafeBytes(of: entry.pointee.d_name) { raw -> Bool in
+                let name = raw.baseAddress!.assumingMemoryBound(to: CChar.self)
+                guard name[0] != 0, name[0] != 0x2E else { return false }
+                var st = stat()
+                return fstatat(dirfd(dir), name, &st, AT_SYMLINK_NOFOLLOW) == 0 && (st.st_mode & S_IFMT) == S_IFREG
+            }
+            if regular { return true }
+        }
+        return false
+    }
+
+    /// MIME-Teilnummer wie `attachments.attachment_id`: `1`, `2.1`, `1.2.3`.
+    static func isPartNumber(_ s: String) -> Bool {
+        let parts = s.split(separator: ".", omittingEmptySubsequences: false)
+        return !parts.isEmpty && parts.allSatisfy { p in
+            !p.isEmpty && p.utf8.count <= 9 && p.utf8.allSatisfy { $0 >= 0x30 && $0 <= 0x39 }
+        }
+    }
+
     // MARK: - Pfadbau
 
     /// Ziffernverzeichnisse (Spec 6): q = rowid / 1000, ziffernweise in umgekehrter Reihenfolge; q == 0 ohne Ebene.

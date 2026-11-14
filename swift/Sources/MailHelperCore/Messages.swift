@@ -21,20 +21,26 @@ public struct GetMessagesRequest: Codable, Equatable, Sendable {
     }
 }
 
-/// `MessageRow` plus `raw` (Base64, mit .emlx-Rahmen), `rawSize`, `rawTruncated`. Auf der Leitung flach.
+/// `MessageRow` plus `raw` (Base64, mit .emlx-Rahmen), `rawSize`, `rawTruncated` und `attachmentsOnDisk`.
+/// Auf der Leitung flach.
 public struct RawMessage: Codable, Equatable, Sendable {
     public let row: MessageRow
     public let raw: String?
     public let rawSize: Int64
     public let rawTruncated: Bool
+    /// Parallel zu `row.attachmentNames`: ob Mail den Anhang als eigene Datei unter
+    /// `Attachments/<ROWID>/<Teilnummer>/` der besten Kopie abgelegt hat. Sagt nichts ueber `full`-Dateien,
+    /// deren Anhaenge in der .emlx stecken; das entscheidet Node.
+    public let attachmentsOnDisk: [Bool]
 
-    enum ExtraKeys: String, CodingKey { case raw, rawSize, rawTruncated }
+    enum ExtraKeys: String, CodingKey { case raw, rawSize, rawTruncated, attachmentsOnDisk }
 
-    init(row: MessageRow, raw: String?, rawSize: Int64, rawTruncated: Bool) {
+    init(row: MessageRow, raw: String?, rawSize: Int64, rawTruncated: Bool, attachmentsOnDisk: [Bool]) {
         self.row = row
         self.raw = raw
         self.rawSize = rawSize
         self.rawTruncated = rawTruncated
+        self.attachmentsOnDisk = attachmentsOnDisk
     }
 
     public init(from decoder: Decoder) throws {
@@ -43,6 +49,7 @@ public struct RawMessage: Codable, Equatable, Sendable {
         raw = try c.decodeIfPresent(String.self, forKey: .raw)
         rawSize = try c.decode(Int64.self, forKey: .rawSize)
         rawTruncated = try c.decode(Bool.self, forKey: .rawTruncated)
+        attachmentsOnDisk = try c.decode([Bool].self, forKey: .attachmentsOnDisk)
     }
 
     // raw ist fuer zod nullable, nicht optional: nil wird als null geschrieben.
@@ -52,6 +59,7 @@ public struct RawMessage: Codable, Equatable, Sendable {
         try c.encode(raw, forKey: .raw)
         try c.encode(rawSize, forKey: .rawSize)
         try c.encode(rawTruncated, forKey: .rawTruncated)
+        try c.encode(attachmentsOnDisk, forKey: .attachmentsOnDisk)
     }
 }
 
@@ -87,26 +95,29 @@ extension MailStore {
         var used = 0
         var exhausted = false
         var out: [RawMessage] = []
-        for (row, located) in detailed {
+        for (row, located, rowid, partIds) in detailed {
             guard let located else {
-                out.append(RawMessage(row: row, raw: nil, rawSize: 0, rawTruncated: false))
+                out.append(RawMessage(row: row, raw: nil, rawSize: 0, rawTruncated: false,
+                                      attachmentsOnDisk: partIds.map { _ in false }))
                 continue
             }
+            let onDisk = partIds.map { locator.attachmentOnDisk(located, rowid: rowid, partId: $0) }
             // Vor dem Lesen pruefen, ob die Menge ins Restbudget passt; sonst wird nicht gelesen.
             let content = locator.read(located, maxBytes: perMessage) { n in !exhausted && used + n <= total }
             guard let content else {
-                out.append(RawMessage(row: row, raw: nil, rawSize: 0, rawTruncated: false))
+                out.append(RawMessage(row: row, raw: nil, rawSize: 0, rawTruncated: false, attachmentsOnDisk: onDisk))
                 continue
             }
             guard content.read else {
                 // Nichts gelesen: rawSize ist die echte Groesse, rawTruncated bleibt false (es gibt keinen Rohtext).
                 exhausted = true
-                out.append(RawMessage(row: row, raw: nil, rawSize: content.size, rawTruncated: false))
+                out.append(RawMessage(row: row, raw: nil, rawSize: content.size, rawTruncated: false,
+                                      attachmentsOnDisk: onDisk))
                 continue
             }
             used += content.data.count
             out.append(RawMessage(row: row, raw: content.data.base64EncodedString(), rawSize: content.size,
-                                  rawTruncated: content.size > Int64(perMessage)))
+                                  rawTruncated: content.size > Int64(perMessage), attachmentsOnDisk: onDisk))
         }
         return GetMessagesResult(messages: out, missing: missing, budgetExhausted: exhausted)
     }

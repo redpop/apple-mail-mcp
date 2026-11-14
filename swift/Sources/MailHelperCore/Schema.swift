@@ -40,6 +40,8 @@ enum Schema {
         var businessCategory: Bool = false
         /// message_global_data.read_later_date ("Erinnern", AMM-20); ohne sie gibt es keine Erinnerungen.
         var readLater: Bool = false
+        /// attachments.attachment_id (MIME-Teilnummer); ohne sie gilt kein Anhang als eigene Datei abgelegt.
+        var attachmentId: Bool = false
     }
 
     static func optionalColumns(_ db: Database) throws(HelperFailure) -> OptionalColumns {
@@ -54,6 +56,7 @@ enum Schema {
         let global = try columns("message_global_data")
         let addresses = try columns("business_addresses")
         let businesses = try columns("business_categories")
+        let attachments = try columns("attachments")
         let address = addresses.isSuperset(of: ["address", "business", "category"])
         return OptionalColumns(
             messageIdHeader: global.contains("message_id_header"),
@@ -61,7 +64,8 @@ enum Schema {
             addressCategory: address,
             // business_categories wird nur ueber business_addresses.business erreicht.
             businessCategory: address && businesses.isSuperset(of: ["business", "category"]),
-            readLater: global.contains("read_later_date"))
+            readLater: global.contains("read_later_date"),
+            attachmentId: attachments.contains("attachment_id"))
     }
 
     static func check(_ db: Database) throws(HelperFailure) -> SchemaReport {

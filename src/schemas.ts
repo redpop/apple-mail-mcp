@@ -40,6 +40,8 @@ export const getMessagesResult = z.object({
       raw: z.string().nullable(),
       rawSize: z.number().int(),
       rawTruncated: z.boolean(),
+      // Parallel zu attachmentNames: ob Mail den Anhang als eigene Datei unter Attachments/<ROWID>/<Teil>/ abgelegt hat.
+      attachmentsOnDisk: z.array(z.boolean()),
     }),
   ),
   missing: z.array(z.number().int()),

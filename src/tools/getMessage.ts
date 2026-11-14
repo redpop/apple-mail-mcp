@@ -71,7 +71,11 @@ export function registerGetMessage(server: McpServer, ctx: ToolContext): void {
         const summary = toSummary(row, policy, config, MAX_RECIPIENTS)
         const { matchContext: _m, ...base } = summary
         const exchange = row.mailboxIds.some((id) => policy.mailboxes.get(id)?.type === 'exchange')
-        const attachments = row.attachmentNames.map((name) => ({ name, downloaded: row.file === 'full' }))
+        // full: Anhaenge stecken in der .emlx. partial: nur, wenn Mail den Teil als eigene Datei abgelegt hat.
+        const attachments = row.attachmentNames.map((name, i) => ({
+          name,
+          downloaded: row.file === 'full' || row.attachmentsOnDisk[i] === true,
+        }))
 
         type Reason = 'not_downloaded' | 'file_not_found' | 'withheld_security' | 'parse_failed'
         const result: Record<string, unknown> = {
