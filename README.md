@@ -12,6 +12,8 @@ claude mcp add apple-mail -- npx -y @redpop/apple-mail-mcp
 Then grant Full Disk Access once with `npx -y @redpop/apple-mail-mcp setup`. For Claude
 Desktop there is a one-click bundle: see [Install](#install).
 
+Background and design decisions: [the article on martin-alker.de](https://martin-alker.de/blog/apple-mail-mcp).
+
 ## What it does
 
 The main use is "find the mail about X":
