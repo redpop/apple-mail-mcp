@@ -32,5 +32,5 @@ const TEXTS: Record<ActionsErrorCode, string> = {
 }
 
 export function describeActionsError(code: string): string {
-  return (TEXTS as Record<string, string>)[code] ?? `The move failed with the unexpected error code ${code}.`
+  return (TEXTS as Record<string, string>)[code] ?? `The action failed with the unexpected error code ${code}.`
 }

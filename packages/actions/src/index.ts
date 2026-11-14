@@ -22,7 +22,7 @@ const helper: Stoppable = configResult.ok ? createHelperRunner(configResult.conf
 const actions: Stoppable = configResult.ok ? createActionsRunner(configResult.config) : unreachable
 
 const ctx = createActionsContext({ helper, actions, configResult, helperBundlePath: helper.bundlePath })
-const server = createServer(ctx)
+const server = createServer(ctx, { saveAttachments: configResult.ok && configResult.config.saveAttachments })
 
 const shutdown = (): void => {
   helper.stop()
