@@ -65,7 +65,7 @@ When you enable the plugin, Claude Code asks for accounts, excluded mailboxes, j
 visibility, the number of moves per call, forbidden target mailboxes and the attachment settings. The model cannot change
 them. Details and limits, including which accounts are supported, are in the
 [README of the package](https://github.com/redpop/apple-mail-mcp/blob/main/packages/actions/README.md).
-Only mailbox.org has been tested; Gmail, Exchange and local folders are refused.
+Only mailbox.org has been tested; Gmail, Exchange and local folders are refused for moving.
 
 ## Data
 

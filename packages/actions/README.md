@@ -52,6 +52,9 @@ Every call gets its own subfolder with a random name like `att-k3x9fa`, mode 070
 moves the file where you want it and reads it with its own tools. Nothing is overwritten, and
 nothing is deleted automatically: clean the folder yourself now and then.
 
+Like moving, saving needs the Message-ID header, so it does not work on macOS 15, where
+Mail does not store it: every call returns `skipped_no_message_id`.
+
 If the attachment was not downloaded yet, Mail downloads the attachment from the server first.
 It then stays in Mail's local storage, as if you had opened the message.
 
@@ -117,7 +120,7 @@ Messages are skipped, never moved, in these cases:
 - The source and target are the same, or in different accounts.
 - The account is not supported. Only mailbox.org has been tested. Other IMAP providers are
   untested: they run without a refusal, so limit `APPLE_MAIL_ACCOUNTS` to accounts you
-  are willing to try. Gmail, Exchange and local folders are refused.
+  are willing to try. Gmail, Exchange and local folders are refused for moving.
 - A folder name differs from another folder of the account only in case, or contains control
   characters.
 
@@ -241,7 +244,7 @@ releases. It adds to the policy of the read server.
 Nothing is collected by the author or by any service. The server has no telemetry, and neither
 the server nor the app opens a network connection. The app never sees mail content. It receives
 a message number, a Message-ID and the names of an account and two mailboxes, and returns a
-status. For `save_attachment` it also receives the position and file name of one attachment.
+status. For `save_attachment` it also receives the part id and file name of one attachment and a slot name for the handover subfolder.
 
 ### How it is used and stored
 

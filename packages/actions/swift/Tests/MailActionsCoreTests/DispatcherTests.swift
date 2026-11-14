@@ -304,7 +304,7 @@ final class EnvBox: @unchecked Sendable {
     @Test(arguments: [
         "../x", "..", ".x", "a:b", "a/b", "", "a\u{0007}b", "a\u{007F}b", "a\u{0000}b",
         String(repeating: "x", count: 201), String(repeating: "\u{00E4}", count: 101),
-        "../../x.pdf", ".hidden",
+        "../../x.pdf", ".hidden", ".\u{0301}x",
     ])
     func saveAttachmentRejectsUnsafeFileNames(name: String) throws {
         let json = String(data: try JSONEncoder().encode(name), encoding: .utf8)!

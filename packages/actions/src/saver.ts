@@ -70,12 +70,14 @@ function discard(slot: string, file: string): void {
   }
 }
 
-// Groesse der Datei, die das Bundle abgelegt hat, oder null, wenn sie den Regeln nicht entspricht.
-function verifyFile(slot: string, file: string, maxBytes: number): number | null {
+// Groesse der Datei, die das Bundle abgelegt hat; 'too_large', wenn sie das Limit sprengt (Mails "file size" meldet
+// zu wenig, der Fall ist erreichbar); null, wenn sie sonst den Regeln nicht entspricht.
+function verifyFile(slot: string, file: string, maxBytes: number): number | 'too_large' | null {
   try {
     const st = lstatSync(file)
     // nlink !== 1: ein Hardlink auf eine Datei ausserhalb des Slots ist keine vom Bundle angelegte Datei.
-    if (!st.isFile() || st.size > maxBytes || st.nlink !== 1) return null
+    if (!st.isFile() || st.nlink !== 1) return null
+    if (st.size > maxBytes) return 'too_large'
     if (!realpathSync(file).startsWith(realpathSync(slot) + sep)) return null
     return st.size
   } catch {
@@ -137,6 +139,10 @@ export async function saveAttachment(deps: SaverDeps, request: SaveRequest): Pro
   }
 
   const bytes = verifyFile(slot, file, config.maxAttachmentBytes)
+  if (bytes === 'too_large') {
+    discard(slot, file)
+    return { status: 'skipped_too_large' }
+  }
   if (bytes === null) {
     discard(slot, file)
     return { status: 'failed' }

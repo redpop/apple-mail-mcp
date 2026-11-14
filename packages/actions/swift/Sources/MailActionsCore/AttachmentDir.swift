@@ -30,7 +30,7 @@ enum AttachmentDir {
 
     /// Nicht leer, hoechstens 200 Bytes, kein `/`, `:`, Steuerzeichen, kein fuehrender Punkt.
     static func isSafeFileName(_ value: String) -> Bool {
-        guard !value.isEmpty, value.utf8.count <= 200, !value.hasPrefix(".") else { return false }
+        guard !value.isEmpty, value.utf8.count <= 200, value.utf8.first != 0x2E else { return false }
         return !value.unicodeScalars.contains {
             $0 == "/" || $0 == ":" || $0.value < 0x20 || $0.value == 0x7F
         }

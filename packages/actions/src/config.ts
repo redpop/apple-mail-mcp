@@ -62,14 +62,15 @@ export function loadActionsConfig(env: NodeJS.ProcessEnv): ActionsConfigResult {
       if (dir === null) throw new KeyError('APPLE_MAIL_ATTACHMENT_DIR', 'APPLE_MAIL_ATTACHMENT_DIR must be an absolute path or start with ~/ (and HOME must be set for the default folder)')
       attachmentDir = dir
     }
+    // Grenze und Typliste zaehlen ebenfalls nur bei eingeschaltetem Speichern; sonst gelten die Vorgaben ungelesen.
     let maxAttachmentBytes = 26214400
-    const mb = raw(env, 'APPLE_MAIL_MAX_ATTACHMENT_BYTES')
+    const mb = saveAttachments ? raw(env, 'APPLE_MAIL_MAX_ATTACHMENT_BYTES') : undefined
     if (mb !== undefined) {
       if (!/^\d+$/.test(mb) || Number(mb) < 1 || Number(mb) > 104857600) throw new KeyError('APPLE_MAIL_MAX_ATTACHMENT_BYTES', 'APPLE_MAIL_MAX_ATTACHMENT_BYTES must be an integer between 1 and 104857600')
       maxAttachmentBytes = Number(mb)
     }
     let attachmentTypes = [...DEFAULT_ATTACHMENT_TYPES]
-    const at = raw(env, 'APPLE_MAIL_ATTACHMENT_TYPES')
+    const at = saveAttachments ? raw(env, 'APPLE_MAIL_ATTACHMENT_TYPES') : undefined
     if (at !== undefined) {
       attachmentTypes = at.split(',').map((s) => s.trim().replace(/^\./, '').toLowerCase()).filter((s) => s !== '')
       if (attachmentTypes.length === 0) throw new KeyError('APPLE_MAIL_ATTACHMENT_TYPES', 'APPLE_MAIL_ATTACHMENT_TYPES contains no entries')

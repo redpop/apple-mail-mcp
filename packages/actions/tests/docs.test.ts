@@ -67,7 +67,7 @@ describe('README', () => {
     const t = flat('README.md')
     expect(t).toMatch(/Only mailbox\.org has been tested/i)
     expect(t).toMatch(/other IMAP providers are untested/i)
-    expect(t).toMatch(/Gmail, Exchange and local folders are refused/i)
+    expect(t).toMatch(/Gmail, Exchange and local folders are refused for moving/i)
   })
 
   test('names the copies risk, the lock, empty folders and macOS 15', () => {

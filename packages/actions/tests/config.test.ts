@@ -52,9 +52,9 @@ test('attachment settings are validated', () => {
   const on = loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true' })
   expect(on.ok && on.config.saveAttachments).toBe(true)
   for (const v of ['0', '104857601', 'x']) {
-    expect(loadActionsConfig({ ...withHome, APPLE_MAIL_MAX_ATTACHMENT_BYTES: v })).toMatchObject({ ok: false, key: 'APPLE_MAIL_MAX_ATTACHMENT_BYTES' })
+    expect(loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true', APPLE_MAIL_MAX_ATTACHMENT_BYTES: v })).toMatchObject({ ok: false, key: 'APPLE_MAIL_MAX_ATTACHMENT_BYTES' })
   }
-  expect(loadActionsConfig({ ...withHome, APPLE_MAIL_MAX_ATTACHMENT_BYTES: '104857600' })).toMatchObject({ ok: true })
+  expect(loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true', APPLE_MAIL_MAX_ATTACHMENT_BYTES: '104857600' })).toMatchObject({ ok: true })
   expect(loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true', APPLE_MAIL_ATTACHMENT_DIR: 'rel' })).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_DIR' })
   const d = loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true', APPLE_MAIL_ATTACHMENT_DIR: '~/Downloads/mail' })
   expect(d.ok && d.config.attachmentDir).toBe('/Users/test/Downloads/mail')
@@ -74,9 +74,18 @@ test('the attachment folder is validated only when saving is on', () => {
 })
 
 test('attachment types are normalised and never allow executables', () => {
-  const r = loadActionsConfig({ ...withHome, APPLE_MAIL_ATTACHMENT_TYPES: ' PDF, .png ' })
+  const r = loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true', APPLE_MAIL_ATTACHMENT_TYPES: ' PDF, .png ' })
   expect(r.ok && r.config.attachmentTypes).toEqual(['pdf', 'png'])
-  const bad = loadActionsConfig({ ...withHome, APPLE_MAIL_ATTACHMENT_TYPES: 'pdf,app' })
+  const bad = loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true', APPLE_MAIL_ATTACHMENT_TYPES: 'pdf,app' })
   expect(bad).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_TYPES' })
   expect(!bad.ok && bad.error).toContain('app')
+})
+
+test('attachment size and types are validated only when saving is on', () => {
+  const bad = { ...withHome, APPLE_MAIL_MAX_ATTACHMENT_BYTES: 'x', APPLE_MAIL_ATTACHMENT_TYPES: 'pdf,app' }
+  const off = loadActionsConfig(bad)
+  expect(off.ok && off.config.maxAttachmentBytes).toBe(26214400)
+  expect(off.ok && off.config.attachmentTypes).toContain('pdf')
+  expect(loadActionsConfig({ ...bad, APPLE_MAIL_SAVE_ATTACHMENTS: 'true' })).toMatchObject({ ok: false, key: 'APPLE_MAIL_MAX_ATTACHMENT_BYTES' })
+  expect(loadActionsConfig({ ...withHome, APPLE_MAIL_SAVE_ATTACHMENTS: 'true', APPLE_MAIL_ATTACHMENT_TYPES: 'pdf,app' })).toMatchObject({ ok: false, key: 'APPLE_MAIL_ATTACHMENT_TYPES' })
 })

@@ -51,6 +51,10 @@ Residual risks:
   It could ask for any attachment of an allowed type and size in any account that Mail holds,
   and read the result. This is the same trust level as the read helper: a hostile program under
   your account can already read what the read helper can. A message id does not have to come from the server.
+- **The type list and the size limit are enforced only in Node.** A local process that talks to
+  the app directly picks the file name (any extension), `maxBytes` (up to 100 MiB) and, through
+  the environment, the base folder. It gains nothing beyond your own rights, like the move risk
+  below.
 - **Saved files are untrusted.** An attachment is third-party content: it can be malicious and
   can carry text that tries to instruct the model. The server does not open or scan it. The
   type list reduces the risk but does not remove it, since a PDF or an Office file can still be

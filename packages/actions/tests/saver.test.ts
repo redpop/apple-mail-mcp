@@ -119,10 +119,10 @@ describe('saveAttachment', () => {
     expect(slots()).toEqual([])
   })
 
-  test('file over the limit is failed and removed', async () => {
+  test('file over the limit is skipped_too_large and removed', async () => {
     const { deps } = setup(new FakeMail([withAtt(1)]), writes('x'.repeat(11)), { APPLE_MAIL_MAX_ATTACHMENT_BYTES: '10' })
     const r = await saveAttachment(deps, req)
-    expect(r.status).toBe('failed')
+    expect(r.status).toBe('skipped_too_large')
     expect(slots()).toEqual([])
   })
 
