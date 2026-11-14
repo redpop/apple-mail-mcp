@@ -6,6 +6,8 @@ Apple Mail and, when you switch it on, saves one attachment of a message to a fo
 [`@redpop/apple-mail-mcp`](../../README.md), the read-only server. That package stays read-only;
 all moving code lives here.
 
+Background and design decisions for both servers: [the article on martin-alker.de](https://martin-alker.de/blog/apple-mail-mcp).
+
 **macOS only.** First released as 0.3.2 on 2026-11-12, on npm, as a GitHub release with the
 `.mcpb`, and in the MCP Registry. The plugin follows npm seven days after a release, so it
 starts with 0.3.2 once its pin reaches that version (about 2026-11-19).
