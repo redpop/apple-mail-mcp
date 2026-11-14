@@ -1,7 +1,7 @@
 {
   "name": "@redpop/apple-mail-actions-mcp",
   "mcpName": "io.github.redpop/apple-mail-actions-mcp",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "MCP server for Apple Mail on macOS that moves messages between mailboxes, driven by a signed helper app",
   "license": "MIT",
   "type": "module",
@@ -29,7 +29,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",
-    "@redpop/apple-mail-mcp": "0.3.2",
+    "@redpop/apple-mail-mcp": "0.4.0",
     "zod": "^4.6.7"
   },
   "bin": {
