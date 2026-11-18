@@ -19,7 +19,8 @@ permissions:
 
 jobs:
   pin:
-    runs-on: ubuntu-latest
+    # macOS wie ci.yml: npm ci lehnt die Pakete wegen "os": ["darwin"] auf Linux ab (EBADPLATFORM).
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
