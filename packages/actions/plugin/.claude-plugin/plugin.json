@@ -1,7 +1,7 @@
 {
   "name": "apple-mail-actions-mcp",
   "displayName": "Apple Mail Actions MCP",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Let Claude move messages between mailboxes in Apple Mail on macOS, after you confirm. Needs the Apple Mail MCP plugin beside it.",
   "author": {
     "name": "Martin Alker",
@@ -26,7 +26,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@redpop/apple-mail-actions-mcp@0.3.1"
+        "@redpop/apple-mail-actions-mcp@0.4.0"
       ],
       "env": {
         "APPLE_MAIL_ACCOUNTS": "${user_config.accounts}",
